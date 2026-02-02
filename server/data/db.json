@@ -1,0 +1,236 @@
+{
+  "home": {
+    "hero": {
+      "title": "Эксперты по недвижимости!!!",
+      "subtitle": "RWgroup — агентство недвижимости",
+      "address": "Москва",
+      "phone": "+7 (495) 410-15-68",
+      "trust_badge": "13 лет на рынке",
+      "slogan_options": [
+        "Ваша безопасная сделка — наша репутация",
+        "Бережём ваши нервы, время и бюджет",
+        "RWgroup — ваш персональный гарант на рынке недвижимости"
+      ]
+    },
+    "advantages": [
+      {
+        "title": "Широкий выбор",
+        "description": "Подбираем варианты под цель и бюджет."
+      },
+      {
+        "title": "Индивидуальный подход",
+        "description": "Сценарий сделки строим под ваши условия."
+      },
+      {
+        "title": "Профессионализм",
+        "description": "Опытная команда брокеров и экспертов."
+      },
+      {
+        "title": "Юридическая чистота",
+        "description": "Проверяем документы и риски."
+      },
+      {
+        "title": "Безопасность сделки",
+        "description": "Контроль на всех этапах."
+      },
+      {
+        "title": "Офис в центре Москвы",
+        "description": "Удобно встретиться и обсудить детали."
+      }
+    ],
+    "pricing": [
+      {
+        "title": "Подборка новостроек",
+        "description": "Бесплатно",
+        "highlight": true
+      },
+      {
+        "title": "Вторичная недвижимость",
+        "description": "Стоимость формируется индивидуально"
+      },
+      {
+        "title": "Сопровождение сделки",
+        "description": "По запросу — после консультации"
+      }
+    ],
+    "steps": [
+      {
+        "title": "Консультация"
+      },
+      {
+        "title": "План действий"
+      },
+      {
+        "title": "Договор"
+      },
+      {
+        "title": "Работа и сопровождение"
+      },
+      {
+        "title": "Закрытие сделки + документы"
+      }
+    ],
+    "mission": {
+      "title": "Миссия и ценности",
+      "text": "Мы бережно сопровождаем клиентов на всех этапах сделки и помогаем принимать уверенные решения."
+    },
+    "team": {
+      "title": "Команда",
+      "founders": [
+        {
+          "name": "Саша",
+          "role": "Основатель",
+          "story": "Личный подход и внимание к деталям."
+        },
+        {
+          "name": "Настя",
+          "role": "Сооснователь",
+          "story": "Фокус на сервисе и доверии."
+        }
+      ],
+      "links": [
+        {
+          "title": "Блог",
+          "url": "#"
+        }
+      ]
+    },
+    "reviews": [
+      {
+        "id": "r1",
+        "name": "Ирина",
+        "text": "Сделка прошла спокойно и прозрачно.",
+        "source_url": ""
+      },
+      {
+        "id": "r2",
+        "name": "Алексей",
+        "text": "Быстро нашли вариант и помогли с документами.",
+        "source_url": ""
+      }
+    ],
+    "partner": {
+      "title": "Стать партнёром",
+      "text": "Оставьте контакты — обсудим условия сотрудничества и обмен фидами."
+    },
+    "featured": {
+      "complexes": [
+        "fc2379d8-00cd-495c-a807-d5b55b736969"
+      ],
+      "properties": [
+        "49315117-0c99-4322-837e-8c129ab4ac88",
+        "ac373537-d4c2-409f-8a3d-3b959181a048"
+      ],
+      "collections": [
+        "82d23be8-c5e8-4304-a6cd-bc1123bd62bb"
+      ]
+    },
+    "updated_at": "2026-01-23T15:21:13.356Z"
+  },
+  "feed_sources": [
+    {
+      "id": "abc81381-f233-4f27-9fb9-3e2629c4b7bc",
+      "name": "Демо-источник",
+      "mode": "upload",
+      "format": "json",
+      "is_active": true,
+      "created_at": "2026-01-21T19:21:58.794Z"
+    }
+  ],
+  "complexes": [
+    {
+      "id": "fc2379d8-00cd-495c-a807-d5b55b736969",
+      "source_id": "abc81381-f233-4f27-9fb9-3e2629c4b7bc",
+      "external_id": "c-001",
+      "slug": "жк-river-park",
+      "title": "ЖК River Park",
+      "category": "newbuild",
+      "district": "ЦАО",
+      "metro": [
+        "Киевская"
+      ],
+      "price_from": 18500000,
+      "area_from": 42,
+      "images": [
+        "https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=modern%20residential%20complex%20in%20moscow%2C%20sunset%2C%20wide%20angle%2C%20real%20estate%20photography%2C%20clean%20facades%2C%20high%20detail&image_size=landscape_16_9"
+      ],
+      "status": "active",
+      "updated_at": "2026-01-21T19:21:58.794Z"
+    }
+  ],
+  "properties": [
+    {
+      "id": "49315117-0c99-4322-837e-8c129ab4ac88",
+      "source_id": "abc81381-f233-4f27-9fb9-3e2629c4b7bc",
+      "external_id": "p-001",
+      "slug": "2-комнатная-в-жк-river-park",
+      "lot_number": "A-1204",
+      "complex_id": "fc2379d8-00cd-495c-a807-d5b55b736969",
+      "complex_external_id": "c-001",
+      "deal_type": "sale",
+      "category": "newbuild",
+      "title": "2-комнатная в ЖК River Park",
+      "bedrooms": 1,
+      "price": 23900000,
+      "area_total": 56.2,
+      "district": "ЦАО",
+      "metro": [
+        "Киевская"
+      ],
+      "images": [
+        "https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=bright%20modern%20apartment%20interior%2C%20living%20room%20with%20panoramic%20windows%2C%20real%20estate%20photography%2C%20neutral%20colors%2C%20high%20detail&image_size=landscape_16_9"
+      ],
+      "status": "active",
+      "updated_at": "2026-01-21T19:21:58.794Z"
+    },
+    {
+      "id": "ac373537-d4c2-409f-8a3d-3b959181a048",
+      "source_id": "abc81381-f233-4f27-9fb9-3e2629c4b7bc",
+      "external_id": "p-002",
+      "slug": "1-комнатная-аренда-у-метро",
+      "deal_type": "rent",
+      "category": "rent",
+      "title": "1-комнатная аренда у метро",
+      "bedrooms": 0,
+      "price": 120000,
+      "price_period": "month",
+      "area_total": 34.5,
+      "district": "САО",
+      "metro": [
+        "Динамо"
+      ],
+      "images": [
+        "https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cozy%20apartment%20interior%2C%20kitchen%20and%20living%20area%2C%20real%20estate%20photography%2C%20soft%20light%2C%20high%20detail&image_size=landscape_16_9"
+      ],
+      "status": "active",
+      "updated_at": "2026-01-21T19:21:58.794Z"
+    }
+  ],
+  "collections": [
+    {
+      "id": "82d23be8-c5e8-4304-a6cd-bc1123bd62bb",
+      "slug": "лучшие-предложения-недели",
+      "title": "Лучшие предложения недели",
+      "description": "Подборка актуальных объектов и ЖК на этой неделе.",
+      "cover_image": "https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=moscow%20skyline%20panorama%2C%20premium%20real%20estate%20mood%2C%20cinematic%20lighting%2C%20high%20detail&image_size=landscape_16_9",
+      "priority": 10,
+      "items": [
+        {
+          "type": "complex",
+          "ref_id": "fc2379d8-00cd-495c-a807-d5b55b736969"
+        },
+        {
+          "type": "property",
+          "ref_id": "49315117-0c99-4322-837e-8c129ab4ac88"
+        },
+        {
+          "type": "property",
+          "ref_id": "ac373537-d4c2-409f-8a3d-3b959181a048"
+        }
+      ],
+      "updated_at": "2026-01-21T19:21:58.794Z"
+    }
+  ],
+  "leads": [],
+  "import_runs": []
+}
