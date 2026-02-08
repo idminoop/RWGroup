@@ -165,6 +165,8 @@ export function ensureSeed(): void {
       description: 'Подборка актуальных объектов и ЖК на этой неделе.',
       cover_image: sample(IMAGES_COMPLEX),
       priority: 10,
+      status: 'visible',
+      mode: 'manual',
       items: [
         { type: 'complex', ref_id: complexes[0].id },
         { type: 'property', ref_id: properties[0].id },
@@ -179,6 +181,8 @@ export function ensureSeed(): void {
       description: 'Самые ожидаемые премьеры года.',
       cover_image: sample(IMAGES_COMPLEX),
       priority: 9,
+      status: 'visible',
+      mode: 'manual',
       items: [
         { type: 'complex', ref_id: complexes[1].id },
         { type: 'complex', ref_id: complexes[2].id },

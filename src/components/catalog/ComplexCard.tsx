@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { MapPin } from 'lucide-react'
 import { formatArea, formatPriceRub } from '@/lib/format'
+import { selectCoverImage } from '@/lib/images'
 import Button from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardContent, CardFooter } from '@/components/ui/Card'
@@ -10,7 +11,7 @@ import { trackEvent } from '@/lib/analytics'
 
 export default function ComplexCard({ item }: { item: Complex }) {
   const openLeadModal = useUiStore((s) => s.openLeadModal)
-  const img = item.images?.[0]
+  const img = selectCoverImage(item.images)
 
   return (
     <Card className="overflow-hidden transition-shadow hover:shadow-md border-slate-200 bg-white flex flex-col">

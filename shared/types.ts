@@ -6,6 +6,8 @@ export type FormType = 'consultation' | 'buy_sell' | 'view_details' | 'partner'
 
 export type CatalogTab = 'newbuild' | 'secondary' | 'rent'
 
+export type CollectionMode = 'manual' | 'auto'
+
 export type Id = string
 
 export interface Complex {
@@ -54,6 +56,19 @@ export interface Property {
   updated_at: string
 }
 
+export interface CollectionAutoRules {
+  type: 'property' | 'complex'
+  category?: Category
+  bedrooms?: number
+  priceMin?: number
+  priceMax?: number
+  areaMin?: number
+  areaMax?: number
+  district?: string
+  metro?: string[]
+  q?: string
+}
+
 export interface Collection {
   id: Id
   slug: string
@@ -61,7 +76,10 @@ export interface Collection {
   description?: string
   cover_image?: string
   priority: number
+  status: 'visible' | 'hidden'
+  mode: CollectionMode
   items: { type: 'property' | 'complex'; ref_id: Id }[]
+  auto_rules?: CollectionAutoRules
   updated_at: string
 }
 

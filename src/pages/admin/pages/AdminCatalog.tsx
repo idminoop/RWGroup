@@ -8,6 +8,7 @@ import type { Complex, Property } from '../../../../shared/types'
 import Modal from '@/components/ui/Modal'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
+import CatalogFilters, { type FiltersState } from '@/components/catalog/CatalogFilters'
 
 export default function AdminCatalogPage() {
   const token = useUiStore((s) => s.adminToken)
@@ -16,28 +17,61 @@ export default function AdminCatalogPage() {
   const [items, setItems] = useState<(Property | Complex)[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [filters, setFilters] = useState<FiltersState>({
+    bedrooms: '',
+    priceMin: '',
+    priceMax: '',
+    areaMin: '',
+    areaMax: '',
+    q: '',
+  })
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(12)
+  const [total, setTotal] = useState(0)
   
   // Editing state
   const [editingItem, setEditingItem] = useState<Property | Complex | null>(null)
   const [editForm, setEditForm] = useState<Record<string, any>>({})
 
+  const query = useMemo(() => {
+    const sp = new URLSearchParams({ type: tab, page: String(page), limit: String(limit) })
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v) sp.set(k, v)
+    })
+    return sp.toString()
+  }, [tab, page, limit, filters])
+
   const load = useCallback(() => {
     setLoading(true)
-    apiGet<{ items: (Property | Complex)[]; total: number }>(`/api/admin/catalog/items?type=${tab}&limit=100`, headers)
-      .then((res) => setItems(res.items))
+    setError(null)
+    apiGet<{ items: (Property | Complex)[]; total: number; page: number; limit: number }>(`/api/admin/catalog/items?${query}`, headers)
+      .then((res) => {
+        setItems(res.items)
+        setTotal(res.total)
+      })
       .catch((e) => setError(e instanceof Error ? e.message : 'Ошибка'))
       .finally(() => setLoading(false))
-  }, [headers, tab])
+  }, [headers, query])
 
   useEffect(() => {
     load()
   }, [load])
 
+  useEffect(() => {
+    setPage(1)
+  }, [tab, filters, limit])
+
+  const totalPages = Math.max(1, Math.ceil(total / limit))
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
+
   const handleDelete = async (id: string) => {
     if (!confirm('Вы уверены? Это действие нельзя отменить.')) return
     try {
       await apiDelete(`/api/admin/catalog/items/${tab}/${id}`, headers)
-      setItems(items.filter((i) => i.id !== id))
+      load()
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Ошибка при удалении')
     }
@@ -101,39 +135,103 @@ export default function AdminCatalogPage() {
         </div>
       </div>
 
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <CatalogFilters
+          tab={tab === 'complex' ? 'newbuild' : 'secondary'}
+          value={filters}
+          onChange={setFilters}
+        />
+      </div>
+
       {loading ? (
         <div className="text-sm text-slate-500">Загрузка...</div>
       ) : error ? (
         <div className="text-sm text-rose-600">{error}</div>
       ) : (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {items.map((item) => (
-            <div key={item.id} className="relative group">
-              {tab === 'property' ? (
-                <PropertyCard item={item as Property} />
-              ) : (
-                <ComplexCard item={item as Complex} />
-              )}
-              
-              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                <a 
-                  href={tab === 'property' ? `/property/${item.id}` : `/complex/${item.id}`} 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="inline-flex h-8 items-center justify-center rounded-md bg-white px-3 text-xs font-medium text-slate-700 shadow hover:bg-slate-50 hover:text-slate-900"
-                >
-                  На сайт
-                </a>
-                <Button size="sm" onClick={() => handleEdit(item)}>
-                  Ред.
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+            <div>
+              Товаров: <span className="font-semibold text-slate-900">{total}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span>На странице</span>
+                <Select value={String(limit)} onChange={(e) => setLimit(Number(e.target.value))}>
+                  {[12, 24, 36, 48, 72, 96].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="secondary" onClick={() => setPage(Math.max(page - 1, 1))} disabled={page <= 1}>
+                  Назад
                 </Button>
-                <Button size="sm" variant="secondary" className="bg-rose-50 text-rose-600 hover:bg-rose-100" onClick={() => handleDelete(item.id)}>
-                  Уд.
+                <span>
+                  Страница {page} из {totalPages}
+                </span>
+                <Button size="sm" variant="secondary" onClick={() => setPage(Math.min(page + 1, totalPages))} disabled={page >= totalPages}>
+                  Вперёд
                 </Button>
               </div>
             </div>
-          ))}
-          {items.length === 0 && <div className="col-span-full text-center text-slate-500">Нет объектов</div>}
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {items.map((item) => (
+              <div key={item.id} className="relative group">
+                {tab === 'property' ? (
+                  <PropertyCard item={item as Property} />
+                ) : (
+                  <ComplexCard item={item as Complex} />
+                )}
+                
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                  <a 
+                    href={tab === 'property' ? `/property/${item.id}` : `/complex/${item.id}`} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="inline-flex h-8 items-center justify-center rounded-md bg-white px-3 text-xs font-medium text-slate-700 shadow hover:bg-slate-50 hover:text-slate-900"
+                  >
+                    На сайт
+                  </a>
+                  <Button size="sm" onClick={() => handleEdit(item)}>
+                    Ред.
+                  </Button>
+                  <Button size="sm" variant="secondary" className="bg-rose-50 text-rose-600 hover:bg-rose-100" onClick={() => handleDelete(item.id)}>
+                    Уд.
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {items.length === 0 && <div className="col-span-full text-center text-slate-500">Нет объектов</div>}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+            <div>
+              Товаров: <span className="font-semibold text-slate-900">{total}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span>На странице</span>
+                <Select value={String(limit)} onChange={(e) => setLimit(Number(e.target.value))}>
+                  {[12, 24, 36, 48, 72, 96].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="secondary" onClick={() => setPage(Math.max(page - 1, 1))} disabled={page <= 1}>
+                  Назад
+                </Button>
+                <span>
+                  Страница {page} из {totalPages}
+                </span>
+                <Button size="sm" variant="secondary" onClick={() => setPage(Math.min(page + 1, totalPages))} disabled={page >= totalPages}>
+                  Вперёд
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

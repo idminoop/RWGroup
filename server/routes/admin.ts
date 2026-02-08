@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { adminAuth } from '../middleware/adminAuth.js'
 import { withDb } from '../lib/storage.js'
 import { newId, slugify } from '../lib/ids.js'
+import { resolveCollectionItems } from '../lib/collections.js'
 import fs from 'fs'
 import path from 'path'
 import { 
@@ -29,6 +30,11 @@ import * as XLSX from 'xlsx'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } })
+
+function toNumber(v: unknown): number | undefined {
+  const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : typeof v === 'number' ? v : NaN
+  return Number.isFinite(n) ? n : undefined
+}
 
 router.post('/login', (req: Request, res: Response) => {
   const schema = z.object({ password: z.string().min(1) })
@@ -194,7 +200,33 @@ router.get('/collections', (req: Request, res: Response) => {
 })
 
 router.post('/collections', (req: Request, res: Response) => {
-  const schema = z.object({ title: z.string().min(1), description: z.string().optional(), cover_image: z.string().optional(), priority: z.number().int().optional() })
+  const autoRulesSchema = z.object({
+    type: z.enum(['property', 'complex']),
+    category: z.enum(['newbuild', 'secondary', 'rent']).optional(),
+    bedrooms: z.number().int().min(0).max(4).optional(),
+    priceMin: z.number().min(0).optional(),
+    priceMax: z.number().min(0).optional(),
+    areaMin: z.number().min(0).optional(),
+    areaMax: z.number().min(0).optional(),
+    district: z.string().optional(),
+    metro: z.array(z.string()).optional(),
+    q: z.string().optional(),
+  })
+
+  const schema = z.object({
+    title: z.string().min(1),
+    description: z.string().optional(),
+    cover_image: z.string().optional(),
+    priority: z.number().int().optional(),
+    status: z.enum(['visible', 'hidden']).optional(),
+    mode: z.enum(['manual', 'auto']),
+    auto_rules: autoRulesSchema.optional(),
+  }).refine(data => {
+    // If mode is 'auto', auto_rules must be present
+    if (data.mode === 'auto' && !data.auto_rules) return false
+    return true
+  }, { message: 'auto_rules required when mode is auto' })
+
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ success: false, error: 'Invalid payload' })
@@ -209,7 +241,10 @@ router.post('/collections', (req: Request, res: Response) => {
       description: parsed.data.description,
       cover_image: parsed.data.cover_image,
       priority: parsed.data.priority ?? 0,
+      status: parsed.data.status ?? 'visible',
+      mode: parsed.data.mode,
       items: [],
+      auto_rules: parsed.data.auto_rules as any,
       updated_at: new Date().toISOString(),
     })
   })
@@ -218,7 +253,30 @@ router.post('/collections', (req: Request, res: Response) => {
 
 router.put('/collections/:id', (req: Request, res: Response) => {
   const id = req.params.id
-  const schema = z.object({ title: z.string().min(1).optional(), description: z.string().optional(), cover_image: z.string().optional(), priority: z.number().int().optional(), items: z.array(z.object({ type: z.enum(['property', 'complex']), ref_id: z.string().min(1) })).optional() })
+  const autoRulesSchema = z.object({
+    type: z.enum(['property', 'complex']),
+    category: z.enum(['newbuild', 'secondary', 'rent']).optional(),
+    bedrooms: z.number().int().min(0).max(4).optional(),
+    priceMin: z.number().min(0).optional(),
+    priceMax: z.number().min(0).optional(),
+    areaMin: z.number().min(0).optional(),
+    areaMax: z.number().min(0).optional(),
+    district: z.string().optional(),
+    metro: z.array(z.string()).optional(),
+    q: z.string().optional(),
+  })
+
+  const schema = z.object({
+    title: z.string().min(1).optional(),
+    description: z.string().optional(),
+    cover_image: z.string().optional(),
+    priority: z.number().int().optional(),
+    status: z.enum(['visible', 'hidden']).optional(),
+    mode: z.enum(['manual', 'auto']).optional(),
+    items: z.array(z.object({ type: z.enum(['property', 'complex']), ref_id: z.string().min(1) })).optional(),
+    auto_rules: autoRulesSchema.optional(),
+  })
+
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ success: false, error: 'Invalid payload' })
@@ -228,6 +286,16 @@ router.put('/collections/:id', (req: Request, res: Response) => {
     const col = db.collections.find((c) => c.id === id)
     if (!col) return false
     if (parsed.data.title) col.slug = slugify(parsed.data.title)
+
+    // Handle mode switch: clear opposite field
+    if (parsed.data.mode && parsed.data.mode !== col.mode) {
+      if (parsed.data.mode === 'manual') {
+        col.auto_rules = undefined
+      } else {
+        col.items = []
+      }
+    }
+
     Object.assign(col, parsed.data)
     col.updated_at = new Date().toISOString()
     return true
@@ -253,10 +321,172 @@ router.delete('/collections/:id', (req: Request, res: Response) => {
   res.json({ success: true })
 })
 
+router.post('/collections/:id/toggle-status', (req: Request, res: Response) => {
+  const id = req.params.id
+  let newStatus: 'visible' | 'hidden' | null = null
+  const ok = withDb((db) => {
+    const col = db.collections.find((c) => c.id === id)
+    if (!col) return false
+    col.status = col.status === 'visible' ? 'hidden' : 'visible'
+    newStatus = col.status
+    col.updated_at = new Date().toISOString()
+    return true
+  })
+  if (!ok) {
+    res.status(404).json({ success: false, error: 'Not found' })
+    return
+  }
+  res.json({ success: true, data: { status: newStatus } })
+})
+
+router.get('/collections/:id/preview', (req: Request, res: Response) => {
+  const id = req.params.id
+  const data = withDb((db) => {
+    const collection = db.collections.find((c) => c.id === id)
+    if (!collection) return null
+
+    const items = resolveCollectionItems(collection, db)
+
+    if (collection.mode === 'manual') {
+      // Validate manual items
+      const allRefIds = collection.items.map(it => it.ref_id)
+      const validIds = items.map(it => it.ref.id)
+      const invalidIds = allRefIds.filter(id => !validIds.includes(id))
+
+      return {
+        mode: 'manual' as const,
+        items,
+        stats: {
+          total: collection.items.length,
+          valid: validIds.length,
+          invalid: invalidIds.length,
+          invalidIds,
+        },
+      }
+    } else {
+      // Auto mode
+      return {
+        mode: 'auto' as const,
+        items: items.slice(0, 100), // Limit preview to 100 items
+        stats: {
+          total: items.length,
+          valid: items.length,
+          invalid: 0,
+        },
+      }
+    }
+  })
+  if (!data) {
+    res.status(404).json({ success: false, error: 'Not found' })
+    return
+  }
+  res.json({ success: true, data })
+})
+
+router.post('/collections/preview-auto', (req: Request, res: Response) => {
+  const autoRulesSchema = z.object({
+    type: z.enum(['property', 'complex']),
+    category: z.enum(['newbuild', 'secondary', 'rent']).optional(),
+    bedrooms: z.number().int().min(0).max(4).optional(),
+    priceMin: z.number().min(0).optional(),
+    priceMax: z.number().min(0).optional(),
+    areaMin: z.number().min(0).optional(),
+    areaMax: z.number().min(0).optional(),
+    district: z.string().optional(),
+    metro: z.array(z.string()).optional(),
+    q: z.string().optional(),
+  })
+
+  const schema = z.object({
+    rules: autoRulesSchema,
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+
+  const data = withDb((db) => {
+    const collection = {
+      id: 'preview',
+      slug: 'preview',
+      title: 'preview',
+      mode: 'auto' as const,
+      items: [],
+      auto_rules: parsed.data.rules,
+      status: 'visible' as const,
+      priority: 0,
+      updated_at: new Date().toISOString(),
+    }
+
+    const items = resolveCollectionItems(collection as any, db)
+    const limit = parsed.data.limit ?? 12
+    return {
+      items: items.slice(0, limit),
+      total: items.length,
+    }
+  })
+
+  res.json({ success: true, data })
+})
+
+router.post('/collections/:id/validate-items', (req: Request, res: Response) => {
+  const id = req.params.id
+  const schema = z.object({ cleanInvalid: z.boolean().optional() })
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+
+  const result = withDb((db) => {
+    const collection = db.collections.find((c) => c.id === id)
+    if (!collection || collection.mode !== 'manual') return null
+
+    const validItems = collection.items.filter((it) => {
+      if (it.type === 'property') {
+        return db.properties.some((p) => p.id === it.ref_id && p.status === 'active')
+      } else {
+        return db.complexes.some((c) => c.id === it.ref_id && c.status === 'active')
+      }
+    })
+
+    const invalidIds = collection.items
+      .filter(it => !validItems.some(v => v.ref_id === it.ref_id))
+      .map(it => it.ref_id)
+
+    if (parsed.data.cleanInvalid && invalidIds.length > 0) {
+      collection.items = validItems
+      collection.updated_at = new Date().toISOString()
+    }
+
+    return {
+      totalItems: collection.items.length,
+      validItems: validItems.length,
+      invalidItems: invalidIds,
+      cleaned: parsed.data.cleanInvalid || false,
+    }
+  })
+
+  if (!result) {
+    res.status(404).json({ success: false, error: 'Not found or not in manual mode' })
+    return
+  }
+  res.json({ success: true, data: result })
+})
+
 router.get('/catalog/items', (req: Request, res: Response) => {
   const type = req.query.type as string
-  const page = parseInt(req.query.page as string) || 1
-  const limit = parseInt(req.query.limit as string) || 50
+  const page = Math.max(parseInt(req.query.page as string) || 1, 1)
+  const limit = Math.max(parseInt(req.query.limit as string) || 50, 1)
+  const bed = toNumber(req.query.bedrooms)
+  const min = toNumber(req.query.priceMin)
+  const max = toNumber(req.query.priceMax)
+  const amin = toNumber(req.query.areaMin)
+  const amax = toNumber(req.query.areaMax)
+  const qlc = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : ''
   
   if (type !== 'property' && type !== 'complex') {
     res.status(400).json({ success: false, error: 'Invalid type' })
@@ -264,7 +494,19 @@ router.get('/catalog/items', (req: Request, res: Response) => {
   }
 
   const data = withDb((db) => {
-    const items = type === 'property' ? db.properties : db.complexes
+    const items =
+      type === 'property'
+        ? db.properties
+            .filter((p) => (typeof bed === 'number' ? p.bedrooms === bed : true))
+            .filter((p) => (typeof min === 'number' ? p.price >= min : true))
+            .filter((p) => (typeof max === 'number' ? p.price <= max : true))
+            .filter((p) => (typeof amin === 'number' ? p.area_total >= amin : true))
+            .filter((p) => (typeof amax === 'number' ? p.area_total <= amax : true))
+            .filter((p) => (qlc ? p.id.toLowerCase().includes(qlc) || p.title.toLowerCase().includes(qlc) || p.district.toLowerCase().includes(qlc) || p.metro.some((m) => m.toLowerCase().includes(qlc)) : true))
+            .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+        : db.complexes
+            .filter((c) => (qlc ? c.id.toLowerCase().includes(qlc) || c.title.toLowerCase().includes(qlc) || c.district.toLowerCase().includes(qlc) || c.metro.some((m) => m.toLowerCase().includes(qlc)) : true))
+            .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
     const start = (page - 1) * limit
     const end = start + limit
     return {

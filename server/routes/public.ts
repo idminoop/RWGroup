@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import { z } from 'zod'
 import type { CatalogTab, Category } from '../../shared/types.js'
 import { withDb } from '../lib/storage.js'
+import { resolveCollectionItems } from '../lib/collections.js'
 
 const router = Router()
 
@@ -24,14 +25,16 @@ function tabToCategory(tab: CatalogTab): Category {
 router.get('/home', (req: Request, res: Response) => {
   const data = withDb((db) => {
     const featuredComplexes = db.home.featured.complexes
-      .map((id) => db.complexes.find((c) => c.id === id))
+      .map((id) => db.complexes.find((c) => c.id === id && c.status === 'active'))
       .filter(Boolean)
     const featuredProperties = db.home.featured.properties
-      .map((id) => db.properties.find((p) => p.id === id))
+      .map((id) => db.properties.find((p) => p.id === id && p.status === 'active'))
       .filter(Boolean)
-    const featuredCollections = db.home.featured.collections
-      .map((id) => db.collections.find((c) => c.id === id))
-      .filter(Boolean)
+
+    // Show ALL visible collections, sorted by priority (descending)
+    const featuredCollections = db.collections
+      .filter((c) => c.status === 'visible')
+      .sort((a, b) => b.priority - a.priority)
 
     return {
       home: db.home,
@@ -62,8 +65,8 @@ router.get('/catalog', (req: Request, res: Response) => {
     priceMax: z.string().optional(),
     areaMin: z.string().optional(),
     areaMax: z.string().optional(),
-    district: z.string().optional(),
-    metro: z.string().optional(),
+    page: z.string().optional(),
+    limit: z.string().optional(),
     q: z.string().optional(),
   })
   const parsed = schema.safeParse(req.query)
@@ -71,7 +74,7 @@ router.get('/catalog', (req: Request, res: Response) => {
     res.status(400).json({ success: false, error: 'Invalid query' })
     return
   }
-  const { tab, bedrooms, priceMin, priceMax, areaMin, areaMax, district, metro, q } = parsed.data
+  const { tab, bedrooms, priceMin, priceMax, areaMin, areaMax, q, page, limit } = parsed.data
   const cat = tabToCategory(tab)
   const bed = toNumber(bedrooms)
   const min = toNumber(priceMin)
@@ -79,9 +82,11 @@ router.get('/catalog', (req: Request, res: Response) => {
   const amin = toNumber(areaMin)
   const amax = toNumber(areaMax)
   const qlc = (q || '').trim().toLowerCase()
+  const pageNum = Math.max(toNumber(page) || 1, 1)
+  const limitNum = Math.max(toNumber(limit) || 12, 1)
 
   const data = withDb((db) => {
-    const properties = db.properties
+    const filtered = db.properties
       .filter((p) => p.status === 'active')
       .filter((p) => p.category === cat)
       .filter((p) => (typeof bed === 'number' ? p.bedrooms === bed : true))
@@ -89,22 +94,22 @@ router.get('/catalog', (req: Request, res: Response) => {
       .filter((p) => (typeof max === 'number' ? p.price <= max : true))
       .filter((p) => (typeof amin === 'number' ? p.area_total >= amin : true))
       .filter((p) => (typeof amax === 'number' ? p.area_total <= amax : true))
-      .filter((p) => (district ? p.district === district : true))
-      .filter((p) => (metro ? p.metro.includes(metro) : true))
-      .filter((p) => (qlc ? p.title.toLowerCase().includes(qlc) : true))
+      .filter((p) => (qlc ? p.title.toLowerCase().includes(qlc) || p.district.toLowerCase().includes(qlc) || p.metro.some((m) => m.toLowerCase().includes(qlc)) : true))
       .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+    const total = filtered.length
+    const start = (pageNum - 1) * limitNum
+    const end = start + limitNum
+    const properties = filtered.slice(start, end)
 
     const complexes =
       tab === 'newbuild'
         ? db.complexes
             .filter((c) => c.status === 'active')
-            .filter((c) => (district ? c.district === district : true))
-            .filter((c) => (metro ? c.metro.includes(metro) : true))
-            .filter((c) => (qlc ? c.title.toLowerCase().includes(qlc) : true))
+            .filter((c) => (qlc ? c.title.toLowerCase().includes(qlc) || c.district.toLowerCase().includes(qlc) || c.metro.some((m) => m.toLowerCase().includes(qlc)) : true))
             .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
         : []
 
-    return { properties, complexes }
+    return { properties, complexes, total, page: pageNum, limit: limitNum }
   })
 
   res.json({ success: true, data })
@@ -149,16 +154,10 @@ router.get('/collection/:id', (req: Request, res: Response) => {
     const collection = db.collections.find((c) => c.id === id)
     if (!collection) return null
 
-    const items = collection.items
-      .map((it) => {
-        if (it.type === 'property') {
-          const ref = db.properties.find((p) => p.id === it.ref_id && p.status === 'active')
-          return ref ? { type: 'property' as const, ref } : null
-        }
-        const ref = db.complexes.find((c) => c.id === it.ref_id && c.status === 'active')
-        return ref ? { type: 'complex' as const, ref } : null
-      })
-      .filter(Boolean)
+    // Check if collection is visible
+    if (collection.status !== 'visible') return null
+
+    const items = resolveCollectionItems(collection, db)
 
     return { collection, items }
   })

@@ -5,30 +5,30 @@ import CatalogFilters, { type FiltersState } from '@/components/catalog/CatalogF
 import PropertyCard from '@/components/catalog/PropertyCard'
 import ComplexCard from '@/components/catalog/ComplexCard'
 import { Heading, Text } from '@/components/ui/Typography'
+import Button from '@/components/ui/Button'
 import { apiGet } from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
 import type { Complex, Property } from '../../shared/types'
 
-type Facets = { districts: string[]; metros: string[] }
-
 export default function CatalogPage() {
   const [tab, setTab] = useState<'newbuild' | 'secondary' | 'rent'>('newbuild')
-  const [filters, setFilters] = useState<FiltersState>({ bedrooms: '', priceMin: '', priceMax: '', areaMin: '', areaMax: '', district: '', metro: '', q: '' })
-  const [facets, setFacets] = useState<Facets | null>(null)
-  const [data, setData] = useState<{ complexes: Complex[]; properties: Property[] } | null>(null)
+  const [filters, setFilters] = useState<FiltersState>({ bedrooms: '', priceMin: '', priceMax: '', areaMin: '', areaMax: '', q: '' })
+  const [data, setData] = useState<{ complexes: Complex[]; properties: Property[]; total: number; page: number; limit: number } | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    apiGet<Facets>('/api/facets').then(setFacets).catch(() => setFacets(null))
-  }, [])
+  const [page, setPage] = useState(1)
+  const [limit] = useState(12)
 
   const query = useMemo(() => {
-    const sp = new URLSearchParams({ tab })
+    const sp = new URLSearchParams({ tab, page: String(page), limit: String(limit) })
     Object.entries(filters).forEach(([k, v]) => {
       if (v) sp.set(k, v)
     })
     return sp.toString()
+  }, [tab, filters, page, limit])
+
+  useEffect(() => {
+    setPage(1)
   }, [tab, filters])
 
   useEffect(() => {
@@ -44,11 +44,9 @@ export default function CatalogPage() {
       priceMax: sp.get('priceMax') || '',
       areaMin: sp.get('areaMin') || '',
       areaMax: sp.get('areaMax') || '',
-      district: sp.get('district') || '',
-      metro: sp.get('metro') || '',
       q: sp.get('q') || '',
     })
-    apiGet<{ complexes: Complex[]; properties: Property[] }>(`/api/catalog?${query}`)
+    apiGet<{ complexes: Complex[]; properties: Property[]; total: number; page: number; limit: number }>(`/api/catalog?${query}`)
       .then((d) => {
         if (!alive) return
         setData(d)
@@ -66,6 +64,12 @@ export default function CatalogPage() {
     }
   }, [query])
 
+  const totalPages = Math.max(1, Math.ceil((data?.total || 0) / limit))
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
+
   return (
     <SiteLayout>
       <div className="min-h-screen bg-[#F5F5F5]">
@@ -79,7 +83,7 @@ export default function CatalogPage() {
           </div>
 
           <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
-            <CatalogFilters tab={tab} value={filters} onChange={setFilters} facets={facets} />
+            <CatalogFilters tab={tab} value={filters} onChange={setFilters} />
           </div>
 
           <div className="mt-6">
@@ -107,10 +111,28 @@ export default function CatalogPage() {
                 <section>
                   <Heading size="h4" className="mb-3">Объекты</Heading>
                   {data?.properties?.length ? (
-                    <div className="grid gap-4 md:grid-cols-3">
-                      {data.properties.map((p) => (
-                        <PropertyCard key={p.id} item={p} />
-                      ))}
+                    <div className="space-y-4">
+                      <div className="grid gap-4 md:grid-cols-3">
+                        {data.properties.map((p) => (
+                          <PropertyCard key={p.id} item={p} />
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                        <div>
+                          Товаров: <span className="font-semibold text-slate-900">{data?.total || 0}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" variant="secondary" onClick={() => setPage(Math.max(page - 1, 1))} disabled={page <= 1}>
+                            Назад
+                          </Button>
+                          <span>
+                            Страница {page} из {totalPages}
+                          </span>
+                          <Button size="sm" variant="secondary" onClick={() => setPage(Math.min(page + 1, totalPages))} disabled={page >= totalPages}>
+                            Вперёд
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">Нет результатов</div>

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { BedDouble, MapPin, Ruler, Tag } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatArea, formatPriceRub } from '@/lib/format'
+import { selectCoverImage } from '@/lib/images'
 import Button from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardContent, CardFooter } from '@/components/ui/Card'
@@ -11,7 +12,7 @@ import { trackEvent } from '@/lib/analytics'
 
 export default function PropertyCard({ item, variant = 'grid' }: { item: Property; variant?: 'grid' | 'list' }) {
   const openLeadModal = useUiStore((s) => s.openLeadModal)
-  const img = item.images?.[0]
+  const img = selectCoverImage(item.images)
   const dealTypeLabel = item.deal_type === 'rent' ? 'Аренда' : 'Продажа'
   const priceSuffix = item.price_period ? ' / мес' : ''
   const priceLabel = `${formatPriceRub(item.price)}${priceSuffix}`

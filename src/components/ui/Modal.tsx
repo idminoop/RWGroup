@@ -25,7 +25,7 @@ export default function Modal({ open, title, onClose, children, className }: Pro
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={onClose}>
       <div
-        className={cn('w-full max-w-lg rounded-xl bg-white shadow-xl', className)}
+        className={cn('flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl', className)}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -39,7 +39,7 @@ export default function Modal({ open, title, onClose, children, className }: Pro
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="min-h-0 overflow-y-auto px-5 py-4">{children}</div>
       </div>
     </div>
   )

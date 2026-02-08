@@ -5,8 +5,10 @@ import Button from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Heading, Text } from '@/components/ui/Typography'
+import ImageGallery from '@/components/ui/ImageGallery'
 import { apiGet } from '@/lib/api'
 import { formatArea, formatPriceRub } from '@/lib/format'
+import { selectCoverImage, getPresentableImages, getLayoutImages } from '@/lib/images'
 import { useUiStore } from '@/store/useUiStore'
 import type { Complex, Property } from '../../shared/types'
 
@@ -15,6 +17,9 @@ export default function PropertyPage() {
   const openLeadModal = useUiStore((s) => s.openLeadModal)
   const [data, setData] = useState<{ property: Property; complex?: Complex } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [galleryOpen, setGalleryOpen] = useState(false)
+  const [galleryIndex, setGalleryIndex] = useState(0)
+  const [galleryType, setGalleryType] = useState<'presentable' | 'layouts'>('presentable')
 
   useEffect(() => {
     if (!id) return
@@ -23,6 +28,16 @@ export default function PropertyPage() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Ошибка'))
   }, [id])
 
+  const openGallery = (type: 'presentable' | 'layouts', index = 0) => {
+    setGalleryType(type)
+    setGalleryIndex(index)
+    setGalleryOpen(true)
+  }
+
+  const presentableImages = data ? getPresentableImages(data.property.images) : []
+  const layoutImages = data ? getLayoutImages(data.property.images) : []
+  const coverImage = data ? selectCoverImage(data.property.images) : undefined
+
   return (
     <SiteLayout>
       <div className="mx-auto w-full max-w-6xl px-4 py-10">
@@ -30,21 +45,38 @@ export default function PropertyPage() {
         {!data ? (
           <div className="h-80 animate-pulse rounded-xl border border-slate-200 bg-slate-50" />
         ) : (
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card className="overflow-hidden border-slate-200 bg-white">
-              {data.property.images?.[0] ? (
-                <img src={data.property.images[0]} alt={data.property.title} className="h-80 w-full object-cover" />
-              ) : (
-                <div className="h-80 w-full bg-slate-100" />
-              )}
-              {data.property.images?.length > 1 ? (
-                <div className="grid grid-cols-4 gap-2 p-3">
-                  {data.property.images.slice(0, 4).map((src) => (
-                    <img key={src} src={src} alt="" className="h-16 w-full rounded-md object-cover" />
-                  ))}
-                </div>
-              ) : null}
-            </Card>
+          <>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card className="overflow-hidden border-slate-200 bg-white">
+                <button
+                  onClick={() => openGallery('presentable', 0)}
+                  className="relative h-80 w-full cursor-pointer transition-opacity hover:opacity-90"
+                >
+                  {coverImage ? (
+                    <img src={coverImage} alt={data.property.title} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full bg-slate-100" />
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors hover:bg-black/10">
+                    <div className="rounded-full bg-white/80 px-4 py-2 text-sm font-medium text-slate-900 shadow-lg opacity-0 transition-opacity hover:opacity-100">
+                      Посмотреть все фото
+                    </div>
+                  </div>
+                </button>
+                {presentableImages.length > 1 && (
+                  <div className="grid grid-cols-4 gap-2 p-3">
+                    {presentableImages.slice(0, 4).map((src, idx) => (
+                      <button
+                        key={src}
+                        onClick={() => openGallery('presentable', idx)}
+                        className="h-16 w-full overflow-hidden rounded-md transition-opacity hover:opacity-75"
+                      >
+                        <img src={src} alt="" className="h-full w-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Card>
 
             <Card className="border-slate-200 bg-white p-6">
               <Badge variant="secondary" className="mb-2">{data.property.deal_type === 'rent' ? 'Аренда' : 'Продажа'}</Badge>
@@ -112,6 +144,34 @@ export default function PropertyPage() {
               </div>
             </Card>
           </div>
+
+          {/* Floor Plans Section */}
+          {layoutImages.length > 0 && (
+            <div className="mt-8">
+              <Heading size="h3" className="mb-4">Планировки</Heading>
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+                {layoutImages.map((src, idx) => (
+                  <button
+                    key={src}
+                    onClick={() => openGallery('layouts', idx)}
+                    className="overflow-hidden rounded-lg border border-slate-200 transition-shadow hover:shadow-md"
+                  >
+                    <img src={src} alt={`План ${idx + 1}`} className="aspect-square w-full object-contain bg-white p-2" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Image Gallery Modal */}
+          <ImageGallery
+            images={galleryType === 'presentable' ? presentableImages : layoutImages}
+            initialIndex={galleryIndex}
+            open={galleryOpen}
+            onClose={() => setGalleryOpen(false)}
+            title={data.property.title}
+          />
+        </>
         )}
       </div>
     </SiteLayout>
