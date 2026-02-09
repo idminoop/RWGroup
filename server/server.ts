@@ -31,4 +31,13 @@ process.on('SIGINT', () => {
   });
 });
 
+// Allow nodemon to restart cleanly without leaving the port occupied.
+process.on('SIGUSR2', () => {
+  console.log('SIGUSR2 signal received (nodemon restart)');
+  server.close(() => {
+    console.log('Server closed');
+    process.kill(process.pid, 'SIGUSR2');
+  });
+});
+
 export default app;

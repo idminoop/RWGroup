@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge'
 import PropertyCard from '@/components/catalog/PropertyCard'
 import Input from '@/components/ui/Input'
 import ImageGallery from '@/components/ui/ImageGallery'
+import ComplexMap from '@/components/complex/ComplexMap'
 import { apiGet } from '@/lib/api'
 import { formatArea, formatPriceRub } from '@/lib/format'
 import { selectCoverImage, getPresentableImages } from '@/lib/images'
@@ -139,6 +140,10 @@ export default function ComplexPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <div className="mt-8">
+              <ComplexMap complex={data.complex} />
+            </div>
 
             <div className="mt-8">
               <Heading size="h4" className="mb-3">Лоты в ЖК</Heading>

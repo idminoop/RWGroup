@@ -1,7 +1,7 @@
 {
   "watch": ["server"],
   "ext": "ts,mts,js,json",
-  "ignore": ["server/dist/*"],
+  "ignore": ["server/dist/*", "server/data/*", "server/uploads/*"],
   "exec": "tsx server/server.ts",
   "env": {
     "NODE_ENV": "development"

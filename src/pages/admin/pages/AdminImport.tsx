@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+﻿﻿﻿﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { apiGet, apiPost, apiDelete, apiPut } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useUiStore } from '@/store/useUiStore'
+import { useAdminImportCache } from '@/store/useAdminImportCache'
 import type { FeedSource, ImportRun, ImportPreview, Property, Complex } from '../../../../shared/types'
 import PropertyCard from '@/components/catalog/PropertyCard'
 import ComplexCard from '@/components/catalog/ComplexCard'
@@ -56,9 +57,12 @@ export default function AdminImportPage() {
   const headers = useMemo(() => ({ 'x-admin-token': token || '' }), [token])
   
   // Data
-  const [feeds, setFeeds] = useState<FeedSource[]>([])
-  const [runs, setRuns] = useState<ImportRun[]>([])
-  const [feedDiagnostics, setFeedDiagnostics] = useState<Record<string, { reason?: string; items?: { properties: number; complexes: number; total: number } }>>({})
+  const adminCache = useAdminImportCache()
+  const [feeds, setFeeds] = useState<FeedSource[]>(adminCache.feeds)
+  const [runs, setRuns] = useState<ImportRun[]>(adminCache.runs)
+  const [feedDiagnostics, setFeedDiagnostics] = useState<Record<string, { reason?: string; items?: { properties: number; complexes: number; total: number } }>>(
+    adminCache.diagnostics,
+  )
   const [dataError, setDataError] = useState<string | null>(null)
   const [runsPage, setRunsPage] = useState(1)
   
@@ -123,15 +127,25 @@ export default function AdminImportPage() {
       apiGet<Record<string, { reason?: string; items?: { properties: number; complexes: number; total: number } }>>('/api/admin/feeds/diagnostics', headers),
     ])
 
-    if (feedsRes.status === 'fulfilled') setFeeds(feedsRes.value)
-    else setDataError('Не удалось загрузить список источников.')
+    if (feedsRes.status === 'fulfilled') {
+      setFeeds(feedsRes.value)
+      adminCache.setCache({ feeds: feedsRes.value })
+    } else {
+      setDataError('Не удалось загрузить список источников.')
+    }
 
-    if (runsRes.status === 'fulfilled') setRuns(runsRes.value)
-    else setDataError((prev) => prev || 'Не удалось загрузить историю импортов.')
+    if (runsRes.status === 'fulfilled') {
+      setRuns(runsRes.value)
+      adminCache.setCache({ runs: runsRes.value })
+    } else {
+      setDataError((prev) => prev || 'Не удалось загрузить историю импортов.')
+    }
 
-    if (diagRes.status === 'fulfilled') setFeedDiagnostics(diagRes.value)
-    else setFeedDiagnostics({})
-  }, [headers, token])
+    if (diagRes.status === 'fulfilled') {
+      setFeedDiagnostics(diagRes.value)
+      adminCache.setCache({ diagnostics: diagRes.value })
+    }
+  }, [headers, token, adminCache])
 
   useEffect(() => {
     load()
@@ -327,6 +341,7 @@ export default function AdminImportPage() {
       await apiDelete(`/api/admin/feeds/${id}`, headers)
       const nextFeeds = feeds.filter((f) => f.id !== id)
       setFeeds(nextFeeds)
+      adminCache.setCache({ feeds: nextFeeds })
       if (activeImportSource?.id === id) {
         selectFeed(nextFeeds[0] || null)
       }
@@ -349,7 +364,16 @@ export default function AdminImportPage() {
 
     setLoading(true)
     setError(null)
+    setIsPreviewMode(true)
     setPreview(null)
+    setPreviewContext({
+      sourceId: feed.id,
+      sourceName: feed.name,
+      entity,
+      mode: feed.mode,
+      url: feed.url,
+      fileName: fileOverride?.name,
+    })
 
     try {
       const fd = new FormData()
@@ -370,17 +394,8 @@ export default function AdminImportPage() {
       if (!res.ok || !json.success) throw new Error(json.details || json.error || 'Preview failed')
 
       setPreview(json.data)
-      setIsPreviewMode(true)
       setViewMode('visual')
       setHideInvalid(true)
-      setPreviewContext({
-        sourceId: feed.id,
-        sourceName: feed.name,
-        entity,
-        mode: feed.mode,
-        url: feed.url,
-        fileName: fileOverride?.name,
-      })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка')
     } finally {
@@ -565,11 +580,11 @@ export default function AdminImportPage() {
                 <tr>
                   <th className="px-3 py-2">№</th>
                   <th className="px-3 py-2">Название</th>
+                  <th className="px-3 py-2">Статус</th>
                   <th className="px-3 py-2">Формат</th>
                   <th className="px-3 py-2">Источник</th>
                   <th className="px-3 py-2">Маппинг</th>
-                  <th className="px-3 py-2">Статус</th>
-                  <th className="px-3 py-2 text-right">Действия</th>
+                  <th className="px-3 py-2 text-right sticky right-0 bg-slate-50 shadow-[-1px_0_0_#e2e8f0]">Действия</th>
                 </tr>
               </thead>
               <tbody>
@@ -592,25 +607,7 @@ export default function AdminImportPage() {
                       )}
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-slate-700">{f.format}</td>
-                    <td className="px-3 py-2 text-slate-700">
-                      {f.mode === 'url' ? (
-                        <div className="flex flex-col">
-                          <span className="text-[10px] text-slate-500">URL</span>
-                          <span className="truncate max-w-[220px] block" title={f.url}>{f.url}</span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col">
-                          <span className="text-[10px] text-slate-500">Файл</span>
-                          <span className="text-slate-700">Загрузка файла</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-slate-500 text-xs">
-                      {f.mapping ? Object.keys(f.mapping).length + ' полей' : 'Авто'}
-                    </td>
-                    <td className="px-3 py-2">
-                      {displayRun ? (
+                    <td className="px-3 py-2">\n                      {displayRun ? (
                         <div className="flex flex-col items-start gap-1">
                           <Badge variant={displayRun.status === 'success' ? 'default' : displayRun.status === 'partial' ? 'warning' : 'destructive'}>
                             {statusLabel(displayRun.status, displayRun.action)}
@@ -634,7 +631,24 @@ export default function AdminImportPage() {
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 text-slate-700">{f.format}</td>
+                    <td className="px-3 py-2 text-slate-700">
+                      {f.mode === 'url' ? (
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-slate-500">URL</span>
+                          <span className="truncate max-w-[220px] block" title={f.url}>{f.url}</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-slate-500">Файл</span>
+                          <span className="text-slate-700">Загрузка файла</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-slate-500 text-xs">
+                      {f.mapping ? Object.keys(f.mapping).length + ' полей' : 'Авто'}
+                    </td>
+                    <td className="px-3 py-2 sticky right-0 bg-white shadow-[-1px_0_0_#e2e8f0]">
                       <div className="ml-auto flex w-fit flex-col gap-2">
                         <Button
                           size="sm"
@@ -712,7 +726,7 @@ export default function AdminImportPage() {
                         {r.action === 'preview' ? 'Предпросмотр' : r.action === 'delete' ? 'Удаление' : 'Импорт'}
                       </td>
                       <td className="px-3 py-2 text-slate-700">{r.entity}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 sticky right-0 bg-white shadow-[-1px_0_0_#e2e8f0]">
                         <Badge
                           variant={
                             r.status === 'success' ? 'default' :
@@ -726,7 +740,7 @@ export default function AdminImportPage() {
                       <td className="px-3 py-2 text-slate-700">
                         +{r.stats.inserted} / обновл. {r.stats.updated} / скрыто {r.stats.hidden}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 sticky right-0 bg-white shadow-[-1px_0_0_#e2e8f0]">
                         {r.error_log ? (
                           <details>
                             <summary className="cursor-pointer text-rose-600 hover:text-rose-700">
@@ -828,13 +842,18 @@ export default function AdminImportPage() {
             </div>
           </div>
 
-          {preview && (
+          {isPreviewMode && (
             <Modal
               open={isPreviewMode}
               onClose={closePreview}
               title="Предпросмотр"
               className="max-w-6xl"
             >
+              {!preview ? (
+                <div className="flex h-40 items-center justify-center text-sm text-slate-600">
+                  {loading ? '������� ������������' : '��� ������ ��� �������������'}
+                </div>
+              ) : (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-4 text-slate-900">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-semibold">Предпросмотр</div>
@@ -991,6 +1010,7 @@ export default function AdminImportPage() {
                   </Button>
                 </div>
               </div>
+              )}
             </Modal>
           )}
       </div>
@@ -1140,5 +1160,6 @@ export default function AdminImportPage() {
     </div>
   )
 }
+
 
 

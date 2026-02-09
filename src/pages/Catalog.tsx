@@ -9,13 +9,14 @@ import Button from '@/components/ui/Button'
 import { apiGet } from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
 import { useUiStore } from '@/store/useUiStore'
+import { useCatalogCache } from '@/store/useCatalogCache'
 import type { Complex, Property } from '../../shared/types'
 
 export default function CatalogPage() {
   const { openLeadModal } = useUiStore()
   const [tab, setTab] = useState<'newbuild' | 'secondary' | 'rent'>('newbuild')
   const [filters, setFilters] = useState<FiltersState>({ bedrooms: '', priceMin: '', priceMax: '', areaMin: '', areaMax: '', district: '', metro: '', q: '' })
-  const [data, setData] = useState<{ complexes: Complex[]; properties: Property[]; total: number; page: number; limit: number } | null>(null)
+  const catalogCache = useCatalogCache()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
@@ -29,12 +30,18 @@ export default function CatalogPage() {
     return sp.toString()
   }, [tab, filters, page, limit])
 
+  const cachedData = catalogCache.byQuery[query]
+  const [data, setData] = useState<{ complexes: Complex[]; properties: Property[]; total: number; page: number; limit: number } | null>(
+    cachedData || null,
+  )
+
   useEffect(() => {
     setPage(1)
   }, [tab, filters])
 
   useEffect(() => {
     let alive = true
+    if (cachedData) setData(cachedData)
     setLoading(true)
     setError(null)
     const sp = new URLSearchParams(query)
@@ -52,6 +59,7 @@ export default function CatalogPage() {
       .then((d) => {
         if (!alive) return
         setData(d)
+        catalogCache.setCache(query, d)
       })
       .catch((e) => {
         if (!alive) return
@@ -89,7 +97,7 @@ export default function CatalogPage() {
           </div>
 
           <div className="mt-6">
-            {loading ? (
+            {loading && !data ? (
               <div className="grid gap-4 md:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="h-72 animate-pulse rounded-xl border border-slate-200 bg-slate-50" />
