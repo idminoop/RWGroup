@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, LayoutGrid, Users, Award, ShieldCheck, Lock, MapPin, Star, ExternalLink } from 'lucide-react'
 import SiteLayout from '@/components/layout/SiteLayout'
 import Button from '@/components/ui/Button'
 import { Heading, Text } from '@/components/ui/Typography'
@@ -127,77 +127,54 @@ export default function Home() {
               </div>
             ))}
           </div>
-        </div>
-      </section>
 
-            {/* 3. Buy / Sell / Rent (Large Typography) */}
-      <section id="buy-sell" className="relative overflow-hidden bg-[linear-gradient(180deg,_#FFFFFF,_#F6F4EF)] py-24 text-background">
-        <div className="pointer-events-none absolute -top-24 right-0 h-72 w-72 rounded-full bg-[#E7EEF6] blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 left-0 h-64 w-64 rounded-full bg-[#EFE7D9] blur-3xl" />
-        <div className="relative mx-auto max-w-7xl px-4">
-          <div className="grid gap-12 lg:grid-cols-2">
-            <div className="flex flex-col justify-center">
-              <Heading size="h1" className="uppercase tracking-tighter md:text-8xl">
-                Купить
-              </Heading>
-              <Text size="lg" className="mt-6 max-w-md text-gray-600">
-                Подберем идеальную недвижимость для жизни или инвестиций. Доступ к закрытой базе объектов.
-              </Text>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Button variant="dark" className="h-11 px-6" onClick={() => navigate('/catalog?tab=newbuild')}>
-                  Найти квартиру
-                </Button>
-                <Button variant="outline" className="h-11 px-6" onClick={() => navigate('/catalog?tab=secondary')}>
-                  Вторичка
-                </Button>
-              </div>            </div>
-            <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/70 bg-white/60 shadow-[0_20px_50px_rgba(15,23,42,0.12)] lg:aspect-auto lg:h-[420px]">
-              <img
-                src="https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=luxury%20penthouse%20living%20room%20sunlight%2C%20white%20interior&image_size=landscape_16_9"
-                alt="Buy"
-                className="h-full w-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-tr from-black/10 via-transparent to-white/30" />
+          {/* Продать / Сдать CTA */}
+          <div className="mt-6 grid gap-6 md:grid-cols-2">
+            {/* Продать недвижимость */}
+            <div
+              onClick={() => {
+                trackEvent('click_buy_sell', { page: 'home', block: 'sell_cta', tab: 'sell' })
+                openLeadModal('buy_sell', { page: 'home', block: 'sell_cta' }, { initialTab: 'sell' })
+              }}
+              className="group relative flex h-[220px] cursor-pointer items-stretch overflow-hidden rounded-sm border border-white/10 transition-colors hover:border-white/25"
+            >
+              <div className="flex flex-1 flex-col justify-center p-8 lg:p-10">
+                <Heading size="h3" className="font-serif text-2xl font-normal leading-tight text-white lg:text-3xl">
+                  Продать<br />недвижимость
+                </Heading>
+              </div>
+              <div className="relative hidden w-1/2 overflow-hidden sm:block">
+                <img
+                  src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=80"
+                  alt="Продать недвижимость"
+                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
+              </div>
             </div>
-          </div>
 
-          <div className="mt-24 grid gap-12 lg:grid-cols-2">
-            <div className="order-2 relative aspect-video overflow-hidden rounded-2xl border border-white/70 bg-white/60 shadow-[0_20px_50px_rgba(15,23,42,0.12)] lg:order-1 lg:aspect-auto lg:h-[420px]">
-              <img
-                src="https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=modern%20business%20center%20lobby%2C%20handshake%2C%20professional&image_size=landscape_16_9"
-                alt="Sell"
-                className="h-full w-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-tr from-black/15 via-transparent to-white/30" />
+            {/* Сдать недвижимость */}
+            <div
+              onClick={() => {
+                trackEvent('click_buy_sell', { page: 'home', block: 'rent_cta', tab: 'sell' })
+                openLeadModal('consultation', { page: 'home', block: 'rent_cta' })
+              }}
+              className="group relative flex h-[220px] cursor-pointer items-stretch overflow-hidden rounded-sm border border-white/10 transition-colors hover:border-white/25"
+            >
+              <div className="flex flex-1 flex-col justify-center p-8 lg:p-10">
+                <Heading size="h3" className="font-serif text-2xl font-normal leading-tight text-white lg:text-3xl">
+                  Сдать недвижимость
+                </Heading>
+              </div>
+              <div className="relative hidden w-1/2 overflow-hidden sm:block">
+                <img
+                  src="https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=800&q=80"
+                  alt="Сдать недвижимость"
+                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
+              </div>
             </div>
-            <div className="order-1 flex flex-col justify-center lg:order-2 lg:pl-12">              <Heading size="h1" className="uppercase tracking-tighter md:text-8xl">
-                Продать
-              </Heading>
-              <Text size="lg" className="mt-6 max-w-md text-gray-600">
-                Оценим, подготовим и продадим вашу недвижимость по максимальной рыночной цене.
-              </Text>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Button
-                  variant="dark"
-                  className="h-11 px-6"
-                  onClick={() => {
-                    trackEvent('click_buy_sell', { page: 'home', block: 'big_sell', tab: 'sell' })
-                    openLeadModal('buy_sell', { page: 'home', block: 'big_sell' }, { initialTab: 'sell' })
-                  }}
-                >
-                  Оставить заявку
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-11 px-6"
-                  onClick={() => {
-                    trackEvent('click_buy_sell', { page: 'home', block: 'big_sell', tab: 'buy' })
-                    openLeadModal('buy_sell', { page: 'home', block: 'big_sell' }, { initialTab: 'buy' })
-                  }}
-                >
-                  Узнать спрос
-                </Button>
-              </div>            </div>
           </div>
         </div>
       </section>
@@ -238,7 +215,83 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 5. Roadmap */}
+      {/* 5. Почему выбирают нас */}
+      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#FFFFFF,_#F6F4EF)] py-24 text-background">
+        <div className="pointer-events-none absolute -top-16 left-0 h-64 w-64 rounded-full bg-[#E7EEF6] blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 right-0 h-56 w-56 rounded-full bg-[#EFE7D9] blur-3xl" />
+        <div className="relative mx-auto max-w-7xl px-4">
+          <Heading size="h2">Почему выбирают нас</Heading>
+          <Text className="mt-2 mb-12 text-gray-500">Мы делаем всё, чтобы каждая сделка прошла безупречно</Text>
+
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              { icon: LayoutGrid, title: 'Широкий выбор', desc: 'Доступ к объектам от застройщиков и на вторичном рынке. Новостройки, вторичка, аренда — всё в одном месте.' },
+              { icon: Users, title: 'Индивидуальный подход', desc: 'Подбираем недвижимость с учётом ваших целей, бюджета и предпочтений. Каждый клиент — уникален.' },
+              { icon: Award, title: 'Профессионализм', desc: 'Экспертиза рынка, точная оценка и грамотные переговоры. Работаем на результат.' },
+              { icon: ShieldCheck, title: 'Юридическая чистота', desc: 'Проверяем каждый объект: документы, обременения, история. Вы получаете только проверенные варианты.' },
+              { icon: Lock, title: 'Безопасность сделки', desc: 'Сопровождаем на каждом этапе — от задатка до регистрации права собственности.' },
+              { icon: MapPin, title: 'Удобный офис в центре Москвы', desc: 'Встречаемся в комфортной обстановке для обсуждения деталей и подписания документов.' },
+            ].map((item) => (
+              <div key={item.title} className="group rounded-xl border border-black/5 bg-white/80 p-8 shadow-sm transition-colors hover:border-black/10">
+                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-lg bg-background/5 text-background">
+                  <item.icon className="h-6 w-6" />
+                </div>
+                <Heading size="h4">{item.title}</Heading>
+                <Text size="sm" className="mt-2 text-gray-500">{item.desc}</Text>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 6. Стоимость услуг */}
+      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#FFFFFF,_#F6F4EF)] py-24 text-background">
+        <div className="pointer-events-none absolute -top-20 right-0 h-64 w-64 rounded-full bg-[#E7EEF6] blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 left-0 h-56 w-56 rounded-full bg-[#EFE7D9] blur-3xl" />
+        <div className="relative mx-auto max-w-7xl px-4">
+          <div className="grid items-center gap-12 lg:grid-cols-2">
+            <div>
+              <Heading size="h2">Стоимость услуг</Heading>
+              <div className="mt-8 flex items-baseline gap-2">
+                <span className="text-6xl font-bold tracking-tight md:text-8xl">2,5–5%</span>
+              </div>
+              <Text size="lg" className="mt-6 max-w-md text-gray-600">
+                от стоимости объекта недвижимости
+              </Text>
+              <Text className="mt-4 max-w-md text-gray-500">
+                Точная стоимость формируется индивидуально и зависит от типа сделки, сложности задачи и объёма работ.
+              </Text>
+              <Button
+                variant="dark"
+                className="mt-8 h-12 px-8"
+                onClick={() => {
+                  trackEvent('click_pricing_cta', { page: 'home', block: 'pricing' })
+                  openLeadModal('consultation', { page: 'home', block: 'pricing' })
+                }}
+              >
+                Узнать точную стоимость
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { label: 'Подбор объекта', value: 'от 2,5%' },
+                { label: 'Продажа', value: 'от 3%' },
+                { label: 'Аренда', value: 'от 50%', sub: 'месячной ставки' },
+                { label: 'Юр. сопровождение', value: 'от 100 000 ₽' },
+              ].map((s) => (
+                <div key={s.label} className="rounded-xl border border-black/5 bg-white/80 p-5 shadow-sm">
+                  <Text size="sm" className="text-gray-500">{s.label}</Text>
+                  <div className="mt-2 text-xl font-semibold">{s.value}</div>
+                  {s.sub && <Text size="sm" className="text-gray-400">{s.sub}</Text>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 7. Roadmap */}
       <Roadmap />
 
       {/* 6. Mission */}
@@ -314,6 +367,130 @@ export default function Home() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+      {/* 9. Отзывы */}
+      <section className="bg-background py-24">
+        <div className="mx-auto max-w-7xl px-4">
+          <Heading size="h2" className="text-white">Отзывы клиентов</Heading>
+          <Text className="mt-2 mb-12 text-gray-400">Реальные истории людей, которым мы помогли</Text>
+
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                name: 'Мария Иванова',
+                text: 'Обратились за помощью в покупке квартиры в новостройке. Подобрали идеальный вариант за неделю. Сделка прошла гладко, всё юридически чисто.',
+                rating: 5,
+                source: 'Яндекс Карты',
+                sourceUrl: '#',
+              },
+              {
+                name: 'Алексей Петров',
+                text: 'Продали квартиру по максимальной цене. Риэлтор вёл переговоры профессионально, покупатель найден за 3 недели. Рекомендую!',
+                rating: 5,
+                source: 'Google',
+                sourceUrl: '#',
+              },
+              {
+                name: 'Екатерина Смирнова',
+                text: 'Снимали квартиру через агентство. Всё честно, без скрытых комиссий. Помогли с договором и проверили собственника. Спасибо!',
+                rating: 5,
+                source: 'ЦИАН',
+                sourceUrl: '#',
+              },
+              {
+                name: 'Дмитрий Козлов',
+                text: 'Инвестировал в новостройку по рекомендации агентства. Объект уже вырос в цене на 15%. Грамотная аналитика и поддержка на всех этапах.',
+                rating: 5,
+                source: 'Яндекс Карты',
+                sourceUrl: '#',
+              },
+              {
+                name: 'Ольга Новикова',
+                text: 'Долго не могли продать загородный дом. RWGroup оценили, сделали качественные фото и нашли покупателя за месяц. Очень довольны!',
+                rating: 5,
+                source: 'Google',
+                sourceUrl: '#',
+              },
+              {
+                name: 'Сергей Волков',
+                text: 'Сопровождение сделки было на высшем уровне. Юрист проверил все документы, объяснил каждый пункт. Чувствовали себя в безопасности.',
+                rating: 5,
+                source: 'Яндекс Карты',
+                sourceUrl: '#',
+              },
+            ].map((review) => (
+              <div key={review.name} className="flex flex-col rounded-sm border border-white/10 p-6">
+                <div className="mb-3 flex gap-1">
+                  {Array.from({ length: review.rating }).map((_, i) => (
+                    <Star key={i} className="h-4 w-4 fill-amber-400 text-amber-400" />
+                  ))}
+                </div>
+                <p className="flex-1 text-sm leading-relaxed text-gray-300">
+                  &laquo;{review.text}&raquo;
+                </p>
+                <div className="mt-5 flex items-center justify-between">
+                  <div>
+                    <Text size="sm" weight="medium" className="text-white">{review.name}</Text>
+                  </div>
+                  <a
+                    href={review.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-300"
+                  >
+                    {review.source} <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+      {/* 10. Стать партнёром */}
+      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#FFFFFF,_#F6F4EF)] py-24 text-background">
+        <div className="pointer-events-none absolute -top-16 right-0 h-64 w-64 rounded-full bg-[#E7EEF6] blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 left-0 h-56 w-56 rounded-full bg-[#EFE7D9] blur-3xl" />
+        <div className="relative mx-auto max-w-7xl px-4">
+          <div className="grid items-center gap-12 lg:grid-cols-2">
+            <div>
+              <Heading size="h2">Стать партнёром</Heading>
+              <Text size="lg" className="mt-4 max-w-lg text-gray-600">
+                Мы открыты к сотрудничеству с застройщиками, агентствами и частными риэлторами. Вместе мы сможем предложить клиентам лучший сервис.
+              </Text>
+              <div className="mt-8 space-y-4">
+                {[
+                  'Совместные сделки и рекомендации',
+                  'Доступ к закрытой базе объектов',
+                  'Прозрачные условия и быстрые выплаты',
+                ].map((item) => (
+                  <div key={item} className="flex items-center gap-3">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-background text-white text-xs">✓</div>
+                    <Text className="text-gray-700">{item}</Text>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-black/5 bg-white/80 p-8 shadow-sm">
+              <Heading size="h4" className="mb-6">Оставьте заявку</Heading>
+              <div className="space-y-4">
+                <Button
+                  variant="dark"
+                  className="h-12 w-full px-8"
+                  onClick={() => {
+                    trackEvent('click_partner', { page: 'home', block: 'partner' })
+                    openLeadModal('partner', { page: 'home', block: 'partner' })
+                  }}
+                >
+                  Стать партнёром
+                </Button>
+                <Text size="sm" className="text-center text-gray-400">
+                  Мы свяжемся с вами в течение рабочего дня
+                </Text>
+              </div>
+            </div>
           </div>
         </div>
       </section>

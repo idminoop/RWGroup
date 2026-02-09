@@ -15,12 +15,14 @@ import leadsRoutes from './routes/leads.js'
 import adminRoutes from './routes/admin.js'
 import { ensureSeed } from './lib/seed.js'
 import analyticsRoutes from './routes/analytics.js'
+import { startFeedScheduler } from './lib/feed-scheduler.js'
 import path from 'path'
 
 // load env
 dotenv.config()
 
 ensureSeed()
+startFeedScheduler()
 
 const app: express.Application = express()
 

@@ -142,13 +142,15 @@ router.post('/feeds', (req: Request, res: Response) => {
 
 router.put('/feeds/:id', (req: Request, res: Response) => {
   const id = req.params.id
-  const schema = z.object({ 
-    name: z.string().min(1).optional(), 
-    mode: z.enum(['upload', 'url']).optional(), 
-    url: z.string().optional(), 
-    format: z.enum(['xlsx', 'csv', 'xml', 'json']).optional(), 
+  const schema = z.object({
+    name: z.string().min(1).optional(),
+    mode: z.enum(['upload', 'url']).optional(),
+    url: z.string().optional(),
+    format: z.enum(['xlsx', 'csv', 'xml', 'json']).optional(),
     is_active: z.boolean().optional(),
-    mapping: z.record(z.string()).optional()
+    mapping: z.record(z.string()).optional(),
+    auto_refresh: z.boolean().optional(),
+    refresh_interval_hours: z.number().min(1).max(168).optional(),
   })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) {
@@ -496,7 +498,11 @@ router.get('/catalog/items', (req: Request, res: Response) => {
   const max = toNumber(req.query.priceMax)
   const amin = toNumber(req.query.areaMin)
   const amax = toNumber(req.query.areaMax)
-  const qlc = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : ''
+    const qlc = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : ''
+    const matchesQuery = (value?: string) =>
+      typeof value === 'string' ? value.toLowerCase().includes(qlc) : false
+    const matchesMetro = (metro?: string[]) =>
+      Array.isArray(metro) ? metro.some((m) => m.toLowerCase().includes(qlc)) : false
   
   if (type !== 'property' && type !== 'complex') {
     res.status(400).json({ success: false, error: 'Invalid type' })
@@ -506,17 +512,25 @@ router.get('/catalog/items', (req: Request, res: Response) => {
   const data = withDb((db) => {
     const items =
       type === 'property'
-        ? db.properties
-            .filter((p) => (typeof bed === 'number' ? p.bedrooms === bed : true))
-            .filter((p) => (typeof min === 'number' ? p.price >= min : true))
-            .filter((p) => (typeof max === 'number' ? p.price <= max : true))
-            .filter((p) => (typeof amin === 'number' ? p.area_total >= amin : true))
-            .filter((p) => (typeof amax === 'number' ? p.area_total <= amax : true))
-            .filter((p) => (qlc ? p.id.toLowerCase().includes(qlc) || p.title.toLowerCase().includes(qlc) || p.district.toLowerCase().includes(qlc) || p.metro.some((m) => m.toLowerCase().includes(qlc)) : true))
-            .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
-        : db.complexes
-            .filter((c) => (qlc ? c.id.toLowerCase().includes(qlc) || c.title.toLowerCase().includes(qlc) || c.district.toLowerCase().includes(qlc) || c.metro.some((m) => m.toLowerCase().includes(qlc)) : true))
-            .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+          ? db.properties
+              .filter((p) => (typeof bed === 'number' ? p.bedrooms === bed : true))
+              .filter((p) => (typeof min === 'number' ? p.price >= min : true))
+              .filter((p) => (typeof max === 'number' ? p.price <= max : true))
+              .filter((p) => (typeof amin === 'number' ? p.area_total >= amin : true))
+              .filter((p) => (typeof amax === 'number' ? p.area_total <= amax : true))
+              .filter((p) =>
+                qlc
+                  ? matchesQuery(p.id) || matchesQuery(p.title) || matchesQuery(p.district) || matchesMetro(p.metro)
+                  : true
+              )
+              .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+          : db.complexes
+              .filter((c) =>
+                qlc
+                  ? matchesQuery(c.id) || matchesQuery(c.title) || matchesQuery(c.district) || matchesMetro(c.metro)
+                  : true
+              )
+              .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
     const start = (page - 1) * limit
     const end = start + limit
     return {
@@ -892,7 +906,7 @@ function previewProperties(rows: Record<string, unknown>[]): PreviewResult {
 }
 
 // Preview function for complexes
-function previewComplexes(rows: Record<string, unknown>[]): PreviewResult {
+function previewComplexes(rows: Record<string, unknown>[], mapping?: Record<string, string>): PreviewResult {
   const sampleRows: PreviewRow[] = []
   let validRows = 0
   let invalidRows = 0
@@ -936,7 +950,7 @@ function previewComplexes(rows: Record<string, unknown>[]): PreviewResult {
   }
 
   // Aggregate complexes for preview
-  const aggregated = aggregateComplexesFromRows(rows, 'preview')
+  const aggregated = aggregateComplexesFromRows(rows, 'preview', mapping)
   const mappedItems: Complex[] = aggregated.slice(0, 100).map(c => ({
     ...c,
     id: c.external_id // Temporary ID for preview
@@ -972,8 +986,11 @@ router.post('/import/preview', upload.single('file'), async (req: Request, res: 
     const ext = guessExt(fileName)
     const rows = parseRows(buffer, ext)
 
+    const source = withDb((db) => db.feed_sources.find(s => s.id === parsed.data.source_id))
+    const mapping = source?.mapping
+
     const preview = parsed.data.entity === 'complex'
-      ? previewComplexes(rows)
+      ? previewComplexes(rows, mapping)
       : previewProperties(rows)
 
     res.json({ success: true, data: preview })

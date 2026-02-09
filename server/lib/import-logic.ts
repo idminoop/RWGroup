@@ -532,59 +532,59 @@ export function upsertProperties(db: DbShape, sourceId: string, rows: Record<str
   return { inserted, updated, hidden, errors }
 }
 
-export function mapRowToProperty(row: Record<string, unknown>): Property {
-  const title = asString(row.title || row.name)
-  const externalId = asString(row.external_id || row.id || row.externalId)
+export function mapRowToProperty(row: Record<string, unknown>, mapping?: Record<string, string>): Property {
+  const title = asString(getField(row, 'title', mapping, ['name']))
+  const externalId = asString(getField(row, 'external_id', mapping, ['id', 'externalId']))
 
   return {
     id: externalId, // Temporary ID for preview
     source_id: 'preview',
     external_id: externalId,
     slug: slugify(title || externalId),
-    title: title || externalId || 'Без названия',
-    category: normalizeCategory(row.category),
-    deal_type: normalizeDealType(row.deal_type),
-    bedrooms: asNumber(row.bedrooms ?? row.rooms) || 0,
-    price: asNumber(row.price) || 0,
-    old_price: asNumber(row.old_price ?? row.oldprice),
-    area_total: asNumber(row.area_total ?? row.area) || 0,
-    area_living: asNumber(row.area_living ?? row.living_space),
-    area_kitchen: asNumber(row.area_kitchen ?? row.kitchen_space),
-    district: normalizeLocationValue(row.district || row.area || row.region) || 'Не указан',
-    metro: asStringArray(row.metro),
-    images: asStringArray(row.images ?? row.image_urls ?? row.photos),
-    status: normalizeStatus(row.status),
-    floor: asNumber(row.floor),
-    floors_total: asNumber(row.floors_total),
-    renovation: asString(row.renovation),
-    is_euroflat: asString(row.is_euroflat) === 'true' || asString(row.euroflat) === '1',
-    building_section: asString(row.building_section),
-    building_state: asString(row.building_state),
-    ready_quarter: asNumber(row.ready_quarter),
-    built_year: asNumber(row.built_year),
-    description: asString(row.description),
-    lot_number: asString(row.lot_number ?? row.apartment),
+    title: title || externalId || '\u0411\u0435\u0437 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044f',
+    category: normalizeCategory(getField(row, 'category', mapping)),
+    deal_type: normalizeDealType(getField(row, 'deal_type', mapping, ['dealType'])),
+    bedrooms: asNumber(getField(row, 'bedrooms', mapping, ['rooms'])) || 0,
+    price: asNumber(getField(row, 'price', mapping)) || 0,
+    old_price: asNumber(getField(row, 'old_price', mapping, ['oldPrice', 'oldprice'])),
+    area_total: asNumber(getField(row, 'area_total', mapping, ['area'])) || 0,
+    area_living: asNumber(getField(row, 'area_living', mapping, ['areaLiving', 'living_space'])),
+    area_kitchen: asNumber(getField(row, 'area_kitchen', mapping, ['areaKitchen', 'kitchen_space'])),
+    district: normalizeLocationValue(getField(row, 'district', mapping, ['area', 'region'])) || '\u041d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d',
+    metro: asStringArray(getField(row, 'metro', mapping)),
+    images: asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos'])),
+    status: normalizeStatus(getField(row, 'status', mapping)),
+    floor: asNumber(getField(row, 'floor', mapping)),
+    floors_total: asNumber(getField(row, 'floors_total', mapping, ['floorsTotal', 'floors-total'])),
+    renovation: asString(getField(row, 'renovation', mapping)),
+    is_euroflat: asString(getField(row, 'is_euroflat', mapping, ['euroflat'])) === 'true' || asString(getField(row, 'is_euroflat', mapping, ['euroflat'])) === '1',
+    building_section: asString(getField(row, 'building_section', mapping, ['buildingSection', 'building-section'])),
+    building_state: asString(getField(row, 'building_state', mapping, ['buildingState', 'building-state'])),
+    ready_quarter: asNumber(getField(row, 'ready_quarter', mapping, ['readyQuarter', 'ready-quarter'])),
+    built_year: asNumber(getField(row, 'built_year', mapping, ['builtYear', 'built-year'])),
+    description: asString(getField(row, 'description', mapping)),
+    lot_number: asString(getField(row, 'lot_number', mapping, ['lotNumber', 'apartment'])),
     updated_at: new Date().toISOString()
   }
 }
 
-export function mapRowToComplex(row: Record<string, unknown>): Complex {
-  const title = asString(row.title || row.name)
-  const externalId = asString(row.external_id || row.id || row.externalId)
+export function mapRowToComplex(row: Record<string, unknown>, mapping?: Record<string, string>): Complex {
+  const title = asString(getField(row, 'title', mapping, ['name']))
+  const externalId = asString(getField(row, 'external_id', mapping, ['id', 'externalId']))
 
   return {
     id: externalId, // Temporary ID for preview
     source_id: 'preview',
     external_id: externalId,
     slug: slugify(title || externalId),
-    title: title || externalId || 'Без названия',
+    title: title || externalId || '\u0411\u0435\u0437 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044f',
     category: 'newbuild',
-    district: normalizeLocationValue(row.district || row.area || row.region) || 'Не указан',
-    metro: asStringArray(row.metro),
-    price_from: asNumber(row.price_from ?? row.priceFrom ?? row.price_min ?? row.price),
-    area_from: asNumber(row.area_from ?? row.areaFrom ?? row.area_min ?? row.area_total ?? row.area),
-    images: asStringArray(row.images ?? row.image_urls ?? row.photos),
-    status: normalizeStatus(row.status),
+    district: normalizeLocationValue(getField(row, 'district', mapping, ['area', 'region'])) || '\u041d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d',
+    metro: asStringArray(getField(row, 'metro', mapping)),
+    price_from: asNumber(getField(row, 'price_from', mapping, ['priceFrom', 'price_min'])) || asNumber(getField(row, 'price', mapping)),
+    area_from: asNumber(getField(row, 'area_from', mapping, ['areaFrom', 'area_min'])) || asNumber(getField(row, 'area_total', mapping, ['area'])),
+    images: asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos'])),
+    status: normalizeStatus(getField(row, 'status', mapping)),
     updated_at: new Date().toISOString()
   }
 }

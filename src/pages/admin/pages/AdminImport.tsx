@@ -63,6 +63,7 @@ export default function AdminImportPage() {
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [isPreviewMode, setIsPreviewMode] = useState(false)
   const [viewMode, setViewMode] = useState<'table' | 'visual'>('visual')
+  const [autoPreviewSourceId, setAutoPreviewSourceId] = useState<string | null>(null)
 
   // Edit Preview State
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -81,6 +82,30 @@ export default function AdminImportPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  const selectFeed = useCallback((feed: FeedSource | null) => {
+    setActiveImportSource(feed)
+    setFile(null)
+    setPreview(null)
+    setIsPreviewMode(false)
+    setViewMode('visual')
+    setEditingIndex(null)
+    setEditForm({})
+    setError(null)
+  }, [])
+
+  useEffect(() => {
+    if (feeds.length === 0) return
+    if (!activeImportSource) {
+      selectFeed(feeds[0])
+      return
+    }
+    const stillExists = feeds.some((f) => f.id === activeImportSource.id)
+    if (!stillExists) {
+      selectFeed(feeds[0])
+    }
+  }, [feeds, activeImportSource, selectFeed])
+
 
   // --- Feed Management Functions ---
 
@@ -134,10 +159,8 @@ export default function AdminImportPage() {
           mapping: feedForm.mapping,
           created_at: new Date().toISOString()
         }
-        setActiveImportSource(newFeed)
-        setFile(null)
-        setPreview(null)
-        setIsPreviewMode(false)
+        selectFeed(newFeed)
+        setAutoPreviewSourceId(newFeedId)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка сохранения фида')
@@ -148,10 +171,10 @@ export default function AdminImportPage() {
     if (!confirm('Удалить источник?')) return
     try {
       await apiDelete(`/api/admin/feeds/${id}`, headers)
-      setFeeds(feeds.filter((f) => f.id !== id))
+      const nextFeeds = feeds.filter((f) => f.id !== id)
+      setFeeds(nextFeeds)
       if (activeImportSource?.id === id) {
-        setActiveImportSource(null)
-        setPreview(null)
+        selectFeed(nextFeeds[0] || null)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка удаления')
@@ -161,15 +184,14 @@ export default function AdminImportPage() {
   // --- Import Functions ---
 
   const handleStartImport = (feed: FeedSource) => {
-    setActiveImportSource(feed)
-    setFile(null)
-    setPreview(null)
-    setIsPreviewMode(false)
-    setError(null)
+    selectFeed(feed)
   }
 
   const runPreview = async () => {
-    if (!activeImportSource) return
+    if (!activeImportSource) {
+      setError('Р’С‹Р±РµСЂРёС‚Рµ РёСЃС‚РѕС‡РЅРёРє')
+      return
+    }
     if (activeImportSource.mode === 'upload' && !file) return
     
     setLoading(true)
@@ -204,8 +226,22 @@ export default function AdminImportPage() {
     }
   }
 
+  useEffect(() => {
+    if (!autoPreviewSourceId) return
+    if (!activeImportSource || activeImportSource.id !== autoPreviewSourceId) return
+    if (activeImportSource.mode !== 'url' || !activeImportSource.url) {
+      setAutoPreviewSourceId(null)
+      return
+    }
+    setAutoPreviewSourceId(null)
+    void runPreview()
+  }, [autoPreviewSourceId, activeImportSource, runPreview])
+
   const runImport = async () => {
-    if (!activeImportSource) return
+    if (!activeImportSource) {
+      setError('Р’С‹Р±РµСЂРёС‚Рµ РёСЃС‚РѕС‡РЅРёРє')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -236,13 +272,17 @@ export default function AdminImportPage() {
       setFile(null)
       setPreview(null)
       setIsPreviewMode(false)
-      setActiveImportSource(null) // Return to feed list
       load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка')
     } finally {
       setLoading(false)
     }
+  }
+
+  const closePreview = () => {
+    setIsPreviewMode(false)
+    setPreview(null)
   }
 
   // --- Edit Functions ---
@@ -316,16 +356,13 @@ export default function AdminImportPage() {
           <div className="text-sm font-semibold">Импорт и Фиды</div>
           <div className="mt-1 text-sm text-slate-600">Управление источниками данных и запуск импорта.</div>
         </div>
-        {!activeImportSource && (
-          <Button onClick={openCreateFeed}>Добавить источник</Button>
-        )}
+        <Button onClick={openCreateFeed}>Добавить источник</Button>
       </div>
 
       {error ? <div className="text-sm text-rose-600">{error}</div> : null}
 
       {/* Main View: Feed List */}
-      {!activeImportSource && (
-        <div className="space-y-6">
+      <div className="space-y-6">
           <div className="overflow-hidden rounded-lg border border-slate-200">
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs text-slate-600">
@@ -357,7 +394,7 @@ export default function AdminImportPage() {
                       {lastRun ? (
                         <div className="flex flex-col items-start gap-1">
                           <Badge variant={lastRun.status === 'success' ? 'default' : lastRun.status === 'partial' ? 'warning' : 'destructive'}>{lastRun.status}</Badge>
-                          <span className="text-[10px] text-slate-500">{new Date(lastRun.started_at).toLocaleDateString()}</span>
+                          <span className="text-[10px] text-slate-500">{new Date(lastRun.started_at).toLocaleDateString('ru-RU')}</span>
                         </div>
                       ) : (
                         <span className="text-xs text-slate-400">Не импортировано</span>
@@ -378,7 +415,7 @@ export default function AdminImportPage() {
                 )})}
                 {feeds.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-3 py-8 text-center text-slate-500">
+                    <td colSpan={6} className="px-3 py-8 text-center text-slate-500">
                       Нет источников. Добавьте первый фид для начала работы.
                     </td>
                   </tr>
@@ -449,22 +486,36 @@ export default function AdminImportPage() {
             </div>
           </div>
         </div>
-      )}
 
       {/* Import View */}
-      {activeImportSource && (
-        <div className="space-y-6 border-t border-slate-200 pt-6">
+      <div className="space-y-6 border-t border-slate-200 pt-6">
+
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm font-semibold">
-                Импорт: <span className="text-slate-900">{activeImportSource.name}</span>
+                Импорт{activeImportSource ? (
+                  <>: <span className="text-slate-900">{activeImportSource.name}</span></>
+                ) : null}
               </div>
               <div className="text-xs text-slate-500">Настройте параметры и проверьте данные перед импортом.</div>
             </div>
-            <Button variant="secondary" onClick={() => setActiveImportSource(null)}>Назад к списку</Button>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3 items-end">
+          <div className="grid gap-3 md:grid-cols-4 items-end">
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Источник</label>
+              <Select
+                value={activeImportSource?.id || ''}
+                onChange={(e) => {
+                  const next = feeds.find((f) => f.id === e.target.value)
+                  if (next) handleStartImport(next)
+                }}
+              >
+                {feeds.map((f) => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </Select>
+            </div>
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Тип сущности</label>
               <Select
@@ -478,11 +529,10 @@ export default function AdminImportPage() {
                 <option value="complex">Жилые Комплексы</option>
               </Select>
             </div>
-            
-            {activeImportSource.mode === 'upload' && (
+            {activeImportSource?.mode === 'upload' && (
               <div>
-                 <label className="block text-xs font-medium text-slate-700 mb-1">Файл ({activeImportSource.format})</label>
-                 <input
+                <label className="block text-xs font-medium text-slate-700 mb-1">Файл ({activeImportSource?.format})</label>
+                <input
                   type="file"
                   accept=".json,.csv,.xlsx,.xls,.xml"
                   onChange={(e) => setFile(e.target.files?.[0] || null)}
@@ -490,149 +540,140 @@ export default function AdminImportPage() {
                 />
               </div>
             )}
-
             <div className="flex gap-2">
-              {!isPreviewMode ? (
-                <Button onClick={runPreview} disabled={loading || (activeImportSource.mode === 'upload' && !file)}>
-                  {loading ? 'Анализ…' : 'Предпросмотр'}
-                </Button>
-              ) : (
-                <>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setPreview(null)
-                      setIsPreviewMode(false)
-                    }}
-                  >
-                    Сброс
-                  </Button>
-                  <Button onClick={runImport} disabled={loading}>
-                    {loading ? 'Импорт…' : 'Подтвердить импорт'}
-                  </Button>
-                </>
-              )}
+              <Button onClick={runPreview} disabled={loading || !activeImportSource || (activeImportSource?.mode === 'upload' && !file)}>
+                {loading ? 'Анализ…' : 'Предпросмотр'}
+              </Button>
             </div>
           </div>
 
           {preview && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold">Предпросмотр</div>
-                <div className="flex items-center gap-4">
-                  <div className="flex bg-slate-200 rounded p-1">
-                    <button 
-                      className={cn("px-3 py-1 text-xs rounded transition-colors", viewMode === 'table' ? "bg-white shadow" : "text-slate-600 hover:text-slate-900")}
-                      onClick={() => setViewMode('table')}
-                    >
-                      Таблица
-                    </button>
-                    <button 
-                      className={cn("px-3 py-1 text-xs rounded transition-colors", viewMode === 'visual' ? "bg-white shadow" : "text-slate-600 hover:text-slate-900")}
-                      onClick={() => setViewMode('visual')}
-                    >
-                      Визуально
-                    </button>
+            <Modal open={isPreviewMode} onClose={closePreview} title="Предпросмотр">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold">Предпросмотр</div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex bg-slate-200 rounded p-1">
+                      <button 
+                        className={cn("px-3 py-1 text-xs rounded transition-colors", viewMode === 'table' ? "bg-white shadow" : "text-slate-600 hover:text-slate-900")}
+                        onClick={() => setViewMode('table')}
+                      >
+                        Таблица
+                      </button>
+                      <button 
+                        className={cn("px-3 py-1 text-xs rounded transition-colors", viewMode === 'visual' ? "bg-white shadow" : "text-slate-600 hover:text-slate-900")}
+                        onClick={() => setViewMode('visual')}
+                      >
+                        Визуально
+                      </button>
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      Всего: {preview.totalRows} | Валидных: {preview.validRows} | Ошибок: {preview.invalidRows}
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-600">
-                    Всего: {preview.totalRows} | Валидных: {preview.validRows} | Ошибок: {preview.invalidRows}
+                </div>
+
+                {preview.invalidRows > 0 && (
+                  <div className="rounded border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                    <div className="font-semibold mb-2">Ошибки в предпросмотре</div>
+                    <div className="space-y-2 max-h-[220px] overflow-y-auto">
+                      {preview.sampleRows
+                        .filter((r) => r.errors.length > 0)
+                        .slice(0, 20)
+                        .map((row) => (
+                          <div key={row.rowIndex} className="rounded bg-white/70 p-2 border border-rose-100">
+                            <div className="font-medium">
+                              Строка {row.rowIndex}
+                              {getRowExternalId(row) ? ` (ID: ${getRowExternalId(row)})` : ''}
+                            </div>
+                            <div className="mt-1 space-y-1">
+                              {row.errors.map((err, i) => (
+                                <div key={i}>• {err}</div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      {preview.invalidRows > 20 && (
+                        <div className="text-rose-600">Показаны первые 20 строк с ошибками.</div>
+                      )}
+                    </div>
                   </div>
+                )}
+
+                {preview.totalRows > preview.sampleRows.length && (
+                  <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 p-2 rounded">
+                    Внимание: Показаны первые {preview.sampleRows.length} записей. Ручные правки применятся только к ним.
+                  </div>
+                )}
+
+                <div>
+                  <div className="text-xs font-medium text-slate-700 mb-2">Обнаруженные поля:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(preview.fieldMappings).map(([field, aliases]) => (
+                      <Badge key={field} variant="secondary">
+                        {field} ← {aliases.join(', ')}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                {viewMode === 'table' ? (
+                  <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                    {preview.sampleRows.map((row, index) => (
+                      <div
+                        key={row.rowIndex}
+                        className={cn(
+                          "rounded border p-3 text-xs relative group",
+                          row.errors.length > 0 ? "border-rose-200 bg-rose-50" : row.warnings.length > 0 ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-white"
+                        )}
+                      >
+                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button size="sm" variant="secondary" onClick={() => handleEdit(index)}>Ред.</Button>
+                        </div>
+                        
+                        <div className="flex items-start justify-between mb-2">
+                          <span className="font-medium">Строка {row.rowIndex}</span>
+                          <span className="text-slate-500">{row.mappedFields.length} полей</span>
+                        </div>
+
+                        {row.errors.length > 0 && (
+                          <div className="mb-2 text-rose-600">
+                            {row.errors.map((err, i) => <div key={i}>• {err}</div>)}
+                          </div>
+                        )}
+                        
+                        <details>
+                          <summary className="cursor-pointer text-slate-600">JSON</summary>
+                          <pre className="mt-1 p-2 bg-slate-100 rounded text-[10px] overflow-x-auto">{JSON.stringify(row.data, null, 2)}</pre>
+                        </details>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 max-h-[800px] overflow-y-auto p-2">
+                    {preview.mappedItems.map((item, index) => (
+                      <div key={index} className="relative group">
+                        {entity === 'property' ? <PropertyCard item={item as Property} /> : <ComplexCard item={item as Complex} />}
+                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                          <Button size="sm" onClick={() => handleEdit(index)}>Ред.</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button variant="secondary" onClick={closePreview}>
+                    Оставить
+                  </Button>
+                  <Button onClick={runImport} disabled={loading}>
+                    {loading ? 'Импорт…' : 'Опубликовать'}
+                  </Button>
                 </div>
               </div>
-
-              {preview.invalidRows > 0 && (
-                <div className="rounded border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
-                  <div className="font-semibold mb-2">Ошибки в предпросмотре</div>
-                  <div className="space-y-2 max-h-[220px] overflow-y-auto">
-                    {preview.sampleRows
-                      .filter((r) => r.errors.length > 0)
-                      .slice(0, 20)
-                      .map((row) => (
-                        <div key={row.rowIndex} className="rounded bg-white/70 p-2 border border-rose-100">
-                          <div className="font-medium">
-                            Строка {row.rowIndex}
-                            {getRowExternalId(row) ? ` (ID: ${getRowExternalId(row)})` : ''}
-                          </div>
-                          <div className="mt-1 space-y-1">
-                            {row.errors.map((err, i) => (
-                              <div key={i}>• {err}</div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    {preview.invalidRows > 20 && (
-                      <div className="text-rose-600">Показаны первые 20 строк с ошибками.</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {preview.totalRows > preview.sampleRows.length && (
-                <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 p-2 rounded">
-                  Внимание: Показаны первые {preview.sampleRows.length} записей. Ручные правки применятся только к ним.
-                </div>
-              )}
-
-              <div>
-                <div className="text-xs font-medium text-slate-700 mb-2">Обнаруженные поля:</div>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(preview.fieldMappings).map(([field, aliases]) => (
-                    <Badge key={field} variant="secondary">
-                      {field} ← {aliases.join(', ')}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-
-              {viewMode === 'table' ? (
-                <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                  {preview.sampleRows.map((row, index) => (
-                    <div
-                      key={row.rowIndex}
-                      className={cn(
-                        "rounded border p-3 text-xs relative group",
-                        row.errors.length > 0 ? "border-rose-200 bg-rose-50" : row.warnings.length > 0 ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-white"
-                      )}
-                    >
-                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button size="sm" variant="secondary" onClick={() => handleEdit(index)}>Ред.</Button>
-                      </div>
-                      
-                      <div className="flex items-start justify-between mb-2">
-                        <span className="font-medium">Строка {row.rowIndex}</span>
-                        <span className="text-slate-500">{row.mappedFields.length} полей</span>
-                      </div>
-
-                      {row.errors.length > 0 && (
-                        <div className="mb-2 text-rose-600">
-                          {row.errors.map((err, i) => <div key={i}>• {err}</div>)}
-                        </div>
-                      )}
-                      
-                      <details>
-                        <summary className="cursor-pointer text-slate-600">JSON</summary>
-                        <pre className="mt-1 p-2 bg-slate-100 rounded text-[10px] overflow-x-auto">{JSON.stringify(row.data, null, 2)}</pre>
-                      </details>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 max-h-[800px] overflow-y-auto p-2">
-                  {preview.mappedItems.map((item, index) => (
-                    <div key={index} className="relative group">
-                      {entity === 'property' ? <PropertyCard item={item as Property} /> : <ComplexCard item={item as Complex} />}
-                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                        <Button size="sm" onClick={() => handleEdit(index)}>Ред.</Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            </Modal>
           )}
-        </div>
-      )}
-
+      </div>
       {/* Edit Row Modal */}
       {editingIndex !== null && (
         <Modal open={editingIndex !== null} onClose={() => setEditingIndex(null)} title="Редактирование записи">
@@ -732,3 +773,5 @@ export default function AdminImportPage() {
     </div>
   )
 }
+
+

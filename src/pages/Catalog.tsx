@@ -8,9 +8,11 @@ import { Heading, Text } from '@/components/ui/Typography'
 import Button from '@/components/ui/Button'
 import { apiGet } from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
+import { useUiStore } from '@/store/useUiStore'
 import type { Complex, Property } from '../../shared/types'
 
 export default function CatalogPage() {
+  const { openLeadModal } = useUiStore()
   const [tab, setTab] = useState<'newbuild' | 'secondary' | 'rent'>('newbuild')
   const [filters, setFilters] = useState<FiltersState>({ bedrooms: '', priceMin: '', priceMax: '', areaMin: '', areaMax: '', q: '' })
   const [data, setData] = useState<{ complexes: Complex[]; properties: Property[]; total: number; page: number; limit: number } | null>(null)
@@ -143,6 +145,59 @@ export default function CatalogPage() {
           </div>
         </div>
       </div>
+
+      {/* CTA: Продать / Сдать */}
+      <section className="bg-background py-16">
+        <div className="mx-auto max-w-6xl px-4">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Продать недвижимость */}
+            <div
+              onClick={() => {
+                trackEvent('click_buy_sell', { page: 'catalog', block: 'sell_cta', tab: 'sell' })
+                openLeadModal('buy_sell', { page: 'catalog', block: 'sell_cta' }, { initialTab: 'sell' })
+              }}
+              className="group relative flex cursor-pointer items-stretch overflow-hidden rounded-sm border border-white/10 transition-colors hover:border-white/25"
+            >
+              <div className="flex flex-1 flex-col justify-center p-8 lg:p-10">
+                <Heading size="h3" className="font-serif text-2xl font-normal leading-tight text-white lg:text-3xl">
+                  Продать<br />недвижимость
+                </Heading>
+              </div>
+              <div className="relative hidden w-1/2 overflow-hidden sm:block">
+                <img
+                  src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=80"
+                  alt="Продать недвижимость"
+                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
+              </div>
+            </div>
+
+            {/* Сдать недвижимость */}
+            <div
+              onClick={() => {
+                trackEvent('click_buy_sell', { page: 'catalog', block: 'rent_cta', tab: 'sell' })
+                openLeadModal('consultation', { page: 'catalog', block: 'rent_cta' })
+              }}
+              className="group relative flex cursor-pointer items-stretch overflow-hidden rounded-sm border border-white/10 transition-colors hover:border-white/25"
+            >
+              <div className="flex flex-1 flex-col justify-center p-8 lg:p-10">
+                <Heading size="h3" className="font-serif text-2xl font-normal leading-tight text-white lg:text-3xl">
+                  Сдать недвижимость
+                </Heading>
+              </div>
+              <div className="relative hidden w-1/2 overflow-hidden sm:block">
+                <img
+                  src="https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=800&q=80"
+                  alt="Сдать недвижимость"
+                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </SiteLayout>
   )
 }
