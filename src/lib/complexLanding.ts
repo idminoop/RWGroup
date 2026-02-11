@@ -12,6 +12,7 @@ const DEFAULT_ACCENT = '#C2A87A'
 const DEFAULT_SURFACE = '#071520'
 const KREMLIN_COORDS = { lat: 55.752023, lon: 37.617499 }
 const PLAN_IMAGE_RX = /(plan|layout|preset|floor)/i
+export const MAX_LANDING_FACTS = 12
 
 export const FACT_IMAGE_PRESETS = [
   'https://images.unsplash.com/photo-1515263487990-61b07816b324?auto=format&fit=crop&w=1200&q=80',
@@ -285,6 +286,9 @@ export function inferFeaturePresetKey(feature: Pick<ComplexLandingFeature, 'titl
     if (byImage) return byImage.key
   }
 
+  const rawKey = toText(feature.preset_key)
+  if (rawKey) return rawKey
+
   return undefined
 }
 
@@ -378,7 +382,7 @@ function buildAutoFacts(complex: Complex, properties: Property[]): ComplexLandin
   }
 
   return cards
-    .slice(0, 10)
+    .slice(0, MAX_LANDING_FACTS)
     .map((fact, idx) => createLandingFact({ ...fact, image: FACT_IMAGE_PRESETS[idx % FACT_IMAGE_PRESETS.length] }))
 }
 
@@ -430,7 +434,7 @@ function fromLegacyLanding(
   const rawBullets = safeArray<string>(overview?.bullets)
   const tags = rawBullets.slice(0, 4).map((line) => createLandingTag({ label: line }))
   const facts = rawBullets
-    .slice(0, 10)
+    .slice(0, MAX_LANDING_FACTS)
     .map((line, idx) => createLandingFact({
       title: idx < 6 ? fallback.facts[idx]?.title || 'Факт' : 'Детали',
       value: line,
@@ -485,16 +489,17 @@ export function normalizeLandingConfig(
       ...item,
       image: toText(item.image) || FACT_IMAGE_PRESETS[idx % FACT_IMAGE_PRESETS.length],
     }))
-    .slice(0, 12)
+    .slice(0, MAX_LANDING_FACTS)
 
   const features = safeArray<Partial<ComplexLandingFeature>>(candidate.feature_ticker)
     .map((item) => {
+      const rawPresetKey = toText(item.preset_key) || undefined
       const presetKey = inferFeaturePresetKey({
         title: toText(item.title),
         image: toText(item.image) || undefined,
-        preset_key: toText(item.preset_key) || undefined,
+        preset_key: rawPresetKey,
       })
-      return createLandingFeature({ ...item, preset_key: presetKey })
+      return createLandingFeature({ ...item, preset_key: presetKey || rawPresetKey })
     })
     .slice(0, 20)
 

@@ -168,6 +168,9 @@ export default function ComplexPage() {
     return out
   }, [landing?.feature_ticker])
 
+  const photoFacts = useMemo(() => landing?.facts.slice(6) || [], [landing?.facts])
+  const photoFactsRemainder = photoFacts.length % 3
+
   const minPropertyPrice = useMemo(() => {
     const withPrice = properties
       .filter((item) => item.status === 'active')
@@ -390,9 +393,22 @@ export default function ComplexPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {landing.facts.slice(6).map((fact) => (
-                    <article key={fact.id} className="relative min-h-[170px] overflow-hidden rounded-2xl border border-white/10 bg-[#0d1e2a]">
+                <div className="grid h-full auto-rows-fr content-stretch gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {photoFacts.map((fact, index) => {
+                    const isLast = index === photoFacts.length - 1
+                    const isSecondLast = index === photoFacts.length - 2
+                    const spanClass =
+                      photoFactsRemainder === 1 && isLast
+                        ? 'xl:col-span-3'
+                        : photoFactsRemainder === 2 && isSecondLast
+                          ? 'xl:col-span-2'
+                          : ''
+
+                    return (
+                    <article
+                      key={fact.id}
+                      className={`relative h-full min-h-[170px] overflow-hidden rounded-2xl border border-white/10 bg-[#0d1e2a] ${spanClass}`}
+                    >
                       {fact.image ? (
                         <img src={fact.image} alt={fact.title} className="absolute inset-0 h-full w-full object-cover opacity-70" />
                       ) : null}
@@ -403,7 +419,8 @@ export default function ComplexPage() {
                         {fact.subtitle ? <div className="mt-1 text-xs text-white/65">{decodeEscapedUnicode(fact.subtitle)}</div> : null}
                       </div>
                     </article>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
 

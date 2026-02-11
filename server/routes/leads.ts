@@ -70,7 +70,11 @@ router.post(
       phone: pretty,
       comment: parsed.data.comment,
       source,
+      lead_status: 'new' as const,
+      assignee: '',
+      admin_note: '',
       created_at: createdAt,
+      updated_at: createdAt,
       ip: ip || undefined,
       user_agent: typeof ua === 'string' ? ua : undefined,
     }

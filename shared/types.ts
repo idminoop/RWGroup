@@ -3,6 +3,7 @@ export type Category = 'newbuild' | 'secondary' | 'rent'
 export type RecordStatus = 'active' | 'hidden' | 'archived'
 
 export type FormType = 'consultation' | 'buy_sell' | 'view_details' | 'partner'
+export type LeadStatus = 'new' | 'in_progress' | 'done' | 'spam'
 
 export type CatalogTab = 'newbuild' | 'secondary' | 'rent'
 
@@ -28,6 +29,12 @@ export interface ComplexLandingFeature {
   title: string
   image?: string
   preset_key?: string
+}
+
+export interface LandingFeaturePreset {
+  key: string
+  title: string
+  image: string
 }
 
 export interface ComplexLandingPlanItem {
@@ -156,7 +163,11 @@ export interface Lead {
   phone: string
   comment?: string
   source: { page: string; block?: string; object_id?: string; object_type?: 'property' | 'complex' | 'collection' }
+  lead_status: LeadStatus
+  assignee?: string
+  admin_note?: string
   created_at: string
+  updated_at?: string
   ip?: string
   user_agent?: string
 }
@@ -187,6 +198,7 @@ export interface ImportRun {
   feed_name?: string
   feed_url?: string
   feed_file?: string
+  target_complex_id?: string
   action?: 'import' | 'preview' | 'delete'
 }
 
@@ -234,6 +246,7 @@ export interface HomeContent {
 export interface DbShape {
   home: HomeContent
   feed_sources: FeedSource[]
+  landing_feature_presets?: LandingFeaturePreset[]
   complexes: Complex[]
   properties: Property[]
   collections: Collection[]

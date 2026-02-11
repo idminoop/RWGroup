@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { z } from 'zod'
 import type { CatalogTab, Category } from '../../shared/types.js'
-import { withDb } from '../lib/storage.js'
+import { withPublishedDb } from '../lib/storage.js'
 import { resolveCollectionItems } from '../lib/collections.js'
 
 const router = Router()
@@ -23,7 +23,7 @@ function tabToCategory(tab: CatalogTab): Category {
 }
 
 router.get('/home', (req: Request, res: Response) => {
-  const data = withDb((db) => {
+  const data = withPublishedDb((db) => {
     const featuredComplexes = db.home.featured.complexes
       .map((id) => db.complexes.find((c) => c.id === id && c.status === 'active'))
       .filter(Boolean)
@@ -49,7 +49,7 @@ router.get('/home', (req: Request, res: Response) => {
 })
 
 router.get('/facets', (req: Request, res: Response) => {
-  const data = withDb((db) => {
+  const data = withPublishedDb((db) => {
     const districts = dedupe([...db.complexes, ...db.properties].map((x) => x.district)).sort((a, b) => a.localeCompare(b))
     const metros = dedupe([...db.complexes, ...db.properties].flatMap((x) => x.metro)).sort((a, b) => a.localeCompare(b))
     return { districts, metros }
@@ -90,7 +90,7 @@ router.get('/catalog', (req: Request, res: Response) => {
   const pageNum = Math.max(toNumber(page) || 1, 1)
   const limitNum = Math.max(toNumber(limit) || 12, 1)
 
-  const data = withDb((db) => {
+  const data = withPublishedDb((db) => {
     const targetComplex = complexId ? db.complexes.find((c) => c.id === complexId) : null
     const targetComplexExternalId = targetComplex?.external_id
     const filtered = db.properties
@@ -130,7 +130,7 @@ router.get('/catalog', (req: Request, res: Response) => {
 
 router.get('/property/:id', (req: Request, res: Response) => {
   const id = req.params.id
-  const data = withDb((db) => {
+  const data = withPublishedDb((db) => {
     const property = db.properties.find((p) => p.id === id && p.status === 'active')
     if (!property) return null
     const complex = property.complex_id ? db.complexes.find((c) => c.id === property.complex_id) : undefined
@@ -145,7 +145,7 @@ router.get('/property/:id', (req: Request, res: Response) => {
 
 router.get('/complex/:id', (req: Request, res: Response) => {
   const id = req.params.id
-  const data = withDb((db) => {
+  const data = withPublishedDb((db) => {
     const complex = db.complexes.find((c) => c.id === id && c.status === 'active')
     if (!complex) return null
     const properties = db.properties
@@ -163,7 +163,7 @@ router.get('/complex/:id', (req: Request, res: Response) => {
 
 router.get('/collection/:id', (req: Request, res: Response) => {
   const id = req.params.id
-  const data = withDb((db) => {
+  const data = withPublishedDb((db) => {
     const collection = db.collections.find((c) => c.id === id)
     if (!collection) return null
 

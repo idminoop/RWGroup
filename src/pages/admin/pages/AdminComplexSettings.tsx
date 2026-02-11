@@ -3,21 +3,24 @@ import { useSearchParams } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
-import { apiGet, apiPut } from '@/lib/api'
+import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api'
 import { useUiStore } from '@/store/useUiStore'
 import {
   buildAutoLandingConfig,
   createLandingFact,
+  createLandingFeature,
   createLandingTag,
   FACT_IMAGE_PRESETS,
   inferFeaturePresetKey,
   LANDING_FEATURE_PRESETS,
+  MAX_LANDING_FACTS,
   normalizeLandingConfig,
 } from '@/lib/complexLanding'
 import type {
   Complex,
   ComplexLandingConfig,
   ComplexLandingFact,
+  LandingFeaturePreset,
   ComplexLandingTag,
   Property,
 } from '../../../../shared/types'
@@ -80,6 +83,12 @@ export default function AdminComplexSettingsPage() {
   const [linkedProperties, setLinkedProperties] = useState<Property[]>([])
   const [saving, setSaving] = useState(false)
   const [activePlanId, setActivePlanId] = useState('')
+  const [customFeaturePresets, setCustomFeaturePresets] = useState<LandingFeaturePreset[]>([])
+  const [presetError, setPresetError] = useState<string | null>(null)
+  const [creatingPreset, setCreatingPreset] = useState(false)
+  const [deletingPresetKey, setDeletingPresetKey] = useState<string | null>(null)
+  const [newPresetTitle, setNewPresetTitle] = useState('')
+  const [newPresetImage, setNewPresetImage] = useState('')
 
   const filteredComplexes = useMemo(() => {
     const q = pickerFilter.trim().toLowerCase()
@@ -99,10 +108,19 @@ export default function AdminComplexSettingsPage() {
     return []
   }, [activePlan])
 
+  const featurePresetOptions = useMemo(() => {
+    const map = new Map<string, LandingFeaturePreset>()
+    LANDING_FEATURE_PRESETS.forEach((preset) => map.set(preset.key, preset))
+    customFeaturePresets.forEach((preset) => {
+      if (!map.has(preset.key)) map.set(preset.key, preset)
+    })
+    return Array.from(map.values())
+  }, [customFeaturePresets])
+
   const selectedFeaturePresetKeys = useMemo(() => {
     const keys = new Set<string>()
     for (const feature of draftLanding?.feature_ticker || []) {
-      const key = inferFeaturePresetKey(feature)
+      const key = inferFeaturePresetKey(feature) || feature.preset_key
       if (key) keys.add(key)
     }
     return keys
@@ -130,9 +148,20 @@ export default function AdminComplexSettingsPage() {
       .finally(() => setListLoading(false))
   }, [headers])
 
+  const loadCustomFeaturePresets = useCallback(() => {
+    setPresetError(null)
+    apiGet<LandingFeaturePreset[]>('/api/admin/landing-feature-presets', headers)
+      .then((res) => setCustomFeaturePresets(res))
+      .catch((e) => setPresetError(e instanceof Error ? e.message : 'Ошибка загрузки пресетов'))
+  }, [headers])
+
   useEffect(() => {
     loadComplexes()
   }, [loadComplexes])
+
+  useEffect(() => {
+    loadCustomFeaturePresets()
+  }, [loadCustomFeaturePresets])
 
   useEffect(() => {
     if (!selectedId) return
@@ -163,7 +192,14 @@ export default function AdminComplexSettingsPage() {
   }
 
   const patchLanding = (updater: (value: ComplexLandingConfig) => ComplexLandingConfig) => {
-    setDraftLanding((prev) => (prev ? updater(prev) : prev))
+    setDraftLanding((prev) => {
+      if (!prev) return prev
+      const next = updater(prev)
+      return {
+        ...next,
+        facts: next.facts.slice(0, MAX_LANDING_FACTS),
+      }
+    })
   }
 
   const patchTag = (id: string, patch: Partial<ComplexLandingTag>) => {
@@ -182,35 +218,91 @@ export default function AdminComplexSettingsPage() {
 
   const toggleFeaturePreset = (presetKey: string) => {
     patchLanding((cfg) => {
-      const preset = LANDING_FEATURE_PRESETS.find((item) => item.key === presetKey)
+      const preset = featurePresetOptions.find((item) => item.key === presetKey)
       if (!preset) return cfg
 
-      const exists = cfg.feature_ticker.some((item) => inferFeaturePresetKey(item) === presetKey)
+      const resolveKey = (item: { preset_key?: string; title: string; image?: string }) => inferFeaturePresetKey(item) || item.preset_key
+      const exists = cfg.feature_ticker.some((item) => resolveKey(item) === presetKey)
       if (exists) {
         return {
           ...cfg,
-          feature_ticker: cfg.feature_ticker.filter((item) => inferFeaturePresetKey(item) !== presetKey),
+          feature_ticker: cfg.feature_ticker.filter((item) => resolveKey(item) !== presetKey),
         }
       }
 
       const next = [
         ...cfg.feature_ticker,
-        {
-          id: `feature_${preset.key}`,
+        createLandingFeature({
+          id: `feature_${preset.key}_${Date.now()}`,
           title: preset.title,
           image: preset.image,
           preset_key: preset.key,
-        },
+        }),
       ]
+      const orderedKeys = featurePresetOptions.map((item) => item.key)
       next.sort((a, b) => {
-        const aKey = inferFeaturePresetKey(a)
-        const bKey = inferFeaturePresetKey(b)
-        const aIndex = aKey ? LANDING_FEATURE_PRESETS.findIndex((item) => item.key === aKey) : Number.MAX_SAFE_INTEGER
-        const bIndex = bKey ? LANDING_FEATURE_PRESETS.findIndex((item) => item.key === bKey) : Number.MAX_SAFE_INTEGER
-        return aIndex - bIndex
+        const aKey = resolveKey(a)
+        const bKey = resolveKey(b)
+        const aIndex = aKey ? orderedKeys.indexOf(aKey) : -1
+        const bIndex = bKey ? orderedKeys.indexOf(bKey) : -1
+        const aRank = aIndex >= 0 ? aIndex : Number.MAX_SAFE_INTEGER
+        const bRank = bIndex >= 0 ? bIndex : Number.MAX_SAFE_INTEGER
+        if (aRank === bRank) return a.title.localeCompare(b.title, 'ru')
+        return aRank - bRank
       })
       return { ...cfg, feature_ticker: next }
     })
+  }
+
+  const addFactCard = () => {
+    patchLanding((cfg) => {
+      if (cfg.facts.length >= MAX_LANDING_FACTS) return cfg
+      return { ...cfg, facts: [...cfg.facts, createLandingFact()] }
+    })
+  }
+
+  const createCustomPreset = async () => {
+    const title = newPresetTitle.trim()
+    const image = newPresetImage.trim()
+    if (!title || !image) {
+      alert('Укажите название и изображение фишки')
+      return
+    }
+    setCreatingPreset(true)
+    setPresetError(null)
+    try {
+      const created = await apiPost<LandingFeaturePreset>(
+        '/api/admin/landing-feature-presets',
+        { title, image },
+        headers
+      )
+      setCustomFeaturePresets((prev) => [...prev, created].sort((a, b) => a.title.localeCompare(b.title, 'ru')))
+      setNewPresetTitle('')
+      setNewPresetImage('')
+      toggleFeaturePreset(created.key)
+    } catch (e) {
+      setPresetError(e instanceof Error ? e.message : 'Ошибка сохранения пресета')
+    } finally {
+      setCreatingPreset(false)
+    }
+  }
+
+  const deleteCustomPreset = async (key: string) => {
+    if (!confirm('Удалить пользовательскую фишку из системы?')) return
+    setDeletingPresetKey(key)
+    setPresetError(null)
+    try {
+      await apiDelete(`/api/admin/landing-feature-presets/${encodeURIComponent(key)}`, headers)
+      setCustomFeaturePresets((prev) => prev.filter((preset) => preset.key !== key))
+      patchLanding((cfg) => ({
+        ...cfg,
+        feature_ticker: cfg.feature_ticker.filter((item) => (inferFeaturePresetKey(item) || item.preset_key) !== key),
+      }))
+    } catch (e) {
+      setPresetError(e instanceof Error ? e.message : 'Ошибка удаления пресета')
+    } finally {
+      setDeletingPresetKey(null)
+    }
   }
 
   const save = async () => {
@@ -420,8 +512,13 @@ export default function AdminComplexSettingsPage() {
 
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white">Факты и карточки</h3>
-                <Button size="sm" variant="secondary" onClick={() => patchLanding((cfg) => ({ ...cfg, facts: [...cfg.facts, createLandingFact()] }))}>
+                <h3 className="text-sm font-semibold text-white">Факты и карточки ({draftLanding.facts.length}/{MAX_LANDING_FACTS})</h3>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={addFactCard}
+                  disabled={draftLanding.facts.length >= MAX_LANDING_FACTS}
+                >
                   + Карточка
                 </Button>
               </div>
@@ -515,36 +612,97 @@ export default function AdminComplexSettingsPage() {
             </section>
 
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-white">Бегущая лента фишек</h3>
-                <div className="text-xs text-white/55">Просто включите нужные пресеты</div>
+                <div className="text-xs text-white/55">
+                  Можно создать свою фишку и использовать её для всех ЖК
+                </div>
               </div>
 
+              <div className="grid gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 md:grid-cols-[1fr_1fr_auto_auto]">
+                <Input
+                  value={newPresetTitle}
+                  onChange={(e) => setNewPresetTitle(e.target.value)}
+                  className="border-white/20 bg-white/5 text-white"
+                  placeholder="Название фишки"
+                />
+                <Input
+                  value={newPresetImage}
+                  onChange={(e) => setNewPresetImage(e.target.value)}
+                  className="border-white/20 bg-white/5 text-white"
+                  placeholder="URL изображения"
+                />
+                <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-white/25 bg-white/10 px-3 text-xs hover:bg-white/15">
+                  Файл
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      if (!e.target.files?.[0]) return
+                      try {
+                        const url = await uploadImage(token || '', e.target.files[0])
+                        setNewPresetImage(url)
+                      } catch (err) {
+                        alert(err instanceof Error ? err.message : 'Upload error')
+                      } finally {
+                        e.target.value = ''
+                      }
+                    }}
+                  />
+                </label>
+                <Button
+                  size="sm"
+                  onClick={createCustomPreset}
+                  disabled={creatingPreset || !newPresetTitle.trim() || !newPresetImage.trim()}
+                >
+                  {creatingPreset ? 'Создание...' : 'Создать'}
+                </Button>
+              </div>
+
+              {presetError ? <div className="text-xs text-rose-300">{presetError}</div> : null}
+
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {LANDING_FEATURE_PRESETS.map((preset) => {
+                {featurePresetOptions.map((preset) => {
                   const enabled = selectedFeaturePresetKeys.has(preset.key)
+                  const isCustom = preset.key.startsWith('custom_')
                   return (
-                    <button
+                    <article
                       key={preset.key}
-                      type="button"
-                      onClick={() => toggleFeaturePreset(preset.key)}
-                      className={`group overflow-hidden rounded-xl border text-left transition ${
-                        enabled
-                          ? 'border-amber-300/70 bg-amber-100/10'
-                          : 'border-white/10 bg-white/[0.03] hover:border-white/30'
+                      className={`overflow-hidden rounded-xl border ${
+                        enabled ? 'border-amber-300/70 bg-amber-100/10' : 'border-white/10 bg-white/[0.03]'
                       }`}
                     >
-                      <div className="relative h-28 w-full overflow-hidden">
-                        <img src={preset.image} alt={preset.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-[#05131c] via-transparent to-transparent" />
-                      </div>
-                      <div className="flex items-center justify-between px-3 py-2">
-                        <div className="text-sm text-white">{preset.title}</div>
-                        <div className={`rounded-full px-2 py-0.5 text-xs ${enabled ? 'bg-amber-300/30 text-amber-100' : 'bg-white/10 text-white/65'}`}>
-                          {enabled ? 'Вкл' : 'Выкл'}
+                      <button
+                        type="button"
+                        onClick={() => toggleFeaturePreset(preset.key)}
+                        className="group block w-full text-left"
+                      >
+                        <div className="relative h-28 w-full overflow-hidden">
+                          <img src={preset.image} alt={preset.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-[#05131c] via-transparent to-transparent" />
                         </div>
-                      </div>
-                    </button>
+                        <div className="flex items-center justify-between px-3 py-2">
+                          <div className="text-sm text-white">{preset.title}</div>
+                          <div className={`rounded-full px-2 py-0.5 text-xs ${enabled ? 'bg-amber-300/30 text-amber-100' : 'bg-white/10 text-white/65'}`}>
+                            {enabled ? 'Вкл' : 'Выкл'}
+                          </div>
+                        </div>
+                      </button>
+                      {isCustom ? (
+                        <div className="border-t border-white/10 px-3 py-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="w-full"
+                            disabled={deletingPresetKey === preset.key}
+                            onClick={() => deleteCustomPreset(preset.key)}
+                          >
+                            {deletingPresetKey === preset.key ? 'Удаление...' : 'Удалить из системы'}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </article>
                   )
                 })}
               </div>

@@ -1,5 +1,6 @@
 ﻿﻿﻿﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import Button from '@/components/ui/Button'
+import { useNavigate } from 'react-router-dom'
 import Select from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { apiGet, apiPost, apiDelete, apiPut } from '@/lib/api'
@@ -53,6 +54,7 @@ const normalizeFileName = (value: string) => {
 }
 
 export default function AdminImportPage() {
+  const navigate = useNavigate()
   const token = useUiStore((s) => s.adminToken)
   const headers = useMemo(() => ({ 'x-admin-token': token || '' }), [token])
   
@@ -75,6 +77,7 @@ export default function AdminImportPage() {
   const [isFeedModalOpen, setIsFeedModalOpen] = useState(false)
   const [editingFeedId, setEditingFeedId] = useState<string | null>(null)
   const [feedNameTouched, setFeedNameTouched] = useState(false)
+  const [isMappingExpanded, setIsMappingExpanded] = useState(false)
   const [feedForm, setFeedForm] = useState<{
     name: string
     format: 'xlsx' | 'csv' | 'xml' | 'json'
@@ -265,12 +268,15 @@ export default function AdminImportPage() {
     })
   }, [feeds, feedForm.mode, feedForm.name, feedForm.url, editingFeedId])
 
+  const mappingFilledCount = Object.keys(feedForm.mapping).length
+
 
   // --- Feed Management Functions ---
 
   const openCreateFeed = () => {
     setEditingFeedId(null)
     setFeedNameTouched(false)
+    setIsMappingExpanded(false)
     setFeedFile(null)
     setFeedForm({ name: '', format: 'xml', mode: 'url', url: '', mapping: {} })
     setIsFeedModalOpen(true)
@@ -279,6 +285,7 @@ export default function AdminImportPage() {
   const openEditFeed = (feed: FeedSource) => {
     setEditingFeedId(feed.id)
     setFeedNameTouched(true)
+    setIsMappingExpanded(false)
     setFeedFile(null)
     setFeedForm({
       name: feed.name,
@@ -288,6 +295,11 @@ export default function AdminImportPage() {
       mapping: feed.mapping || {}
     })
     setIsFeedModalOpen(true)
+  }
+
+  const closeFeedModal = () => {
+    setIsFeedModalOpen(false)
+    setIsMappingExpanded(false)
   }
 
   const handleSaveFeed = async () => {
@@ -307,7 +319,7 @@ export default function AdminImportPage() {
         const res = await apiPost<{ id: string }>('/api/admin/feeds', payload, headers)
         newFeedId = res.id
       }
-      setIsFeedModalOpen(false)
+      closeFeedModal()
       load()
 
       if (newFeedId) {
@@ -469,14 +481,38 @@ export default function AdminImportPage() {
         headers: { 'x-admin-token': token || '' },
         body: fd,
       })
-      const json = await res.json()
+      const json = await res.json() as {
+        success: boolean
+        error?: string
+        details?: string
+        data?: { target_complex_id?: string }
+      }
       if (!res.ok || !json.success) throw new Error(json.details || json.error || 'Import failed')
-      
+      const importedEntity = previewContext?.entity || entity
+      const responseTargetComplexId = json.data?.target_complex_id
+
       setFile(null)
       setPreview(null)
       setIsPreviewMode(false)
       setPreviewContext(null)
       await load()
+
+      let targetComplexId = responseTargetComplexId || ''
+      if (!targetComplexId && importedEntity === 'complex') {
+        try {
+          const listRes = await apiGet<{ items: Complex[]; total: number; page: number; limit: number }>(
+            `/api/admin/catalog/items?type=complex&source_id=${encodeURIComponent(sourceId)}&page=1&limit=1`,
+            headers,
+          )
+          targetComplexId = listRes.items[0]?.id || ''
+        } catch {
+          // Import is already successful; ignore fallback lookup errors.
+        }
+      }
+
+      if (targetComplexId) {
+        navigate(`/admin/complex-settings?complexId=${encodeURIComponent(targetComplexId)}`)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка')
     } finally {
@@ -1006,7 +1042,11 @@ export default function AdminImportPage() {
                     Оставить
                   </Button>
                   <Button onClick={runImport} disabled={loading || (activeImportSource ? pendingSourceIds.has(activeImportSource.id) : false)}>
-                    {loading ? 'Импорт…' : 'Опубликовать'}
+                    {loading
+                      ? 'Импорт…'
+                      : (previewContext?.entity || entity) === 'complex'
+                        ? 'Опубликовать и открыть настройку ЖК'
+                        : 'Опубликовать'}
                   </Button>
                 </div>
               </div>
@@ -1039,7 +1079,7 @@ export default function AdminImportPage() {
       )}
 
       {/* Feed Management Modal */}
-      <Modal open={isFeedModalOpen} onClose={() => setIsFeedModalOpen(false)} title={editingFeedId ? 'Редактирование источника' : 'Новый источник'}>
+      <Modal open={isFeedModalOpen} onClose={closeFeedModal} title={editingFeedId ? 'Редактирование источника' : 'Новый источник'}>
         <div className="space-y-4 max-h-[80vh] overflow-y-auto p-1">
           <div>
             <label className="text-xs font-medium text-slate-700">Название</label>
@@ -1115,39 +1155,57 @@ export default function AdminImportPage() {
           )}
 
           <div className="border-t pt-4 mt-4">
-            <div className="text-sm font-semibold mb-2">Маппинг полей</div>
-            <div className="text-xs text-slate-500 mb-4">
-              Укажите названия колонок в вашем фиде, соответствующие полям системы. Оставьте пустым для авто-определения.
-            </div>
-            
-            <div className="space-y-2">
-              {MAPPING_CONFIG.map((field) => (
-                <div key={field.key} className="grid grid-cols-3 gap-2 items-center">
-                  <div className="text-xs text-slate-700 font-medium col-span-1">
-                    {field.label}
-                    {field.required && <span className="text-rose-500">*</span>}
-                  </div>
-                  <div className="col-span-2">
-                    <Input 
-                      placeholder={field.placeholder}
-                      value={feedForm.mapping[field.key] || ''}
-                      onChange={(e) => {
-                        const val = e.target.value
-                        const newMapping = { ...feedForm.mapping }
-                        if (val) newMapping[field.key] = val
-                        else delete newMapping[field.key]
-                        setFeedForm({ ...feedForm, mapping: newMapping })
-                      }}
-                      className="h-8 text-xs"
-                    />
-                  </div>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-left"
+              onClick={() => setIsMappingExpanded((prev) => !prev)}
+            >
+              <span className="text-sm font-semibold">Маппинг полей</span>
+              <span className="text-xs text-slate-500">
+                {isMappingExpanded ? 'Свернуть' : `Развернуть${mappingFilledCount ? ` (${mappingFilledCount})` : ''}`}
+              </span>
+            </button>
+
+            {isMappingExpanded ? (
+              <div className="mt-3">
+                <div className="mb-4 text-xs text-slate-500">
+                  Укажите названия колонок в вашем фиде, соответствующие полям системы. Оставьте пустым для авто-определения.
                 </div>
-              ))}
-            </div>
+
+                <div className="space-y-2">
+                  {MAPPING_CONFIG.map((field) => (
+                    <div key={field.key} className="grid grid-cols-3 gap-2 items-center">
+                      <div className="text-xs text-slate-700 font-medium col-span-1">
+                        {field.label}
+                        {field.required && <span className="text-rose-500">*</span>}
+                      </div>
+                      <div className="col-span-2">
+                        <Input 
+                          placeholder={field.placeholder}
+                          value={feedForm.mapping[field.key] || ''}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            const newMapping = { ...feedForm.mapping }
+                            if (val) newMapping[field.key] = val
+                            else delete newMapping[field.key]
+                            setFeedForm({ ...feedForm, mapping: newMapping })
+                          }}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-2 text-xs text-slate-500">
+                Маппинг скрыт для снижения нагрузки. Раскройте блок только при необходимости.
+              </div>
+            )}
           </div>
 
           <div className="pt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setIsFeedModalOpen(false)}>Отмена</Button>
+            <Button variant="secondary" onClick={closeFeedModal}>Отмена</Button>
             <Button
               onClick={handleSaveFeed}
               disabled={!feedForm.name || (feedForm.mode === 'upload' && !feedFile) || Boolean(duplicateFeed)}

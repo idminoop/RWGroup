@@ -266,6 +266,7 @@ export function ensureSeed(): void {
         created_at: nowIso(),
       },
     ],
+    landing_feature_presets: [],
     complexes,
     properties,
     collections,

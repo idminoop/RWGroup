@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import multer from 'multer'
 import { z } from 'zod'
 import { adminAuth } from '../middleware/adminAuth.js'
-import { withDb } from '../lib/storage.js'
+import { getPublishStatus, publishDraft, withDb } from '../lib/storage.js'
 import { newId, slugify } from '../lib/ids.js'
 import { resolveCollectionItems } from '../lib/collections.js'
 import fs from 'fs'
@@ -23,7 +23,7 @@ import {
   normalizeCategory,
   normalizeDealType
 } from '../lib/import-logic.js'
-import type { Category, Complex, DbShape, Property } from '../../shared/types.js'
+import type { Category, Complex, DbShape, LandingFeaturePreset, Lead, LeadStatus, Property } from '../../shared/types.js'
 import { XMLParser } from 'fast-xml-parser'
 import { parse as parseCsv } from 'csv-parse/sync'
 import * as XLSX from 'xlsx'
@@ -35,6 +35,20 @@ const importLocks = new Map<string, number>()
 function toNumber(v: unknown): number | undefined {
   const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : typeof v === 'number' ? v : NaN
   return Number.isFinite(n) ? n : undefined
+}
+
+function ensureCustomLandingFeaturePresets(db: DbShape): LandingFeaturePreset[] {
+  if (!Array.isArray(db.landing_feature_presets)) {
+    db.landing_feature_presets = []
+  }
+  return db.landing_feature_presets
+}
+
+function toCustomLandingFeatureKey(value: string): string {
+  return slugify(value)
+    .replace(/-/g, '_')
+    .replace(/[^a-z0-9_]/g, '')
+    .replace(/^_+|_+$/g, '')
 }
 
 router.post('/login', (req: Request, res: Response) => {
@@ -102,14 +116,152 @@ router.put('/home', (req: Request, res: Response) => {
   res.json({ success: true })
 })
 
+router.get('/publish/status', (req: Request, res: Response) => {
+  const status = getPublishStatus()
+  res.json({ success: true, data: status })
+})
+
+router.post('/publish/apply', (req: Request, res: Response) => {
+  publishDraft()
+  const status = getPublishStatus()
+  res.json({ success: true, data: status })
+})
+
 router.get('/leads', (req: Request, res: Response) => {
-  const data = withDb((db) => db.leads)
+  const data = withDb((db) =>
+    [...db.leads]
+      .map((lead) => ({
+        ...lead,
+        lead_status: lead.lead_status || ('new' as LeadStatus),
+        assignee: lead.assignee || '',
+        admin_note: lead.admin_note || '',
+      }))
+      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+  )
   res.json({ success: true, data })
+})
+
+router.put('/leads/:id', (req: Request, res: Response) => {
+  const id = req.params.id
+  const schema = z.object({
+    lead_status: z.enum(['new', 'in_progress', 'done', 'spam']).optional(),
+    assignee: z.string().max(80).optional(),
+    admin_note: z.string().max(2000).optional(),
+  })
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+  if (
+    parsed.data.lead_status === undefined &&
+    parsed.data.assignee === undefined &&
+    parsed.data.admin_note === undefined
+  ) {
+    res.status(400).json({ success: false, error: 'No fields to update' })
+    return
+  }
+
+  let updatedLead: Lead | null = null
+  const ok = withDb((db) => {
+    const lead = db.leads.find((item) => item.id === id)
+    if (!lead) return false
+
+    if (parsed.data.lead_status !== undefined) {
+      lead.lead_status = parsed.data.lead_status as LeadStatus
+    }
+    if (parsed.data.assignee !== undefined) {
+      lead.assignee = parsed.data.assignee.trim()
+    }
+    if (parsed.data.admin_note !== undefined) {
+      lead.admin_note = parsed.data.admin_note.trim()
+    }
+    lead.updated_at = new Date().toISOString()
+    updatedLead = lead
+    return true
+  })
+
+  if (!ok || !updatedLead) {
+    res.status(404).json({ success: false, error: 'Not found' })
+    return
+  }
+  res.json({ success: true, data: updatedLead })
 })
 
 router.get('/feeds', (req: Request, res: Response) => {
   const data = withDb((db) => db.feed_sources)
   res.json({ success: true, data })
+})
+
+router.get('/landing-feature-presets', (req: Request, res: Response) => {
+  const data = withDb((db) => {
+    const presets = ensureCustomLandingFeaturePresets(db)
+    return [...presets].sort((a, b) => a.title.localeCompare(b.title, 'ru'))
+  })
+  res.json({ success: true, data })
+})
+
+router.post('/landing-feature-presets', (req: Request, res: Response) => {
+  const schema = z.object({
+    title: z.string().min(1).max(80),
+    image: z.string().min(1).max(500),
+  })
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+
+  const title = parsed.data.title.trim()
+  const image = parsed.data.image.trim()
+  if (!title || !image) {
+    res.status(400).json({ success: false, error: 'Title and image are required' })
+    return
+  }
+
+  const created = withDb((db) => {
+    const presets = ensureCustomLandingFeaturePresets(db)
+    const base = toCustomLandingFeatureKey(title) || 'feature'
+    let key = `custom_${base}`
+    let i = 2
+    while (presets.some((preset) => preset.key === key)) {
+      key = `custom_${base}_${i}`
+      i += 1
+    }
+    const next: LandingFeaturePreset = { key, title, image }
+    presets.push(next)
+    return next
+  })
+
+  res.json({ success: true, data: created })
+})
+
+router.delete('/landing-feature-presets/:key', (req: Request, res: Response) => {
+  const key = (req.params.key || '').trim()
+  if (!key) {
+    res.status(400).json({ success: false, error: 'Invalid key' })
+    return
+  }
+
+  const ok = withDb((db) => {
+    const presets = ensureCustomLandingFeaturePresets(db)
+    const before = presets.length
+    db.landing_feature_presets = presets.filter((preset) => preset.key !== key)
+    if (db.landing_feature_presets.length === before) return false
+
+    for (const complex of db.complexes) {
+      if (!complex.landing?.feature_ticker?.length) continue
+      complex.landing.feature_ticker = complex.landing.feature_ticker.filter((feature) => feature.preset_key !== key)
+      complex.updated_at = new Date().toISOString()
+    }
+    return true
+  })
+
+  if (!ok) {
+    res.status(404).json({ success: false, error: 'Not found' })
+    return
+  }
+  res.json({ success: true })
 })
 
 router.get('/feeds/diagnostics', (req: Request, res: Response) => {
@@ -603,6 +755,7 @@ router.get('/catalog/items', (req: Request, res: Response) => {
   const type = req.query.type as string
   const page = Math.max(parseInt(req.query.page as string) || 1, 1)
   const limit = Math.max(parseInt(req.query.limit as string) || 50, 1)
+  const sourceId = typeof req.query.source_id === 'string' ? req.query.source_id.trim() : ''
   const bed = toNumber(req.query.bedrooms)
   const min = toNumber(req.query.priceMin)
   const max = toNumber(req.query.priceMax)
@@ -623,6 +776,7 @@ router.get('/catalog/items', (req: Request, res: Response) => {
     const items =
       type === 'property'
           ? db.properties
+              .filter((p) => (sourceId ? p.source_id === sourceId : true))
               .filter((p) => (typeof bed === 'number' ? p.bedrooms === bed : true))
               .filter((p) => (typeof min === 'number' ? p.price >= min : true))
               .filter((p) => (typeof max === 'number' ? p.price <= max : true))
@@ -635,6 +789,7 @@ router.get('/catalog/items', (req: Request, res: Response) => {
               )
               .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
           : db.complexes
+              .filter((c) => (sourceId ? c.source_id === sourceId : true))
               .filter((c) =>
                 qlc
                   ? matchesQuery(c.id) || matchesQuery(c.title) || matchesQuery(c.district) || matchesMetro(c.metro)
@@ -713,7 +868,7 @@ router.put('/catalog/items/:type/:id', (req: Request, res: Response) => {
     preview_photo_label: z.string().optional(),
     cta_label: z.string().optional(),
     tags: z.array(landingTagSchema),
-    facts: z.array(landingFactSchema),
+    facts: z.array(landingFactSchema).max(12),
     feature_ticker: z.array(landingFeatureSchema),
     plans: z.object({
       title: z.string().optional(),
@@ -873,6 +1028,7 @@ router.post('/import/run', upload.single('file'), async (req: Request, res: Resp
     feed_name?: string
     feed_url?: string
     feed_file?: string
+    target_complex_id?: string
     action?: 'import' | 'preview' | 'delete'
   } = {
     id: runId,
@@ -920,12 +1076,16 @@ router.post('/import/run', upload.single('file'), async (req: Request, res: Resp
       }
       
       // Auto-upsert complexes from properties to ensure linking works
-      upsertComplexesFromProperties(db, parsed.data.source_id, rows, mapping)
-      
-      return upsertProperties(db, parsed.data.source_id, rows, mapping, { hideInvalid: parsed.data.hide_invalid })
+      const complexStats = upsertComplexesFromProperties(db, parsed.data.source_id, rows, mapping)
+      const propertyStats = upsertProperties(db, parsed.data.source_id, rows, mapping, { hideInvalid: parsed.data.hide_invalid })
+      return { ...propertyStats, targetComplexId: complexStats.targetComplexId }
     })
 
     run.stats = { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden }
+    const targetComplexId = (stats as { targetComplexId?: string }).targetComplexId
+    if (typeof targetComplexId === 'string' && targetComplexId) {
+      run.target_complex_id = targetComplexId
+    }
 
     if (stats.errors.length > 0) {
       run.status = stats.errors.length === rows.length ? 'failed' : 'partial'

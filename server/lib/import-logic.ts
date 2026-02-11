@@ -399,6 +399,7 @@ export function upsertComplexes(db: DbShape, sourceId: string, rows: Record<stri
   let inserted = 0
   let updated = 0
   let hidden = 0
+  let targetComplexId: string | undefined
   let errors: Array<{ rowIndex: number; externalId?: string; error: string }> = [] // Not used by aggregation but kept for signature compatibility if needed
 
   for (const next of aggregated) {
@@ -408,9 +409,12 @@ export function upsertComplexes(db: DbShape, sourceId: string, rows: Record<stri
       const preservedLanding = existing.landing
       Object.assign(existing, next)
       if (preservedLanding) existing.landing = preservedLanding
+      if (!targetComplexId) targetComplexId = existing.id
       updated += 1
     } else {
-      db.complexes.unshift({ id: newId(), ...next })
+      const createdId = newId()
+      db.complexes.unshift({ id: createdId, ...next })
+      if (!targetComplexId) targetComplexId = createdId
       inserted += 1
     }
   }
@@ -425,13 +429,13 @@ export function upsertComplexes(db: DbShape, sourceId: string, rows: Record<stri
     }
   }
 
-  return { inserted, updated, hidden, errors }
+  return { inserted, updated, hidden, errors, targetComplexId }
 }
 
 export function upsertComplexesFromProperties(db: DbShape, sourceId: string, rows: Record<string, unknown>[], mapping?: Record<string, string>) {
   // Now just an alias for upsertComplexes, as it handles aggregation automatically
   const res = upsertComplexes(db, sourceId, rows, mapping)
-  return { inserted: res.inserted, updated: res.updated }
+  return { inserted: res.inserted, updated: res.updated, targetComplexId: res.targetComplexId }
 }
 
 export function upsertProperties(

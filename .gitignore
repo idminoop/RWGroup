@@ -24,4 +24,6 @@ dist-ssr
 *.sw?
 .vite
 server/data/db.json
+server/data/db.published.json
+server/uploads/*
 nul

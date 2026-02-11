@@ -103,3 +103,85 @@
 .leaflet-bottom {
   z-index: 350 !important;
 }
+
+.admin-shell {
+  background:
+    radial-gradient(120% 120% at 50% 0%, #12304a 0%, #091c2b 48%, #06131d 100%);
+  color: #e8f0f5;
+}
+
+.admin-shell .bg-white {
+  background-color: rgba(11, 29, 43, 0.9) !important;
+}
+
+.admin-shell .bg-slate-50 {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+.admin-shell .bg-slate-100 {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.admin-shell .bg-rose-50 {
+  background-color: rgba(244, 63, 94, 0.15) !important;
+}
+
+.admin-shell .border-slate-200,
+.admin-shell .border-slate-300,
+.admin-shell .border-slate-700 {
+  border-color: rgba(148, 163, 184, 0.26) !important;
+}
+
+.admin-shell .text-slate-900 {
+  color: #f3f8fb !important;
+}
+
+.admin-shell .text-slate-700 {
+  color: #d3e0e9 !important;
+}
+
+.admin-shell .text-slate-600 {
+  color: #a7bbc8 !important;
+}
+
+.admin-shell .text-slate-500,
+.admin-shell .text-slate-400 {
+  color: #8ea4b3 !important;
+}
+
+.admin-shell .text-rose-600 {
+  color: #fda4af !important;
+}
+
+.admin-shell input,
+.admin-shell select,
+.admin-shell textarea {
+  background-color: rgba(20, 40, 56, 0.95) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  color: #f3f8fb !important;
+}
+
+.admin-shell input::placeholder,
+.admin-shell textarea::placeholder {
+  color: #8ea4b3 !important;
+}
+
+.admin-shell input:focus,
+.admin-shell select:focus,
+.admin-shell textarea:focus {
+  outline: none;
+  border-color: rgba(166, 162, 103, 0.85) !important;
+  box-shadow: 0 0 0 2px rgba(166, 162, 103, 0.25) !important;
+}
+
+.admin-shell table thead {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+.admin-shell table tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+.admin-shell table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
