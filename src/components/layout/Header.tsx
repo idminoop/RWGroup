@@ -27,7 +27,7 @@ export default function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-background/90 backdrop-blur text-white">
+      <header className="sticky top-0 z-[1200] border-b border-white/10 bg-background/90 backdrop-blur text-white">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4">
           
           {/* Left: Logo + Tagline */}

@@ -10,6 +10,56 @@ export type CollectionMode = 'manual' | 'auto'
 
 export type Id = string
 
+export interface ComplexLandingTag {
+  id: string
+  label: string
+}
+
+export interface ComplexLandingFact {
+  id: string
+  title: string
+  value: string
+  subtitle?: string
+  image?: string
+}
+
+export interface ComplexLandingFeature {
+  id: string
+  title: string
+  image?: string
+  preset_key?: string
+}
+
+export interface ComplexLandingPlanItem {
+  id: string
+  name: string
+  price?: string
+  area?: string
+  variants?: number
+  bedrooms?: number
+  note?: string
+  preview_image?: string
+  preview_images?: string[]
+}
+
+export interface ComplexLandingConfig {
+  enabled: boolean
+  accent_color?: string
+  surface_color?: string
+  hero_image?: string
+  preview_photo_label?: string
+  cta_label?: string
+  tags: ComplexLandingTag[]
+  facts: ComplexLandingFact[]
+  feature_ticker: ComplexLandingFeature[]
+  plans: {
+    title?: string
+    description?: string
+    cta_label?: string
+    items: ComplexLandingPlanItem[]
+  }
+}
+
 export interface Complex {
   id: Id
   source_id: Id
@@ -30,6 +80,7 @@ export interface Complex {
   description?: string
   geo_lat?: number
   geo_lon?: number
+  landing?: ComplexLandingConfig
   last_seen_at?: string
   updated_at: string
 }

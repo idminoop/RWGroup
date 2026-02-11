@@ -34,6 +34,10 @@ export default {
           DEFAULT: "#26251A", // Additional dark
           alt: "#261A1D", // Additional dark 2
         },
+        card: {
+          DEFAULT: "#FFFFFF",
+          foreground: "#1e293b", // slate-800
+        },
         muted: {
           DEFAULT: "#61747A",
           foreground: "#C0C0C0",

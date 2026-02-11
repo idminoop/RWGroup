@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Heading, Text } from '@/components/ui/Typography'
 import ImageGallery from '@/components/ui/ImageGallery'
+import ComplexMap from '@/components/complex/ComplexMap'
 import { apiGet } from '@/lib/api'
 import { formatArea, formatPriceRub } from '@/lib/format'
 import { selectCoverImage, getPresentableImages, getLayoutImages } from '@/lib/images'
@@ -244,6 +245,19 @@ export default function PropertyPage() {
                 )}
               </div>
             </Card>
+          )}
+
+          {/* Map Section */}
+          {data.complex?.geo_lat && data.complex?.geo_lon && (
+            <div className="mt-8">
+              <ComplexMap
+                title={data.property.title}
+                district={data.property.district}
+                metro={data.property.metro}
+                geo_lat={data.complex.geo_lat}
+                geo_lon={data.complex.geo_lon}
+              />
+            </div>
           )}
 
           {/* Floor Plans Section */}

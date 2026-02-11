@@ -192,7 +192,9 @@
       "title": "REPUBLIC",
       "category": "newbuild",
       "district": "Пресненский Вал",
-      "metro": [],
+      "metro": [
+        "МетроТест"
+      ],
       "price_from": 27855400,
       "area_from": 27.36,
       "images": [
@@ -305,9 +307,172 @@
       "status": "active",
       "developer": "«СТРАНА Девелопмент»",
       "handover_date": "4 кв. 2027",
-      "description": "Новая квартира в ЖК «Republic» напрямую от федерального застройщика «‎Страна Девелопмент».\n\n\n\n\n\n\n\nПродается 3–комнатная квартира на 2 этаже от застройщика “Страна Девелопмент”. Площадь квартиры 65,68 кв. м. Стоимость указана без учета акций.\n\n\n\n\n\n\n\nДизайн-квартал «Republic» — новый проект премиум-класса в Москве. 10 жилых башен и 4 восстановленных здания локомотивного депо образуют уникальное пространство. «Republic» — место, где вы ощутите гармонию истории и современности. Детский сад, SPA-комплекс с бассейном, гастрономический и шопинг-центры, собственный бульвар и яркие арт-пространства — для жителей предусмотрены все элементы премиального комфорта.\n\n\n\n\nПреимущества\n\n\n\n\nУникальная жизненная среда, где инфраструктура включает гастрономию, SPA-комплекс с термами, образовательные и развлекательные заведения, арт-пространство и шопинг-аллеи.\n\n\n\n\nДвор от британского бюро «Gillespies»: на 4 гектарах закрытого двора расположится 7 игровых зон для разных возрастов с ручьем и сухим фонтаном, арт-галерея под открытым небом и большой прогулочный бульвар.\n\n\n\n\nЛобби с террасой в башнях «Reds» — лаконичное пространство галереи-лобби, где можно проводить деловые и дружеские встречи, не нарушая приватности квартиры. В тёплое время года не остаётся пустующей терраса на крыше, которая привлекает непринуждённой атмосферой и прохладительными напитками в баре.\n\n\n\n\nКлубная гостиная — стильное пространство оборудовано кухней и залом для торжеств на 40 человек, а для того, чтобы побыть наедине с собой, почитать книгу или провести онлайн-встречу в гостиной оборудована мастерская с библиотекой.\n\n\n\n\nУникальные форматы квартир, где можно реализовать любой жизненный сценарий: от стильного офиса в двухэтажной квартире до угловых лотов с просторными гостиными. А эксклюзивные пентхаусы с высокими потолками и панорамными окнами дарят захватывающие виды на Москву..\n\n\n\n\nОтделка\n\n\n\n\nКвартиры сдаются без отделки или в формате White box. При отделке White box уже были выполнены все шумные и грязные работы руками наших специалистов: произведена разводка электричества с установкой подрозетников, установлены откосы из гипсокартона, устроена стяжка пола с шумоизоляцией. \n\n\n\n\nСпособы покупки\n\n\n\n\nСотрудники «Страна Девелопмент» будут сопровождать вас на каждом этапе сделки, помогут получить одобрение по ипотеке или снизить ежемесячный платеж.\n\n\n\n\n\n\n\n- ипотека\n\n\n\n\n- рассрочка\n\n\n\n\n- с использованием материнского капитала \n\n\n\n\n- 100% оплата наличными",
+      "description": "Новая квартира в ЖК «Republic» напрямую от федерального застройщика «‎Страна Девелопмент».\nТе\n\n\n\n\n\n\nПродается 3–комнатная квартира на 2 этаже от застройщика “Страна Девелопмент”. Площадь квартиры 65,68 кв. м. Стоимость указана без учета акций.\n\n\n\n\n\n\n\nДизайн-квартал «Republic» — новый проект премиум-класса в Москве. 10 жилых башен и 4 восстановленных здания локомотивного депо образуют уникальное пространство. «Republic» — место, где вы ощутите гармонию истории и современности. Детский сад, SPA-комплекс с бассейном, гастрономический и шопинг-центры, собственный бульвар и яркие арт-пространства — для жителей предусмотрены все элементы премиального комфорта.\n\n\n\n\nПреимущества\n\n\n\n\nУникальная жизненная среда, где инфраструктура включает гастрономию, SPA-комплекс с термами, образовательные и развлекательные заведения, арт-пространство и шопинг-аллеи.\n\n\n\n\nДвор от британского бюро «Gillespies»: на 4 гектарах закрытого двора расположится 7 игровых зон для разных возрастов с ручьем и сухим фонтаном, арт-галерея под открытым небом и большой прогулочный бульвар.\n\n\n\n\nЛобби с террасой в башнях «Reds» — лаконичное пространство галереи-лобби, где можно проводить деловые и дружеские встречи, не нарушая приватности квартиры. В тёплое время года не остаётся пустующей терраса на крыше, которая привлекает непринуждённой атмосферой и прохладительными напитками в баре.\n\n\n\n\nКлубная гостиная — стильное пространство оборудовано кухней и залом для торжеств на 40 человек, а для того, чтобы побыть наедине с собой, почитать книгу или провести онлайн-встречу в гостиной оборудована мастерская с библиотекой.\n\n\n\n\nУникальные форматы квартир, где можно реализовать любой жизненный сценарий: от стильного офиса в двухэтажной квартире до угловых лотов с просторными гостиными. А эксклюзивные пентхаусы с высокими потолками и панорамными окнами дарят захватывающие виды на Москву..\n\n\n\n\nОтделка\n\n\n\n\nКвартиры сдаются без отделки или в формате White box. При отделке White box уже были выполнены все шумные и грязные работы руками наших специалистов: произведена разводка электричества с установкой подрозетников, установлены откосы из гипсокартона, устроена стяжка пола с шумоизоляцией. \n\n\n\n\nСпособы покупки\n\n\n\n\nСотрудники «Страна Девелопмент» будут сопровождать вас на каждом этапе сделки, помогут получить одобрение по ипотеке или снизить ежемесячный платеж.\n\n\n\n\n\n\n\n- ипотека\n\n\n\n\n- рассрочка\n\n\n\n\n- с использованием материнского капитала \n\n\n\n\n- 100% оплата наличными",
       "last_seen_at": "2026-02-09T16:22:58.944Z",
-      "updated_at": "2026-02-09T16:22:58.944Z"
+      "updated_at": "2026-02-11T14:58:19.282Z",
+      "class": "Класс жилья Тест",
+      "finish_type": "Тип отделки Тест",
+      "landing": {
+        "enabled": true,
+        "accent_color": "#C2A87A",
+        "surface_color": "#071520",
+        "hero_image": "https://pb4988.strana.profitbase.ru/uploads/house/4988/696f2fa7699c0.jpg",
+        "preview_photo_label": "",
+        "cta_label": "Старт продаж",
+        "tags": [
+          {
+            "id": "tag_9pj2cu2p",
+            "label": "Класс жилья Тест"
+          },
+          {
+            "id": "tag_bjbfp804",
+            "label": "Пресненский Вал"
+          },
+          {
+            "id": "tag_urx2u53u",
+            "label": "м. МетроТест"
+          }
+        ],
+        "facts": [
+          {
+            "id": "fact_on7j38bh",
+            "title": "Класс",
+            "value": "Класс жилья Тест",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65bba938.jpg"
+          },
+          {
+            "id": "fact_iqbbnhyh",
+            "title": "Квартиры от",
+            "value": "1 спальня",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/layout/4988/67bdd3d502fc4.jpg"
+          },
+          {
+            "id": "fact_p7a0436d",
+            "title": "Площадь от",
+            "value": "от 27 м²",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65c26185.jpg"
+          },
+          {
+            "id": "fact_x6ik8b39",
+            "title": "Этажность",
+            "value": "33",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65c67f84.jpg"
+          },
+          {
+            "id": "fact_sk17f5xt",
+            "title": "Квартир всего / в продаже",
+            "value": "100 / 100",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65d0a5e8.jpg"
+          },
+          {
+            "id": "fact_vq65p0qw",
+            "title": "Срок сдачи",
+            "value": "4 кв. 2027",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65d4be80.jpg"
+          },
+          {
+            "id": "fact_wt1e3zh0",
+            "title": "Ближайшее метро",
+            "value": "МетроТест",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65dc946e.jpg"
+          },
+          {
+            "id": "fact_ehqhiu8h",
+            "title": "Локация",
+            "value": "Пресненский Вал",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65e0e2bc.jpg"
+          }
+        ],
+        "feature_ticker": [
+          {
+            "id": "feature_z2fbm6ws",
+            "title": "Панорамное остекление",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/layout/4988/67bdd3d502fc4.jpg"
+          },
+          {
+            "id": "feature_jskv0fru",
+            "title": "Ресторан",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65c26185.jpg"
+          },
+          {
+            "id": "feature_8pb411bs",
+            "title": "Салон красоты",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65c67f84.jpg"
+          },
+          {
+            "id": "feature_sax6vq3g",
+            "title": "Лаунж-пространство",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65d0a5e8.jpg"
+          },
+          {
+            "id": "feature_3fy7d6y1",
+            "title": "Консьерж-сервис",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65d4be80.jpg"
+          },
+          {
+            "id": "feature_sksg15m7",
+            "title": "Кафе",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65dc946e.jpg"
+          },
+          {
+            "id": "feature_si36ol1p",
+            "title": "Коворкинг",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bdc65e0e2bc.jpg"
+          }
+        ],
+        "plans": {
+          "title": "Планировки в REPUBLIC",
+          "description": "Выберите формат квартиры и посмотрите все доступные планировки.",
+          "cta_label": "Все планировки",
+          "items": [
+            {
+              "id": "plan_t0fc1m7z",
+              "name": "1 спальня",
+              "price": "27 855 400 ₽",
+              "area": "от 27 м²",
+              "variants": 10,
+              "note": "Доступно 10 вариантов",
+              "preview_image": "https://pb4988.strana.profitbase.ru/uploads/house/4988/696f341c8fe54.jpg"
+            },
+            {
+              "id": "plan_bcjypq6t",
+              "name": "2 спальни",
+              "price": "30 521 400 ₽",
+              "area": "от 32 м²",
+              "variants": 30,
+              "note": "Доступно 30 вариантов",
+              "preview_image": "https://pb4988.strana.profitbase.ru/uploads/house/4988/696f2fa7699c0.jpg"
+            },
+            {
+              "id": "plan_krancqpc",
+              "name": "3 спальни",
+              "price": "52 709 400 ₽",
+              "area": "от 60 м²",
+              "variants": 26,
+              "note": "Доступно 26 вариантов",
+              "preview_image": "https://pb4988.strana.profitbase.ru/uploads/house/4988/696f2fa7699c0.jpg"
+            },
+            {
+              "id": "plan_gxlb7cnv",
+              "name": "4 спальни",
+              "price": "68 189 400 ₽",
+              "area": "от 78 м²",
+              "variants": 29,
+              "note": "Доступно 29 вариантов",
+              "preview_image": "https://pb4988.strana.profitbase.ru/uploads/house/4988/696f2fa7699c0.jpg"
+            },
+            {
+              "id": "plan_25gr7mx0",
+              "name": "5 спален",
+              "price": "111 017 400 ₽",
+              "area": "от 117 м²",
+              "variants": 5,
+              "note": "Доступно 5 вариантов",
+              "preview_image": "https://pb4988.strana.profitbase.ru/uploads/house/4988/696f2fa7699c0.jpg"
+            }
+          ]
+        }
+      }
     },
     {
       "id": "92fee12d-7f0f-4c29-8773-70d02fda7e6b",
@@ -422,7 +587,7 @@
       "slug": "странапарковая",
       "title": "Страна.Парковая",
       "category": "newbuild",
-      "district": "Москва",
+      "district": "Комарова 17",
       "metro": [],
       "price_from": 8370000,
       "area_from": 19.44,
@@ -570,7 +735,221 @@
       "handover_date": "4 кв. 2027",
       "description": "Hoвaя квaртиpa в ЖK «Страна.Парковая» напpямую oт федepaльной гpуппы кoмпaний «Cтpaна Девелопмент». \n\n3–комнатная квартира площадью 66,43 кв. м. на 2 этаже от застройщика “Страна Девелопмент”.\n\nЖилой комплекс «Страна.Парковая» — новый квартал в самом центре Мытищ, который вдохновляет на яркую жизнь. Рядом — всё необходимое: метро Медведково, несколько парков, школы и детсады, ТРК «Красный кит» и др. Также вы сможете без проблем добраться до столицы — Кремль в 65 минутах езды на авто. Архитектура с объёмными декоративными фасадами гармонирует и с городом, и с природой, а приватные дворы, наполненные зеленью, помогают скрыться от суеты и отдохнуть. Всё задумано так, чтобы вы смогли проникнуться главной идеей комплекса — вдохновение жизнью каждый день.\n\nПРЕИМУЩЕСТВА\n\nРазнообразие планировок: от классических до квартир с мастер-спальней и террасами.\nПодземный паркинг с кладовыми, охраной и видеонаблюдением 24/7.\nРемонт от застройщика: 5 вариантов на выбор.\nЗакрытый двор с площадками и зонами отдыха: мост-акведук, тренажёры, лабиринты, гамаки и шезлонги.\n\nОТДЕЛКА\n\nБазовая отделка или готовый ремонт от застройщика.\nВ базовой отделке все черновые работы выполнены, подведены коммуникации, стены оштукатурены под маяк.\nВ ремонт от застройщика входит 5 вариантов отделки, уже включено всё необходимое: от сантехники до кондиционера.\n\nСПОСОБЫ ПОКУПКИ\n\nСотрудники «Страны Девелопмент» будут сопровождать вас на каждом этапе сделки, помогут получить одобрение по ипотеке или снизить ежемесячный платеж.\n\nипотека\nматеринский капитал\n100% оплата наличными\nрассрочка\nобмен — это выкуп вашей старой квартиры и зачисление полученных денежных средств в счет стоимости новой квартиры или в качестве первоначального взноса по ипотеке.",
       "last_seen_at": "2026-02-09T16:10:22.675Z",
-      "updated_at": "2026-02-09T16:10:22.675Z"
+      "updated_at": "2026-02-11T16:36:13.888Z",
+      "landing": {
+        "enabled": true,
+        "accent_color": "#C2A87A",
+        "surface_color": "#071520",
+        "hero_image": "https://pb4988.strana.profitbase.ru/uploads/house/4988/664cfbdab29f3.jpg",
+        "preview_photo_label": "фывфыв",
+        "cta_label": "Старт продаж",
+        "tags": [
+          {
+            "id": "tag_ly8gjsts",
+            "label": "Москва"
+          },
+          {
+            "id": "tag_n9ah0ljx",
+            "label": "Новостройка"
+          }
+        ],
+        "facts": [
+          {
+            "id": "fact_ytfwb7x6",
+            "title": "Класс",
+            "value": "Премиум",
+            "subtitle": "",
+            "image": "https://images.unsplash.com/photo-1515263487990-61b07816b324?auto=format&fit=crop&w=1200&q=80"
+          },
+          {
+            "id": "fact_u3smk8rw",
+            "title": "Квартиры от",
+            "value": "1 спальня",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/building_image/4988/680f506ad7561.jpg"
+          },
+          {
+            "id": "fact_xm81s2b6",
+            "title": "Площадь от",
+            "value": "от 19 м²",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bee56d1c818.png"
+          },
+          {
+            "id": "fact_43miezno",
+            "title": "Этажность",
+            "value": "26",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35f5df249.png"
+          },
+          {
+            "id": "fact_man5bwxq",
+            "title": "Квартир всего / в продаже",
+            "value": "100 / 100",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bee580373a0.png"
+          },
+          {
+            "id": "fact_9mj5owux",
+            "title": "Срок сдачи",
+            "value": "4 кв. 2027",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bee78937795.png"
+          },
+          {
+            "id": "fact_pdowge9p",
+            "title": "Подземный паркинг",
+            "value": "Да",
+            "image": "https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=1200&q=80"
+          },
+          {
+            "id": "fact_pn5a8taa",
+            "title": "Локация",
+            "value": "Москва",
+            "image": "https://images.unsplash.com/photo-1515263487990-61b07816b324?auto=format&fit=crop&w=1200&q=80"
+          }
+        ],
+        "feature_ticker": [
+          {
+            "id": "feature_420rgtw7",
+            "title": "Панорамное остекление",
+            "image": "https://pb4988.strana.profitbase.ru/uploads/building_image/4988/680f506ad7561.jpg",
+            "preset_key": "panoramic"
+          },
+          {
+            "id": "feature_7nzfyux1",
+            "title": "Консьерж-сервис",
+            "image": "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&w=600&q=80",
+            "preset_key": "concierge"
+          },
+          {
+            "id": "feature_ouox11gr",
+            "title": "Ресторан",
+            "image": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=600&q=80",
+            "preset_key": "restaurant"
+          },
+          {
+            "id": "feature_okv9qaqs",
+            "title": "Лаунж-пространство",
+            "image": "https://images.unsplash.com/photo-1617104551722-3b2d51366416?auto=format&fit=crop&w=600&q=80",
+            "preset_key": "lounge"
+          },
+          {
+            "id": "feature_v7sm1a0d",
+            "title": "Кафе",
+            "image": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=600&q=80",
+            "preset_key": "cafe"
+          },
+          {
+            "id": "feature_h47hqtxh",
+            "title": "Коворкинг",
+            "image": "https://images.unsplash.com/photo-1497215842964-222b430dc094?auto=format&fit=crop&w=600&q=80",
+            "preset_key": "coworking"
+          },
+          {
+            "id": "feature_parking",
+            "title": "Подземный паркинг",
+            "image": "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=600&q=80",
+            "preset_key": "parking"
+          },
+          {
+            "id": "feature_pet",
+            "title": "Площадка для питомцев",
+            "image": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=600&q=80",
+            "preset_key": "pet"
+          }
+        ],
+        "plans": {
+          "title": "Планировки в Страна.Парковая",
+          "description": "Выберите формат квартиры и посмотрите все доступные планировки.",
+          "cta_label": "Все планировки",
+          "items": [
+            {
+              "id": "plan_xa0imq1o",
+              "name": "1 спальня",
+              "price": "8 370 000 ₽",
+              "area": "от 19 м²",
+              "variants": 37,
+              "bedrooms": 1,
+              "note": "Доступно 37 вариантов",
+              "preview_image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c40fc6b0937.png",
+              "preview_images": [
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c40fc6b0937.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35f80e6db.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bf049d3293b.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35f98596d.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bf0ba79ab6f.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35fc70591.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bf2a0f291e9.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35f788feb.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bf0a6e5f323.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35fbc1b55.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bf2679e9732.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35fd6b7bf.png"
+              ]
+            },
+            {
+              "id": "plan_j6nu50ba",
+              "name": "2 спальни",
+              "price": "13 250 000 ₽",
+              "area": "от 34 м²",
+              "variants": 34,
+              "bedrooms": 2,
+              "note": "Доступно 34 вариантов",
+              "preview_image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c414b7e803e.png",
+              "preview_images": [
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c414b7e803e.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35faf374f.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c4407986777.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35fc1d83d.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bf2716786ef.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35fe15206.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c409adc4a49.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35fa9d9d7.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c4404c2ef47.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c440b508197.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35fc70591.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c40b2a50e71.png"
+              ]
+            },
+            {
+              "id": "plan_3furc7c3",
+              "name": "3 спальни",
+              "price": "18 490 000 ₽",
+              "area": "от 54 м²",
+              "variants": 27,
+              "bedrooms": 3,
+              "note": "Доступно 27 вариантов",
+              "preview_image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bf2b5a65cdf.png",
+              "preview_images": [
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bf2b5a65cdf.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35f98596d.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bf05b67dd8d.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35fa3e78f.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c40ef595104.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35f72eab0.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bf2b01e2147.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35f8c28af.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c415112c557.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35fb4d7c6.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bee580373a0.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35f5df249.png"
+              ]
+            },
+            {
+              "id": "plan_4bjz394f",
+              "name": "4 спальни",
+              "price": "29 040 000 ₽",
+              "area": "от 79 м²",
+              "variants": 2,
+              "bedrooms": 4,
+              "note": "Доступно 2 вариантов",
+              "preview_image": "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c4428ba8844.png",
+              "preview_images": [
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67c4428ba8844.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35fcc1fd7.png",
+                "https://pb4988.strana.profitbase.ru/uploads/preset/4988/67bf2847ecc0d.png",
+                "https://pb4988.strana.profitbase.ru/uploads/layout/4988/664a35f5df249.png"
+              ]
+            }
+          ]
+        }
+      }
     },
     {
       "id": "74c0204e-1532-456e-a3e0-a9609e066574",
@@ -14817,43 +15196,61 @@
   ],
   "collections": [
     {
-      "id": "4004c469-1c3c-4303-b91d-190fb34d05f8",
-      "slug": "2-лота-в-ручную",
-      "title": "2 лота в ручную",
-      "description": "Описание две штуки добавил ",
+      "id": "76159395-6314-48ed-8c89-3da445aff07b",
+      "slug": "автоматическая-подборка",
+      "title": "Автоматическая подборка ",
+      "description": "Описание автоматической подборки, критерий - лоты дешевле 11 млн",
       "priority": 6,
-      "status": "visible",
-      "mode": "manual",
-      "items": [
-        {
-          "type": "property",
-          "ref_id": "895e5a95-c50e-4406-868b-ad6215c9d651"
-        },
-        {
-          "type": "property",
-          "ref_id": "90f9080d-c79f-41fa-b891-0d5163243abb"
-        }
-      ],
-      "updated_at": "2026-02-09T12:55:22.241Z",
-      "cover_image": "/uploads/a3a090cc-8afd-4fff-9009-d6a8c8abdc28.jpg"
-    },
-    {
-      "id": "9b6e4f37-6894-4061-8651-1545bcc24723",
-      "slug": "test",
-      "title": "test",
-      "description": "описние test",
-      "priority": 5,
       "status": "visible",
       "mode": "auto",
       "items": [],
       "auto_rules": {
         "type": "property",
-        "priceMax": 12950000
+        "priceMax": 11000000
       },
-      "updated_at": "2026-02-08T12:16:21.755Z"
+      "updated_at": "2026-02-09T16:45:28.204Z",
+      "cover_image": "/uploads/0832ddb4-eda1-4fae-a989-4fed77934869.jpeg"
+    },
+    {
+      "id": "0c48c97b-978a-4d6e-98c1-077b477cb2f0",
+      "slug": "тестовая-ручная-подборка",
+      "title": "Тестовая ручная  подборка",
+      "description": "Очень клевое описание тестовой ручной подборки ",
+      "cover_image": "/uploads/4bdd6453-5269-4a57-9343-91dabdccdf37.jpg",
+      "priority": 5,
+      "status": "visible",
+      "mode": "manual",
+      "items": [
+        {
+          "type": "property",
+          "ref_id": "11102a8f-3e7a-424d-baee-7d714ea8524e"
+        },
+        {
+          "type": "property",
+          "ref_id": "feb022ce-63f3-40ad-9ec2-7ad5bc2be73d"
+        }
+      ],
+      "updated_at": "2026-02-09T16:46:09.775Z"
     }
   ],
   "leads": [
+    {
+      "id": "b1af9851-70b4-4bed-9a5f-ff5bf3b73a40",
+      "form_type": "partner",
+      "name": "тест",
+      "phone": "+7 (212) 221-21-22",
+      "comment": "тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание тест описание",
+      "source": {
+        "page": "home",
+        "block": "partner"
+      },
+      "created_at": "2026-02-10T20:28:26.636Z",
+      "ip": "::1",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 OPR/126.0.0.0",
+      "status": "rejected",
+      "updated_at": "2026-02-10T20:37:13.328Z",
+      "notes": ""
+    },
     {
       "id": "b25a92a0-a8eb-49cf-b14c-7e88d22b1fa9",
       "form_type": "consultation",
@@ -14892,21 +15289,6 @@
         "block": "header"
       },
       "created_at": "2026-02-08T14:12:27.039Z",
-      "ip": "::1",
-      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 OPR/126.0.0.0"
-    },
-    {
-      "id": "7124b705-58f1-4fb7-9850-5b4cf23b9f18",
-      "form_type": "view_details",
-      "name": "фыв",
-      "phone": "+7 (878) 778-78-88",
-      "source": {
-        "page": "catalog",
-        "block": "property_card",
-        "object_id": "44f5a7af-1e38-4975-b85d-3ff9ddb62daa",
-        "object_type": "property"
-      },
-      "created_at": "2026-02-08T14:12:07.517Z",
       "ip": "::1",
       "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 OPR/126.0.0.0"
     },

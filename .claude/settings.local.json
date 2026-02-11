@@ -10,7 +10,10 @@
       "Bash(npm run dev:*)",
       "Bash(powershell:*)",
       "Bash(netstat:*)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "Bash(git checkout:*)",
+      "Bash(npx tsc:*)",
+      "Bash(findstr:*)"
     ]
   }
 }

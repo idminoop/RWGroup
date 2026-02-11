@@ -653,8 +653,75 @@ router.get('/catalog/items', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
+router.get('/catalog/complex/:id', (req: Request, res: Response) => {
+  const id = req.params.id
+  const data = withDb((db) => {
+    const complex = db.complexes.find((item) => item.id === id)
+    if (!complex) return null
+    const properties = db.properties
+      .filter((item) => (item.complex_id ? item.complex_id === complex.id : item.complex_external_id === complex.external_id))
+      .sort((a, b) => a.price - b.price)
+    return { complex, properties }
+  })
+  if (!data) {
+    res.status(404).json({ success: false, error: 'Not found' })
+    return
+  }
+  res.json({ success: true, data })
+})
+
 router.put('/catalog/items/:type/:id', (req: Request, res: Response) => {
   const { type, id } = req.params
+
+  const landingTagSchema = z.object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+  })
+
+  const landingFactSchema = z.object({
+    id: z.string().min(1),
+    title: z.string().optional(),
+    value: z.string().optional(),
+    subtitle: z.string().optional(),
+    image: z.string().optional(),
+  })
+
+  const landingFeatureSchema = z.object({
+    id: z.string().min(1),
+    title: z.string().optional(),
+    image: z.string().optional(),
+    preset_key: z.string().optional(),
+  })
+
+  const landingPlanSchema = z.object({
+    id: z.string().min(1),
+    name: z.string().optional(),
+    price: z.string().optional(),
+    area: z.string().optional(),
+    variants: z.number().optional(),
+    bedrooms: z.number().optional(),
+    note: z.string().optional(),
+    preview_image: z.string().optional(),
+    preview_images: z.array(z.string()).optional(),
+  })
+
+  const landingSchema = z.object({
+    enabled: z.boolean(),
+    accent_color: z.string().optional(),
+    surface_color: z.string().optional(),
+    hero_image: z.string().optional(),
+    preview_photo_label: z.string().optional(),
+    cta_label: z.string().optional(),
+    tags: z.array(landingTagSchema),
+    facts: z.array(landingFactSchema),
+    feature_ticker: z.array(landingFeatureSchema),
+    plans: z.object({
+      title: z.string().optional(),
+      description: z.string().optional(),
+      cta_label: z.string().optional(),
+      items: z.array(landingPlanSchema),
+    }),
+  })
 
   // Common fields for both Property and Complex
   const commonFields = {
@@ -696,6 +763,7 @@ router.put('/catalog/items/:type/:id', (req: Request, res: Response) => {
     handover_date: z.string().optional(),
     class: z.string().optional(),
     finish_type: z.string().optional(),
+    landing: landingSchema.optional(),
   }
 
   const schema = type === 'property' ? z.object(propertyFields) : z.object(complexFields)

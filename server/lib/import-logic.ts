@@ -405,7 +405,9 @@ export function upsertComplexes(db: DbShape, sourceId: string, rows: Record<stri
     seen.add(next.external_id)
     const existing = index.get(next.external_id)
     if (existing) {
+      const preservedLanding = existing.landing
       Object.assign(existing, next)
+      if (preservedLanding) existing.landing = preservedLanding
       updated += 1
     } else {
       db.complexes.unshift({ id: newId(), ...next })

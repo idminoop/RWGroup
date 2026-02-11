@@ -1,137 +1,279 @@
-import { useMemo, useState } from 'react'
-import type { Complex } from '../../../shared/types'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Tooltip } from 'react-leaflet'
 import type { LatLngExpression } from 'leaflet'
 import { Heading, Text } from '@/components/ui/Typography'
+import { fetchPOIs, geocodeAddress, type PoiResult } from '@/lib/overpass'
 import 'leaflet/dist/leaflet.css'
 
 type PoiCategory = {
   key: string
   label: string
   color: string
-  offsets: Array<{ lat: number; lon: number }>
 }
 
 const DEFAULT_CENTER: LatLngExpression = [55.751244, 37.618423]
+const KREMLIN_COORDS = { lat: 55.752023, lon: 37.617499 }
 
 const POI_CATEGORIES: PoiCategory[] = [
-  { key: 'sport', label: 'Спорт и фитнес', color: '#2DD4BF', offsets: [{ lat: 0.009, lon: -0.006 }] },
-  { key: 'kids', label: 'Детские сады', color: '#A855F7', offsets: [{ lat: -0.006, lon: -0.01 }] },
-  { key: 'market', label: 'Супермаркеты', color: '#F97316', offsets: [{ lat: 0.004, lon: 0.012 }] },
-  { key: 'school', label: 'Школы', color: '#EAB308', offsets: [{ lat: -0.01, lon: 0.006 }] },
-  { key: 'fun', label: 'Развлечения', color: '#22C55E', offsets: [{ lat: 0.012, lon: 0.002 }] },
-  { key: 'church', label: 'Церкви и храмы', color: '#F59E0B', offsets: [{ lat: -0.004, lon: 0.014 }] },
-  { key: 'cafe', label: 'Кафе и рестораны', color: '#FB7185', offsets: [{ lat: 0.007, lon: -0.012 }] },
-  { key: 'metro', label: 'Метро', color: '#38BDF8', offsets: [{ lat: -0.012, lon: -0.002 }] },
-  { key: 'parks', label: 'Парки и скверы', color: '#34D399', offsets: [{ lat: 0.015, lon: -0.004 }] },
-  { key: 'mall', label: 'Торговые центры', color: '#60A5FA', offsets: [{ lat: -0.008, lon: 0.012 }] },
-  { key: 'business', label: 'Бизнес-центры', color: '#FACC15', offsets: [{ lat: 0.002, lon: 0.016 }] },
-  { key: 'theatre', label: 'Театры', color: '#C084FC', offsets: [{ lat: -0.014, lon: 0.002 }] },
-  { key: 'university', label: 'Университеты', color: '#4ADE80', offsets: [{ lat: 0.01, lon: 0.01 }] },
+  { key: 'cafe', label: 'Кафе и рестораны', color: '#FB7185' },
+  { key: 'church', label: 'Церкви и храмы', color: '#EAB308' },
+  { key: 'theatre', label: 'Театры', color: '#F97316' },
+  { key: 'school', label: 'Школы', color: '#D9F99D' },
+  { key: 'university', label: 'Университеты', color: '#FACC15' },
+  { key: 'sport', label: 'Спорт и фитнес', color: '#14B8A6' },
+  { key: 'kids', label: 'Детские сады', color: '#C084FC' },
+  { key: 'metro', label: 'Метро', color: '#EF4444' },
+  { key: 'parks', label: 'Парки и скверы', color: '#34D399' },
+  { key: 'mall', label: 'Торговые центры', color: '#60A5FA' },
+  { key: 'business', label: 'Бизнес-центры', color: '#A78BFA' },
+  { key: 'market', label: 'Супермаркеты', color: '#F97316' },
+  { key: 'fun', label: 'Развлечения', color: '#4ADE80' },
 ]
 
-export default function ComplexMap({ complex }: { complex: Complex }) {
-  const [enabled, setEnabled] = useState(() => new Set(POI_CATEGORIES.map((c) => c.key)))
+const TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
+
+function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const earthRadius = 6371
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2)
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return earthRadius * c
+}
+
+export type ComplexMapProps = {
+  title: string
+  district: string
+  metro?: string[]
+  geo_lat?: number
+  geo_lon?: number
+  ctaLabel?: string
+  onCtaClick?: () => void
+}
+
+export default function ComplexMap({
+  title,
+  district,
+  metro,
+  geo_lat,
+  geo_lon,
+  ctaLabel = 'Записаться на экскурсию',
+  onCtaClick,
+}: ComplexMapProps) {
+  const [enabled, setEnabled] = useState<Set<string>>(() => new Set(['metro', 'cafe']))
+  const [poiData, setPoiData] = useState<Record<string, PoiResult[]>>({})
+  const [loading, setLoading] = useState<Set<string>>(() => new Set())
+  const [nearestMetro, setNearestMetro] = useState<{ name: string; walkMinutes: number } | null>(null)
+
+  const [geocoded, setGeocoded] = useState<{ lat: number; lon: number } | null>(null)
+  const [geocoding, setGeocoding] = useState(false)
+
+  const hasDirectCoords = typeof geo_lat === 'number' && typeof geo_lon === 'number'
+
+  useEffect(() => {
+    if (hasDirectCoords || geocoded) return
+    setGeocoding(true)
+    geocodeAddress(district)
+      .then((result) => { if (result) setGeocoded(result) })
+      .finally(() => setGeocoding(false))
+  }, [district, hasDirectCoords, geocoded])
+
+  const resolvedLat = hasDirectCoords ? geo_lat : geocoded?.lat
+  const resolvedLon = hasDirectCoords ? geo_lon : geocoded?.lon
+  const hasCoords = typeof resolvedLat === 'number' && typeof resolvedLon === 'number'
 
   const center = useMemo<LatLngExpression>(() => {
-    if (typeof complex.geo_lat === 'number' && typeof complex.geo_lon === 'number') {
-      return [complex.geo_lat, complex.geo_lon]
-    }
+    if (hasCoords) return [resolvedLat!, resolvedLon!]
     return DEFAULT_CENTER
-  }, [complex.geo_lat, complex.geo_lon])
+  }, [resolvedLat, resolvedLon, hasCoords])
 
-  const hasCoords = typeof complex.geo_lat === 'number' && typeof complex.geo_lon === 'number'
+  const distanceToKremlin = useMemo(() => {
+    if (!hasCoords) return null
+    return distanceKm(resolvedLat!, resolvedLon!, KREMLIN_COORDS.lat, KREMLIN_COORDS.lon)
+  }, [hasCoords, resolvedLat, resolvedLon])
 
-  const pois = useMemo(() => {
-    if (!hasCoords) return []
-    const [baseLat, baseLon] = center as [number, number]
-    return POI_CATEGORIES.flatMap((cat) =>
-      cat.offsets.map((offset, index) => ({
-        id: `${cat.key}-${index}`,
-        category: cat,
-        position: [baseLat + offset.lat, baseLon + offset.lon] as LatLngExpression,
-      })),
-    )
-  }, [center, hasCoords])
+  const ensureCategoryLoaded = useCallback(async (key: string) => {
+    if (!hasCoords || poiData[key]) return
+    setLoading((prev) => new Set(prev).add(key))
+    try {
+      const results = await fetchPOIs(resolvedLat!, resolvedLon!, key)
+      setPoiData((prev) => ({ ...prev, [key]: results }))
+    } finally {
+      setLoading((prev) => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    }
+  }, [hasCoords, poiData, resolvedLat, resolvedLon])
 
-  const toggleCategory = (key: string) => {
+  useEffect(() => {
+    ensureCategoryLoaded('metro').catch(() => {})
+  }, [ensureCategoryLoaded])
+
+  useEffect(() => {
+    if (!hasCoords) {
+      setNearestMetro(null)
+      return
+    }
+    const metros = poiData.metro || []
+    if (!metros.length) {
+      if (metro?.[0]) setNearestMetro({ name: metro[0], walkMinutes: 0 })
+      return
+    }
+    let min: { item: PoiResult; dist: number } | null = null
+    for (const item of metros) {
+      const dist = distanceKm(resolvedLat!, resolvedLon!, item.lat, item.lon)
+      if (!min || dist < min.dist) min = { item, dist }
+    }
+    if (!min) return
+    const walkMinutes = Math.max(1, Math.round((min.dist * 1000) / 80))
+    setNearestMetro({ name: min.item.name || metro?.[0] || 'Метро', walkMinutes })
+  }, [hasCoords, metro, poiData.metro, resolvedLat, resolvedLon])
+
+  const toggleCategory = useCallback(async (key: string) => {
     setEnabled((prev) => {
       const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
+      if (next.has(key)) {
+        next.delete(key)
+        return next
+      }
+      next.add(key)
       return next
     })
-  }
+    try {
+      await ensureCategoryLoaded(key)
+    } catch {
+      setEnabled((prev) => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    }
+  }, [ensureCategoryLoaded])
+
+  const visiblePois = useMemo(() => {
+    const result: Array<{ id: string; name: string; position: LatLngExpression; color: string }> = []
+    for (const cat of POI_CATEGORIES) {
+      if (!enabled.has(cat.key)) continue
+      const items = poiData[cat.key]
+      if (!items) continue
+      for (let i = 0; i < items.length; i += 1) {
+        result.push({
+          id: `${cat.key}-${i}`,
+          name: items[i].name || cat.label,
+          position: [items[i].lat, items[i].lon],
+          color: cat.color,
+        })
+      }
+    }
+    return result
+  }, [enabled, poiData])
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
-      <div className="flex flex-col gap-1">
-        <Heading size="h3">«{complex.title}» на карте</Heading>
-        <Text className="text-slate-600">
-          {complex.district}
-          {complex.metro?.[0] ? ` • ${complex.metro[0]}` : ''}
-        </Text>
-        {!hasCoords && (
-          <Text className="text-rose-600 text-sm">Координаты объекта не заданы, показан центр Москвы.</Text>
-        )}
+    <section className="rounded-3xl border border-[#22343d] bg-[#041019] p-4 md:p-6">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <Heading size="h3" className="text-white uppercase tracking-wide">
+            {title} на карте
+          </Heading>
+          <Text className="mt-1 text-[#8fa0a7]">{district}</Text>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          {nearestMetro?.name && (
+            <span className="rounded-full border border-white/20 bg-black/30 px-3 py-1 text-white/90">
+              {nearestMetro.name}{nearestMetro.walkMinutes > 0 ? `, ${nearestMetro.walkMinutes} мин` : ''}
+            </span>
+          )}
+          {typeof distanceToKremlin === 'number' && (
+            <span className="rounded-full border border-[#A6A267]/40 bg-[#A6A267]/10 px-3 py-1 text-[#d9d6a6]">
+              До Кремля: {distanceToKremlin.toFixed(1).replace('.', ',')} км
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
+      {geocoding && (
+        <Text className="mb-3 text-sm text-[#A6A267]">Определяем местоположение...</Text>
+      )}
+      {!hasCoords && !geocoding && (
+        <Text className="mb-3 text-sm text-rose-300/80">Не удалось определить координаты объекта.</Text>
+      )}
+
+      <div className="relative overflow-hidden rounded-2xl border border-[#22343d]/80">
         <MapContainer
           key={`${String(center)}`}
           center={center}
-          zoom={13}
+          zoom={12}
           scrollWheelZoom={false}
-          className="h-[320px] w-full md:h-[460px]"
+          className="h-[360px] w-full md:h-[560px]"
         >
-          <TileLayer
-            attribution="&copy; OpenStreetMap contributors"
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          <TileLayer attribution={TILE_ATTR} url={TILE_URL} />
           {hasCoords && (
-            <CircleMarker center={center} radius={10} pathOptions={{ color: '#0F172A', fillColor: '#D6B57A', fillOpacity: 1 }}>
-              <Tooltip direction="top" offset={[0, -6]} opacity={1} permanent>
-                {complex.title}
+            <CircleMarker
+              center={center}
+              radius={11}
+              pathOptions={{ color: '#C2A87A', fillColor: '#C2A87A', fillOpacity: 1, weight: 3 }}
+            >
+              <Tooltip direction="top" offset={[0, -8]} opacity={1} permanent className="map-tooltip-main">
+                {title}
               </Tooltip>
             </CircleMarker>
           )}
-          {pois
-            .filter((poi) => enabled.has(poi.category.key))
-            .map((poi) => (
-              <CircleMarker
-                key={poi.id}
-                center={poi.position}
-                radius={6}
-                pathOptions={{ color: poi.category.color, fillColor: poi.category.color, fillOpacity: 0.9 }}
-              >
-                <Tooltip direction="top" offset={[0, -6]} opacity={0.9}>
-                  {poi.category.label}
-                </Tooltip>
-              </CircleMarker>
-            ))}
+          {visiblePois.map((poi) => (
+            <CircleMarker
+              key={poi.id}
+              center={poi.position}
+              radius={6}
+              pathOptions={{ color: poi.color, fillColor: poi.color, fillOpacity: 0.9, weight: 2 }}
+            >
+              <Tooltip direction="top" offset={[0, -6]} opacity={0.95} className="map-tooltip-poi">
+                {poi.name}
+              </Tooltip>
+            </CircleMarker>
+          ))}
         </MapContainer>
+
+        {onCtaClick && (
+          <div className="pointer-events-none absolute bottom-4 right-4 z-[500]">
+            <button
+              type="button"
+              onClick={onCtaClick}
+              className="pointer-events-auto rounded-md bg-[#C2A87A] px-6 py-3 text-sm font-medium uppercase tracking-wide text-[#041019] transition hover:brightness-110"
+            >
+              {ctaLabel}
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
         {POI_CATEGORIES.map((cat) => {
           const isOn = enabled.has(cat.key)
+          const isLoading = loading.has(cat.key)
           return (
             <button
               key={cat.key}
               type="button"
+              disabled={isLoading || !hasCoords}
               onClick={() => toggleCategory(cat.key)}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                isOn
-                  ? 'border-transparent text-slate-900'
-                  : 'border-slate-200 text-slate-500 hover:border-slate-300'
+              className={`inline-flex items-center gap-2 text-sm transition ${
+                !hasCoords ? 'cursor-not-allowed text-white/25' : isOn ? 'text-white' : 'text-white/55 hover:text-white/85'
               }`}
-              style={isOn ? { backgroundColor: `${cat.color}22`, color: cat.color } : undefined}
             >
-              {cat.label}
+              <span
+                className={`h-2.5 w-2.5 rounded-full border ${isOn ? 'border-transparent' : 'border-white/40'}`}
+                style={{ backgroundColor: isOn ? cat.color : 'transparent' }}
+              />
+              <span className={isLoading ? 'animate-pulse' : ''}>{cat.label}</span>
             </button>
           )
         })}
       </div>
-    </div>
+    </section>
   )
 }

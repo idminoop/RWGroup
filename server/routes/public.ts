@@ -60,6 +60,7 @@ router.get('/facets', (req: Request, res: Response) => {
 router.get('/catalog', (req: Request, res: Response) => {
   const schema = z.object({
     tab: z.enum(['newbuild', 'secondary', 'rent']).default('newbuild'),
+    complexId: z.string().optional(),
     bedrooms: z.string().optional(),
     priceMin: z.string().optional(),
     priceMax: z.string().optional(),
@@ -76,7 +77,7 @@ router.get('/catalog', (req: Request, res: Response) => {
     res.status(400).json({ success: false, error: 'Invalid query' })
     return
   }
-  const { tab, bedrooms, priceMin, priceMax, areaMin, areaMax, district, metro, q, page, limit } = parsed.data
+  const { tab, complexId, bedrooms, priceMin, priceMax, areaMin, areaMax, district, metro, q, page, limit } = parsed.data
   const cat = tabToCategory(tab)
   const bed = toNumber(bedrooms)
   const min = toNumber(priceMin)
@@ -90,9 +91,12 @@ router.get('/catalog', (req: Request, res: Response) => {
   const limitNum = Math.max(toNumber(limit) || 12, 1)
 
   const data = withDb((db) => {
+    const targetComplex = complexId ? db.complexes.find((c) => c.id === complexId) : null
+    const targetComplexExternalId = targetComplex?.external_id
     const filtered = db.properties
       .filter((p) => p.status === 'active')
       .filter((p) => p.category === cat)
+      .filter((p) => (complexId ? (p.complex_id === complexId || (targetComplexExternalId ? p.complex_external_id === targetComplexExternalId : false)) : true))
       .filter((p) => (typeof bed === 'number' ? p.bedrooms === bed : true))
       .filter((p) => (typeof min === 'number' ? p.price >= min : true))
       .filter((p) => (typeof max === 'number' ? p.price <= max : true))
@@ -111,6 +115,7 @@ router.get('/catalog', (req: Request, res: Response) => {
       tab === 'newbuild'
         ? db.complexes
             .filter((c) => c.status === 'active')
+            .filter((c) => (complexId ? c.id === complexId : true))
             .filter((c) => (districtLc ? c.district.toLowerCase() === districtLc : true))
             .filter((c) => (metroLc ? c.metro.some((m) => m.toLowerCase() === metroLc) : true))
             .filter((c) => (qlc ? c.title.toLowerCase().includes(qlc) || c.district.toLowerCase().includes(qlc) || c.metro.some((m) => m.toLowerCase().includes(qlc)) : true))
@@ -174,6 +179,38 @@ router.get('/collection/:id', (req: Request, res: Response) => {
     return
   }
   res.json({ success: true, data })
+})
+
+// Прокси для Nominatim геокодинга (обход CORS)
+router.get('/geocode', async (req: Request, res: Response) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : ''
+  if (!q) return res.json({ success: true, data: null })
+
+  try {
+    const params = new URLSearchParams({
+      q,
+      format: 'json',
+      limit: '1',
+      countrycodes: 'ru',
+    })
+    const resp = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+      headers: {
+        'Accept-Language': 'ru',
+        'User-Agent': 'RWGroupWebsite/1.0',
+      },
+    })
+    if (!resp.ok) return res.json({ success: true, data: null })
+
+    const json = (await resp.json()) as Array<{ lat: string; lon: string; display_name: string }>
+    if (!json.length) return res.json({ success: true, data: null })
+
+    res.json({
+      success: true,
+      data: { lat: parseFloat(json[0].lat), lon: parseFloat(json[0].lon) },
+    })
+  } catch {
+    res.json({ success: true, data: null })
+  }
 })
 
 export default router
