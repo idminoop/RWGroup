@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -11,21 +11,34 @@ interface DrawerProps {
 }
 
 export default function Drawer({ isOpen, onClose, children, side = 'left' }: DrawerProps) {
+  const panelRef = useRef<HTMLDivElement | null>(null)
+
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = 'unset'
-    }
+    const prevOverflow = document.body.style.overflow
+    if (isOpen) document.body.style.overflow = 'hidden'
     return () => {
-      document.body.style.overflow = 'unset'
+      document.body.style.overflow = prevOverflow
     }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isOpen, onClose])
+
+  useEffect(() => {
+    if (!isOpen) return
+    panelRef.current?.focus()
   }, [isOpen])
 
   if (!isOpen) return null
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex">
+    <div className="fixed inset-0 z-[2000] flex">
       {/* Backdrop */}
       <div 
         className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
@@ -33,10 +46,16 @@ export default function Drawer({ isOpen, onClose, children, side = 'left' }: Dra
       />
       
       {/* Drawer Panel */}
-      <div className={cn(
-        "relative flex h-full w-80 max-w-[85vw] flex-col bg-background p-6 shadow-xl transition-transform duration-300",
-        side === 'left' ? "animate-in slide-in-from-left" : "ml-auto animate-in slide-in-from-right"
-      )}>
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        className={cn(
+          'relative flex h-full w-80 max-w-[85vw] flex-col bg-background p-6 shadow-xl transition-transform duration-300',
+          side === 'left' ? 'animate-in slide-in-from-left' : 'ml-auto animate-in slide-in-from-right',
+        )}
+      >
         <button 
           onClick={onClose}
           className="absolute right-4 top-4 rounded-full p-2 text-muted-foreground hover:bg-secondary/10 hover:text-foreground"

@@ -106,12 +106,12 @@ export default function LeadModal() {
       ) : (
         <div className="space-y-4">
           {needsTabs && (
-            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+            <div className="inline-flex w-full rounded-lg border border-slate-200 bg-white p-1 sm:w-auto">
               <button
                 type="button"
                 onClick={() => setTab('buy')}
                 className={cn(
-                  'h-9 rounded-md px-3 text-sm font-medium transition-colors',
+                  'h-9 flex-1 rounded-md px-3 text-sm font-medium transition-colors sm:flex-none',
                   tab === 'buy' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100',
                 )}
               >
@@ -121,7 +121,7 @@ export default function LeadModal() {
                 type="button"
                 onClick={() => setTab('sell')}
                 className={cn(
-                  'h-9 rounded-md px-3 text-sm font-medium transition-colors',
+                  'h-9 flex-1 rounded-md px-3 text-sm font-medium transition-colors sm:flex-none',
                   tab === 'sell' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100',
                 )}
               >
@@ -176,11 +176,11 @@ export default function LeadModal() {
 
           {error ? <div className="text-sm text-rose-600">{error}</div> : null}
 
-          <div className="flex items-center justify-between gap-3">
-            <Button variant="outline" onClick={onClose}>
+          <div className="flex flex-col-reverse items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+            <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
               Отмена
             </Button>
-            <Button onClick={submit} disabled={!canSubmit} loading={loading}>
+            <Button onClick={submit} disabled={!canSubmit} loading={loading} className="w-full sm:w-auto">
               {loading ? 'Отправка…' : 'Отправить'}
             </Button>
           </div>

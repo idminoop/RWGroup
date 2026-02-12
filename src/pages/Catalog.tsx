@@ -132,7 +132,7 @@ export default function CatalogPage() {
             <CatalogTabs value={tab} onChange={(t) => setTab(t)} />
           </div>
 
-          <div className="mt-6 rounded-xl border border-white/10 bg-[#0b1d2b]/90 p-4 backdrop-blur-sm">
+          <div className="mt-6 rounded-xl border border-white/10 bg-[#0b1d2b]/90 p-3 backdrop-blur-sm sm:p-4">
             <CatalogFilters tab={tab} value={filters} onChange={setFilters} />
           </div>
 
@@ -171,12 +171,12 @@ export default function CatalogPage() {
                           <PropertyCard key={p.id} item={p} />
                         ))}
                       </div>
-                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                         <div>
                           {UI.total}:{' '}
                           <span className="font-semibold text-slate-900">{data?.total || 0}</span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-start">
                           <Button size="sm" variant="secondary" onClick={() => setPage(Math.max(page - 1, 1))} disabled={page <= 1}>
                             {UI.prev}
                           </Button>
@@ -199,17 +199,17 @@ export default function CatalogPage() {
         </div>
       </div>
 
-      <section className="bg-background py-16">
+      <section className="bg-background py-12 md:py-16">
         <div className="mx-auto max-w-6xl px-4">
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-3 md:gap-6">
             <div
               onClick={() => {
                 trackEvent('click_buy_sell', { page: 'catalog', block: 'buy_cta', tab: 'buy' })
                 openLeadModal('buy_sell', { page: 'catalog', block: 'buy_cta' }, { initialTab: 'buy' })
               }}
-              className="group relative flex cursor-pointer items-stretch overflow-hidden rounded-sm border border-white/10 transition-colors hover:border-white/25"
+              className="group relative flex min-h-[180px] cursor-pointer items-stretch overflow-hidden rounded-sm border border-white/10 transition-colors hover:border-white/25 sm:min-h-[220px]"
             >
-              <div className="flex flex-1 flex-col justify-center p-8 lg:p-10">
+              <div className="flex flex-1 flex-col justify-center p-5 sm:p-6 lg:p-10">
                 <Heading size="h3" className="font-serif text-2xl font-normal leading-tight text-white lg:text-3xl">
                   {UI.buy.split(' ').slice(0, 1).join(' ')}
                   <br />
@@ -231,9 +231,9 @@ export default function CatalogPage() {
                 trackEvent('click_buy_sell', { page: 'catalog', block: 'sell_cta', tab: 'sell' })
                 openLeadModal('buy_sell', { page: 'catalog', block: 'sell_cta' }, { initialTab: 'sell' })
               }}
-              className="group relative flex cursor-pointer items-stretch overflow-hidden rounded-sm border border-white/10 transition-colors hover:border-white/25"
+              className="group relative flex min-h-[180px] cursor-pointer items-stretch overflow-hidden rounded-sm border border-white/10 transition-colors hover:border-white/25 sm:min-h-[220px]"
             >
-              <div className="flex flex-1 flex-col justify-center p-8 lg:p-10">
+              <div className="flex flex-1 flex-col justify-center p-5 sm:p-6 lg:p-10">
                 <Heading size="h3" className="font-serif text-2xl font-normal leading-tight text-white lg:text-3xl">
                   {UI.sell.split(' ').slice(0, 1).join(' ')}
                   <br />
@@ -255,9 +255,9 @@ export default function CatalogPage() {
                 trackEvent('click_buy_sell', { page: 'catalog', block: 'rent_cta', tab: 'sell' })
                 openLeadModal('consultation', { page: 'catalog', block: 'rent_cta' })
               }}
-              className="group relative flex cursor-pointer items-stretch overflow-hidden rounded-sm border border-white/10 transition-colors hover:border-white/25"
+              className="group relative flex min-h-[180px] cursor-pointer items-stretch overflow-hidden rounded-sm border border-white/10 transition-colors hover:border-white/25 sm:min-h-[220px]"
             >
-              <div className="flex flex-1 flex-col justify-center p-8 lg:p-10">
+              <div className="flex flex-1 flex-col justify-center p-5 sm:p-6 lg:p-10">
                 <Heading size="h3" className="font-serif text-2xl font-normal leading-tight text-white lg:text-3xl">
                   {UI.rentOut.split(' ').slice(0, 1).join(' ')}
                   <br />

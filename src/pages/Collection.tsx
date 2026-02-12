@@ -25,7 +25,7 @@ export default function CollectionPage() {
 
   return (
     <SiteLayout>
-      <div className="mx-auto w-full max-w-6xl px-4 py-10">
+      <div className="mx-auto w-full max-w-6xl px-4 py-8 md:py-10">
         {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : null}
         {!data ? (
           <div className="h-80 animate-pulse rounded-xl border border-slate-200 bg-slate-50" />
@@ -33,11 +33,11 @@ export default function CollectionPage() {
           <>
             <Card className="overflow-hidden border-slate-200 bg-white">
               {data.collection.cover_image ? (
-                <img src={data.collection.cover_image} alt={data.collection.title} className="h-72 w-full object-cover" />
+                <img src={data.collection.cover_image} alt={data.collection.title} className="h-56 w-full object-cover sm:h-64 md:h-72" />
               ) : (
-                <div className="h-72 w-full bg-slate-100" />
+                <div className="h-56 w-full bg-slate-100 sm:h-64 md:h-72" />
               )}
-              <CardContent className="p-6">
+              <CardContent className="p-4 sm:p-6">
                 <Badge variant="secondary" className="mb-2">Подборка</Badge>
                 <Heading size="h2" className="mt-1">{data.collection.title}</Heading>
                 {data.collection.description ? <Text className="mt-2 text-slate-600">{data.collection.description}</Text> : null}
@@ -51,7 +51,7 @@ export default function CollectionPage() {
 
             <div className="mt-8">
               <Heading size="h4" className="mb-3">Состав подборки</Heading>
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                 {data.items.map((it) =>
                   it.type === 'property' ? <PropertyCard key={it.ref.id} item={it.ref} /> : <ComplexCard key={it.ref.id} item={it.ref} />,
                 )}

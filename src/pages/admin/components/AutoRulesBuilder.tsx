@@ -79,7 +79,7 @@ export default function AutoRulesBuilder({ value, onChange }: Props) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <label className="text-xs font-medium text-slate-700">Цена от</label>
           <Input
@@ -102,7 +102,7 @@ export default function AutoRulesBuilder({ value, onChange }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <label className="text-xs font-medium text-slate-700">Площадь от</label>
           <Input

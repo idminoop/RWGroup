@@ -355,14 +355,14 @@ export default function AdminComplexSettingsPage() {
               Визуальный редактор страницы ЖК: первый экран, теги, факты, фишки и планировки.
             </div>
           </div>
-          <div className="flex min-w-[280px] flex-wrap gap-2">
+          <div className="flex min-w-0 flex-wrap gap-2">
             <Input
               value={pickerFilter}
               onChange={(e) => setPickerFilter(e.target.value)}
               placeholder="Фильтр по названию/району..."
-              className="min-w-[220px] flex-1"
+              className="min-w-0 flex-1"
             />
-            <Select value={selectedId} onChange={(e) => setSelectedComplex(e.target.value)} className="min-w-[260px] flex-1">
+            <Select value={selectedId} onChange={(e) => setSelectedComplex(e.target.value)} className="min-w-0 flex-1">
               <option value="">Выберите ЖК...</option>
               {filteredComplexes.map((item) => (
                 <option key={item.id} value={item.id}>

@@ -99,12 +99,17 @@ export default function ComplexPage() {
   const [isTickerDragging, setIsTickerDragging] = useState(false)
   const isTickerDraggingRef = useRef(false)
   const tickerAutoPosRef = useRef(0)
+  const tickerManualPauseUntilRef = useRef(0)
   const tickerViewportRef = useRef<HTMLDivElement | null>(null)
   const tickerDragRef = useRef<{ active: boolean; startX: number; startScrollLeft: number }>({
     active: false,
     startX: 0,
     startScrollLeft: 0,
   })
+
+  const pauseTickerAutoScroll = (durationMs = 1400) => {
+    tickerManualPauseUntilRef.current = performance.now() + durationMs
+  }
 
   useEffect(() => {
     if (!id) return
@@ -220,7 +225,8 @@ export default function ComplexPage() {
       lastTime = now
 
       const hasOverflow = el.scrollWidth > el.clientWidth + 1
-      if (!isTickerDraggingRef.current && hasOverflow) {
+      const isPausedByUser = now < tickerManualPauseUntilRef.current
+      if (!isTickerDraggingRef.current && !isPausedByUser && hasOverflow) {
         const cycleWidth = el.scrollWidth / 2
         if (cycleWidth > 1) {
           const delta = (speedPxPerSec * dt) / 1000
@@ -252,16 +258,24 @@ export default function ComplexPage() {
       startX: event.clientX,
       startScrollLeft: viewport.scrollLeft,
     }
+    pauseTickerAutoScroll(2200)
     tickerAutoPosRef.current = viewport.scrollLeft
     isTickerDraggingRef.current = true
     setIsTickerDragging(true)
-    event.currentTarget.setPointerCapture(event.pointerId)
+    if (event.currentTarget.setPointerCapture) {
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch {
+        // Some browsers may reject pointer capture in edge cases.
+      }
+    }
   }
 
   const onTickerPointerMove: React.PointerEventHandler<HTMLDivElement> = (event) => {
     const viewport = tickerViewportRef.current
     if (!viewport || !tickerDragRef.current.active) return
     event.preventDefault()
+    pauseTickerAutoScroll(2200)
     const dx = event.clientX - tickerDragRef.current.startX
     viewport.scrollLeft = tickerDragRef.current.startScrollLeft - dx
     tickerAutoPosRef.current = viewport.scrollLeft
@@ -270,12 +284,50 @@ export default function ComplexPage() {
   const onTickerPointerEnd: React.PointerEventHandler<HTMLDivElement> = (event) => {
     const viewport = tickerViewportRef.current
     if (viewport) tickerAutoPosRef.current = viewport.scrollLeft
+    pauseTickerAutoScroll(1200)
     tickerDragRef.current.active = false
     isTickerDraggingRef.current = false
     setIsTickerDragging(false)
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
+  }
+
+  const onTickerTouchStart: React.TouchEventHandler<HTMLDivElement> = (event) => {
+    const viewport = tickerViewportRef.current
+    if (!viewport) return
+    const touch = event.touches[0]
+    if (!touch) return
+    tickerDragRef.current = {
+      active: true,
+      startX: touch.clientX,
+      startScrollLeft: viewport.scrollLeft,
+    }
+    pauseTickerAutoScroll(2200)
+    tickerAutoPosRef.current = viewport.scrollLeft
+    isTickerDraggingRef.current = true
+    setIsTickerDragging(true)
+  }
+
+  const onTickerTouchMove: React.TouchEventHandler<HTMLDivElement> = (event) => {
+    const viewport = tickerViewportRef.current
+    if (!viewport || !tickerDragRef.current.active) return
+    const touch = event.touches[0]
+    if (!touch) return
+    event.preventDefault()
+    pauseTickerAutoScroll(2200)
+    const dx = touch.clientX - tickerDragRef.current.startX
+    viewport.scrollLeft = tickerDragRef.current.startScrollLeft - dx
+    tickerAutoPosRef.current = viewport.scrollLeft
+  }
+
+  const onTickerTouchEnd: React.TouchEventHandler<HTMLDivElement> = () => {
+    const viewport = tickerViewportRef.current
+    if (viewport) tickerAutoPosRef.current = viewport.scrollLeft
+    pauseTickerAutoScroll(1200)
+    tickerDragRef.current.active = false
+    isTickerDraggingRef.current = false
+    setIsTickerDragging(false)
   }
 
   const openGallery = (index = 0) => {
@@ -295,7 +347,7 @@ export default function ComplexPage() {
 
   return (
     <SiteLayout>
-      <div className="bg-[radial-gradient(circle_at_20%_0%,#0a2231_0%,#06141f_40%,#041019_100%)] text-white">
+      <div className="overflow-x-hidden bg-[radial-gradient(circle_at_20%_0%,#0a2231_0%,#06141f_40%,#041019_100%)] text-white">
         {error && (
           <div className="mx-auto max-w-6xl px-4 pt-10">
             <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-400">{error}</div>
@@ -304,12 +356,12 @@ export default function ComplexPage() {
 
         {!data || !landing ? (
           <div className="mx-auto max-w-6xl space-y-4 px-4 py-10">
-            <div className="h-[420px] animate-pulse rounded-2xl bg-white/5" />
+            <div className="h-[300px] animate-pulse rounded-2xl bg-white/5 sm:h-[420px]" />
             <div className="h-40 animate-pulse rounded-2xl bg-white/5" />
           </div>
         ) : (
           <>
-          <section className="relative h-[78vh] min-h-[520px] w-full overflow-hidden">
+          <section className="relative h-[72svh] min-h-[460px] w-full overflow-hidden md:h-[78vh] md:min-h-[520px]">
             {heroImage ? (
               <img src={heroImage} alt={c.title} className="h-full w-full object-cover" />
             ) : (
@@ -317,7 +369,7 @@ export default function ComplexPage() {
             )}
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(255,255,255,0.15),transparent_35%),linear-gradient(to_top,rgba(2,8,16,0.95),rgba(2,8,16,0.35),rgba(2,8,16,0.1))]" />
 
-            <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-6xl px-4 pb-12">
+            <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-6xl px-4 pb-8 md:pb-12">
               <div className="mb-5 flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">{UI.complex}</Badge>
                 {previewDraftMode && <Badge variant="warning">{UI.preview}</Badge>}
@@ -331,7 +383,7 @@ export default function ComplexPage() {
                 ))}
               </div>
 
-              <h1 className="max-w-4xl text-4xl font-semibold tracking-tight text-white md:text-6xl">
+              <h1 className="max-w-4xl text-3xl font-semibold tracking-tight text-white sm:text-4xl md:text-6xl">
                 {decodeEscapedUnicode(c.title)}
               </h1>
 
@@ -343,7 +395,7 @@ export default function ComplexPage() {
                 </span>
               </div>
 
-              <div className="mt-8 flex flex-wrap items-center gap-4">
+              <div className="mt-6 flex flex-col items-start gap-3 sm:mt-8 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                 <div className="rounded-xl border border-white/20 bg-black/35 px-5 py-3 backdrop-blur">
                   <div className="text-xs uppercase tracking-[0.1em] text-white/45">Цена от</div>
                   <div className="mt-1 text-2xl font-semibold text-white">
@@ -351,7 +403,7 @@ export default function ComplexPage() {
                   </div>
                 </div>
                 <Button
-                  className="h-12 rounded-xl px-6 text-sm font-semibold"
+                  className="h-11 w-full rounded-xl px-5 text-sm font-semibold sm:h-12 sm:w-auto sm:px-6"
                   style={{ backgroundColor: accent, color: '#081015' }}
                   onClick={() =>
                     openLeadModal('view_details', {
@@ -370,7 +422,7 @@ export default function ComplexPage() {
             {presentableImages.length > 1 && (
               <button
                 onClick={() => openGallery(0)}
-                className="absolute right-5 top-5 flex items-center gap-2 rounded-full border border-white/20 bg-black/40 px-4 py-2 text-sm text-white backdrop-blur-sm transition hover:bg-black/60"
+                className="absolute right-3 top-3 flex items-center gap-2 rounded-full border border-white/20 bg-black/40 px-3 py-1.5 text-xs text-white backdrop-blur-sm transition hover:bg-black/60 sm:right-5 sm:top-5 sm:px-4 sm:py-2 sm:text-sm"
               >
                 <Camera className="h-4 w-4" />
                 {presentableImages.length} {UI.photos}
@@ -415,7 +467,7 @@ export default function ComplexPage() {
                       <div className="absolute inset-0 bg-gradient-to-t from-[#021019] via-[#021019]/70 to-transparent" />
                       <div className="relative z-10 p-4">
                         <div className="text-xs uppercase tracking-[0.08em] text-white/55">{decodeEscapedUnicode(fact.title)}</div>
-                        <div className="mt-1 text-3xl font-semibold text-white">{decodeEscapedUnicode(fact.value)}</div>
+                        <div className="mt-1 text-2xl font-semibold text-white sm:text-3xl">{decodeEscapedUnicode(fact.value)}</div>
                         {fact.subtitle ? <div className="mt-1 text-xs text-white/65">{decodeEscapedUnicode(fact.subtitle)}</div> : null}
                       </div>
                     </article>
@@ -431,12 +483,16 @@ export default function ComplexPage() {
                 onPointerMove={onTickerPointerMove}
                 onPointerUp={onTickerPointerEnd}
                 onPointerCancel={onTickerPointerEnd}
+                onTouchStart={onTickerTouchStart}
+                onTouchMove={onTickerTouchMove}
+                onTouchEnd={onTickerTouchEnd}
+                onTouchCancel={onTickerTouchEnd}
                 onContextMenu={(event) => event.preventDefault()}
               >
                 <div className="rw-feature-ticker">
                   {[...tickerCycleItems, ...tickerCycleItems].map((feature, index) => (
-                    <article key={`${feature.id}_${index}`} className="w-[118px] shrink-0 text-center select-none" draggable={false}>
-                      <div className="relative mx-auto h-[108px] w-[108px] overflow-hidden rounded-full border border-white/20 bg-black/25">
+                    <article key={`${feature.id}_${index}`} className="w-[102px] shrink-0 text-center select-none sm:w-[118px]" draggable={false}>
+                      <div className="relative mx-auto h-[92px] w-[92px] overflow-hidden rounded-full border border-white/20 bg-black/25 sm:h-[108px] sm:w-[108px]">
                         {feature.image ? (
                           <img src={feature.image} alt={decodeEscapedUnicode(feature.title)} className="h-full w-full object-cover" draggable={false} />
                         ) : (
@@ -453,8 +509,8 @@ export default function ComplexPage() {
             </section>
 
             <section className="mt-12 rounded-3xl border border-white/10 p-4 md:p-6" style={{ backgroundColor: surface }}>
-              <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
-                <div>
+              <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="min-w-0">
                   <Heading size="h3" className="text-white">
                     {decodeEscapedUnicode(landing.plans.title || UI.plansFallback)}
                   </Heading>
@@ -466,25 +522,27 @@ export default function ComplexPage() {
                     {planItems.map((item) => (
                       <div
                         key={item.id}
-                        className="flex w-full items-center gap-3 border-b border-white/10 px-4 py-4 text-left transition last:border-b-0 hover:bg-white/[0.04]"
+                        className="flex w-full flex-col items-stretch gap-3 border-b border-white/10 px-3 py-3 text-left transition last:border-b-0 hover:bg-white/[0.04] md:flex-row md:items-center md:px-4 md:py-4"
                         style={{ backgroundColor: activePlan?.id === item.id ? 'rgba(255,255,255,0.06)' : 'transparent' }}
                       >
                         <button
                           type="button"
                           onClick={() => setActivePlanId(item.id)}
-                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                          className="flex min-w-0 flex-1 flex-col gap-2 text-left md:flex-row md:items-center md:gap-3"
                         >
-                          <div className="min-w-[130px] text-sm font-semibold text-white">{decodeEscapedUnicode(item.name)}</div>
-                          <div className="flex-1 text-sm text-white/75">{decodeEscapedUnicode(item.price || 'Цена по запросу')}</div>
-                          <div className="w-24 text-sm text-white/65">{decodeEscapedUnicode(item.area || 'от -')}</div>
-                          <div className="w-32 text-right text-xs text-white/55">{planVariantsLabel(item.variants)}</div>
-                          <ChevronRight className="h-4 w-4 text-white/50" />
+                          <div className="text-sm font-semibold text-white md:min-w-[100px] lg:min-w-[120px]">{decodeEscapedUnicode(item.name)}</div>
+                          <div className="min-w-0 flex-1 text-sm text-white/75">{decodeEscapedUnicode(item.price || 'Цена по запросу')}</div>
+                          <div className="flex flex-wrap items-center gap-3 md:ml-auto md:flex-nowrap md:gap-4">
+                            <div className="text-sm text-white/65 md:w-24">{decodeEscapedUnicode(item.area || 'от -')}</div>
+                            <div className="text-xs text-white/55 md:w-28 md:text-right lg:w-32">{planVariantsLabel(item.variants)}</div>
+                            <ChevronRight className="hidden h-4 w-4 text-white/50 md:block" />
+                          </div>
                         </button>
                         <Button
                           size="sm"
                           variant="secondary"
                           onClick={() => openCatalogForPlan(item)}
-                          className="shrink-0"
+                          className="w-full shrink-0 md:w-auto"
                         >
                           Смотреть
                         </Button>
@@ -501,7 +559,7 @@ export default function ComplexPage() {
                   </Button>
                 </div>
 
-                <aside className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <aside className="min-w-0 rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="text-xs uppercase tracking-[0.1em] text-white/45">Формат</div>
                   <div className="mt-1 text-lg font-semibold text-white">{decodeEscapedUnicode(activePlan?.name || 'Планировка')}</div>
                   <div className="mt-3 text-sm text-white/65">{defaultPlanNote(activePlan)}</div>
@@ -510,10 +568,10 @@ export default function ComplexPage() {
                       <img
                         src={activePlanImages[activePlanImageIndex] || activePlanImages[0]}
                         alt={activePlan?.name}
-                        className="h-[200px] w-full object-cover"
+                        className="h-[180px] w-full object-cover sm:h-[200px]"
                       />
                     ) : (
-                      <div className="flex h-[200px] items-center justify-center bg-white/[0.04] text-sm text-white/35">
+                      <div className="flex h-[180px] items-center justify-center bg-white/[0.04] text-sm text-white/35 sm:h-[200px]">
                         Планы из фида появятся после импорта
                       </div>
                     )}
@@ -541,7 +599,7 @@ export default function ComplexPage() {
             <section className="mt-12">
               <Suspense
                 fallback={(
-                  <div className="h-[420px] animate-pulse rounded-3xl border border-white/10 bg-white/[0.03]" />
+                  <div className="h-[300px] animate-pulse rounded-3xl border border-white/10 bg-white/[0.03] sm:h-[420px]" />
                 )}
               >
                 <ComplexMap

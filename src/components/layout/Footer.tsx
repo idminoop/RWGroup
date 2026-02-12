@@ -4,8 +4,8 @@ import { Text } from '@/components/ui/Typography'
 export default function Footer() {
   return (
     <footer className="border-t border-white/10 bg-[#000A0D] text-white">
-      <div className="mx-auto w-full max-w-7xl px-4 py-16">
-        <div className="grid gap-8 md:grid-cols-4">
+      <div className="mx-auto w-full max-w-7xl px-4 py-12 md:py-16">
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <div className="flex items-center gap-2 mb-4">
                <img src="/rwgroup.svg" alt="RWgroup" className="h-8 w-auto invert" />
@@ -45,7 +45,7 @@ export default function Footer() {
             </div>
           </div>
         </div>
-        <div className="mt-16 border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="mt-10 flex flex-col items-start justify-between gap-4 border-t border-white/10 pt-6 md:mt-16 md:flex-row md:items-center md:pt-8">
            <Text size="xs" className="text-gray-600">© {new Date().getFullYear()} RWgroup. Все права защищены.</Text>
         </div>
       </div>

@@ -175,7 +175,7 @@ export default function ComplexMap({
   }, [enabled, poiData])
 
   return (
-    <section className="rounded-3xl border border-[#22343d] bg-[#041019] p-4 md:p-6">
+    <section className="rounded-3xl border border-[#22343d] bg-[#041019] p-3 sm:p-4 md:p-6">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <Heading size="h3" className="text-white uppercase tracking-wide">
@@ -210,7 +210,7 @@ export default function ComplexMap({
           center={center}
           zoom={12}
           scrollWheelZoom={false}
-          className="h-[360px] w-full md:h-[560px]"
+          className="h-[300px] w-full sm:h-[360px] md:h-[560px]"
         >
           <TileLayer attribution={TILE_ATTR} url={TILE_URL} />
           {hasCoords && (
@@ -239,11 +239,11 @@ export default function ComplexMap({
         </MapContainer>
 
         {onCtaClick && (
-          <div className="pointer-events-none absolute bottom-4 right-4 z-[500]">
+          <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-[500] sm:bottom-4 sm:left-auto sm:right-4">
             <button
               type="button"
               onClick={onCtaClick}
-              className="pointer-events-auto rounded-md bg-[#C2A87A] px-6 py-3 text-sm font-medium uppercase tracking-wide text-[#041019] transition hover:brightness-110"
+              className="pointer-events-auto w-full rounded-md bg-[#C2A87A] px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-[#041019] transition hover:brightness-110 sm:w-auto sm:px-6 sm:py-3 sm:text-sm"
             >
               {ctaLabel}
             </button>

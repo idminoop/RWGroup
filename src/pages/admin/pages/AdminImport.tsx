@@ -1094,7 +1094,7 @@ export default function AdminImportPage() {
             />
           </div>
           
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="text-xs font-medium text-slate-700">Формат</label>
               <Select value={feedForm.format} onChange={(e) => setFeedForm({...feedForm, format: e.target.value as any})}>
@@ -1174,7 +1174,7 @@ export default function AdminImportPage() {
 
                 <div className="space-y-2">
                   {MAPPING_CONFIG.map((field) => (
-                    <div key={field.key} className="grid grid-cols-3 gap-2 items-center">
+                    <div key={field.key} className="grid grid-cols-1 items-center gap-2 sm:grid-cols-3">
                       <div className="text-xs text-slate-700 font-medium col-span-1">
                         {field.label}
                         {field.required && <span className="text-rose-500">*</span>}

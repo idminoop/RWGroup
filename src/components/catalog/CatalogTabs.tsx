@@ -10,7 +10,7 @@ const TABS: { key: Tab; title: string }[] = [
 
 export default function CatalogTabs({ value, onChange }: { value: Tab; onChange: (t: Tab) => void }) {
   return (
-    <div className="inline-flex gap-1 rounded-lg border border-slate-700 bg-surface p-1">
+    <div className="inline-flex w-full flex-wrap gap-1 rounded-lg border border-slate-700 bg-surface p-1 sm:w-auto sm:flex-nowrap">
       {TABS.map((t) => (
         <Button
           key={t.key}
@@ -18,7 +18,7 @@ export default function CatalogTabs({ value, onChange }: { value: Tab; onChange:
           onClick={() => onChange(t.key)}
           variant={value === t.key ? 'default' : 'ghost'}
           size="sm"
-          className={value === t.key ? '' : 'text-slate-400 hover:bg-white/5 hover:text-white'}
+          className={value === t.key ? 'flex-1 sm:flex-none' : 'flex-1 text-slate-400 hover:bg-white/5 hover:text-white sm:flex-none'}
         >
           {t.title}
         </Button>

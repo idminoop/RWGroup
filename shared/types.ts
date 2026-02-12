@@ -3,69 +3,12 @@ export type Category = 'newbuild' | 'secondary' | 'rent'
 export type RecordStatus = 'active' | 'hidden' | 'archived'
 
 export type FormType = 'consultation' | 'buy_sell' | 'view_details' | 'partner'
-export type LeadStatus = 'new' | 'in_progress' | 'done' | 'spam'
 
 export type CatalogTab = 'newbuild' | 'secondary' | 'rent'
 
 export type CollectionMode = 'manual' | 'auto'
 
 export type Id = string
-
-export interface ComplexLandingTag {
-  id: string
-  label: string
-}
-
-export interface ComplexLandingFact {
-  id: string
-  title: string
-  value: string
-  subtitle?: string
-  image?: string
-}
-
-export interface ComplexLandingFeature {
-  id: string
-  title: string
-  image?: string
-  preset_key?: string
-}
-
-export interface LandingFeaturePreset {
-  key: string
-  title: string
-  image: string
-}
-
-export interface ComplexLandingPlanItem {
-  id: string
-  name: string
-  price?: string
-  area?: string
-  variants?: number
-  bedrooms?: number
-  note?: string
-  preview_image?: string
-  preview_images?: string[]
-}
-
-export interface ComplexLandingConfig {
-  enabled: boolean
-  accent_color?: string
-  surface_color?: string
-  hero_image?: string
-  preview_photo_label?: string
-  cta_label?: string
-  tags: ComplexLandingTag[]
-  facts: ComplexLandingFact[]
-  feature_ticker: ComplexLandingFeature[]
-  plans: {
-    title?: string
-    description?: string
-    cta_label?: string
-    items: ComplexLandingPlanItem[]
-  }
-}
 
 export interface Complex {
   id: Id
@@ -87,7 +30,6 @@ export interface Complex {
   description?: string
   geo_lat?: number
   geo_lon?: number
-  landing?: ComplexLandingConfig
   last_seen_at?: string
   updated_at: string
 }
@@ -163,11 +105,7 @@ export interface Lead {
   phone: string
   comment?: string
   source: { page: string; block?: string; object_id?: string; object_type?: 'property' | 'complex' | 'collection' }
-  lead_status: LeadStatus
-  assignee?: string
-  admin_note?: string
   created_at: string
-  updated_at?: string
   ip?: string
   user_agent?: string
 }
@@ -180,9 +118,6 @@ export interface FeedSource {
   format: 'xlsx' | 'csv' | 'xml' | 'json'
   is_active: boolean
   mapping?: Record<string, string>
-  auto_refresh?: boolean
-  refresh_interval_hours?: number
-  last_auto_refresh?: string
   created_at: string
 }
 
@@ -195,11 +130,6 @@ export interface ImportRun {
   status: 'success' | 'failed' | 'partial'
   stats: { inserted: number; updated: number; hidden: number }
   error_log?: string
-  feed_name?: string
-  feed_url?: string
-  feed_file?: string
-  target_complex_id?: string
-  action?: 'import' | 'preview' | 'delete'
 }
 
 export interface ImportPreviewRow {
@@ -246,7 +176,6 @@ export interface HomeContent {
 export interface DbShape {
   home: HomeContent
   feed_sources: FeedSource[]
-  landing_feature_presets?: LandingFeaturePreset[]
   complexes: Complex[]
   properties: Property[]
   collections: Collection[]

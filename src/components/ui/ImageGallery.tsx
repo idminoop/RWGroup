@@ -55,7 +55,7 @@ export default function ImageGallery({ images, initialIndex = 0, open, onClose, 
   if (!open || images.length === 0) return null
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[2000] bg-black/95 backdrop-blur-sm">
       {/* Header */}
       <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent p-4">
         <div className="text-white">

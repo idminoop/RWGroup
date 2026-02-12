@@ -67,6 +67,7 @@
   scrollbar-width: none;
   -ms-overflow-style: none;
   touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
   user-select: none;
   -webkit-user-select: none;
   -moz-user-select: none;

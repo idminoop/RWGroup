@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import SiteLayout from '@/components/layout/SiteLayout'
 import Button from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { Card, CardContent } from '@/components/ui/Card'
+import { Card } from '@/components/ui/Card'
 import { Heading, Text } from '@/components/ui/Typography'
 import ImageGallery from '@/components/ui/ImageGallery'
 import ComplexMap from '@/components/complex/ComplexMap'
@@ -41,17 +41,17 @@ export default function PropertyPage() {
 
   return (
     <SiteLayout>
-      <div className="mx-auto w-full max-w-6xl px-4 py-10">
+      <div className="mx-auto w-full max-w-6xl px-4 py-8 md:py-10">
         {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : null}
         {!data ? (
           <div className="h-80 animate-pulse rounded-xl border border-slate-200 bg-slate-50" />
         ) : (
           <>
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-5 lg:grid-cols-2 md:gap-6">
               <Card className="overflow-hidden border-slate-200 bg-white">
                 <button
                   onClick={() => openGallery('presentable', 0)}
-                  className="relative h-80 w-full cursor-pointer transition-opacity hover:opacity-90"
+                  className="relative h-64 w-full cursor-pointer transition-opacity hover:opacity-90 sm:h-72 md:h-80"
                 >
                   {coverImage ? (
                     <img src={coverImage} alt={data.property.title} className="h-full w-full object-cover" />
@@ -65,7 +65,7 @@ export default function PropertyPage() {
                   </div>
                 </button>
                 {presentableImages.length > 1 && (
-                  <div className="grid grid-cols-4 gap-2 p-3">
+                  <div className="grid grid-cols-3 gap-2 p-3 sm:grid-cols-4">
                     {presentableImages.slice(0, 4).map((src, idx) => (
                       <button
                         key={src}
@@ -79,7 +79,7 @@ export default function PropertyPage() {
                 )}
               </Card>
 
-            <Card className="border-slate-200 bg-white p-6">
+            <Card className="border-slate-200 bg-white p-4 sm:p-6">
               <div className="flex items-start gap-2">
                 <Badge variant="secondary">{data.property.deal_type === 'rent' ? 'Аренда' : 'Продажа'}</Badge>
                 {data.property.is_euroflat && <Badge variant="accent">Европланировка</Badge>}
@@ -99,7 +99,7 @@ export default function PropertyPage() {
                 </div>
               ) : null}
 
-              <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
+              <div className="mt-6 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                 <div>
                   <Text size="xs" muted>Цена</Text>
                   <div className="flex items-baseline gap-2">
@@ -191,7 +191,7 @@ export default function PropertyPage() {
 
           {/* Description Section */}
           {data.property.description && (
-            <Card className="mt-6 border-slate-200 bg-white p-6">
+            <Card className="mt-6 border-slate-200 bg-white p-4 sm:p-6">
               <Heading size="h3" className="mb-3">Описание</Heading>
               <Text className="whitespace-pre-line text-slate-700 leading-relaxed">
                 {data.property.description}
@@ -201,7 +201,7 @@ export default function PropertyPage() {
 
           {/* Additional Info Section */}
           {(data.property.building_section || data.property.building_state || data.complex?.developer) && (
-            <Card className="mt-6 border-slate-200 bg-white p-6">
+            <Card className="mt-6 border-slate-200 bg-white p-4 sm:p-6">
               <Heading size="h3" className="mb-4">Дополнительная информация</Heading>
               <div className="grid gap-3 text-sm md:grid-cols-2">
                 {data.complex?.developer && (
@@ -264,7 +264,7 @@ export default function PropertyPage() {
           {layoutImages.length > 0 && (
             <div className="mt-8">
               <Heading size="h3" className="mb-4">Планировки</Heading>
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {layoutImages.map((src, idx) => (
                   <button
                     key={src}
