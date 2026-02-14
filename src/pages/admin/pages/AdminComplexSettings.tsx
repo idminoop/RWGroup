@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
+import type { LatLngExpression } from 'leaflet'
 import { useSearchParams } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api'
+import { geocodeAddress } from '@/lib/overpass'
 import { useUiStore } from '@/store/useUiStore'
 import {
   buildAutoLandingConfig,
   createLandingFact,
   createLandingFeature,
+  createLandingNearby,
+  createLandingNearbyPlace,
   createLandingTag,
   FACT_IMAGE_PRESETS,
   inferFeaturePresetKey,
@@ -20,16 +25,85 @@ import type {
   Complex,
   ComplexLandingConfig,
   ComplexLandingFact,
+  ComplexLandingNearby,
   LandingFeaturePreset,
+  ComplexNearbyPlace,
   ComplexLandingTag,
   Property,
 } from '../../../../shared/types'
+import 'leaflet/dist/leaflet.css'
 
 type ComplexListItem = Pick<Complex, 'id' | 'title' | 'status' | 'district' | 'price_from' | 'images'>
 
 type ComplexDetailsResponse = {
   complex: Complex
   properties: Property[]
+}
+
+type NearbyGenerateResponse = {
+  origin: { lat: number; lon: number }
+  refreshed_at: string
+  candidates: ComplexNearbyPlace[]
+}
+
+type NearbyPhotoVariantsResponse = {
+  urls: string[]
+}
+
+type GeoPoint = {
+  lat: number
+  lon: number
+}
+
+const DEFAULT_MAP_CENTER: LatLngExpression = [55.751244, 37.618423]
+const MAP_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+const MAP_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+const MAX_NEARBY_IMAGE_VARIANTS = 24
+
+function normalizeGeoPoint(lat?: number, lon?: number): GeoPoint | null {
+  if (typeof lat !== 'number' || typeof lon !== 'number') return null
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) return { lat, lon }
+  if (Math.abs(lat) <= 180 && Math.abs(lon) <= 90) return { lat: lon, lon: lat }
+  return null
+}
+
+function buildMapSearchQuery(complex?: Pick<Complex, 'title' | 'district'> | null): string {
+  if (!complex) return ''
+  return [complex.title, complex.district]
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join(', ')
+}
+
+function looksLikeAddressQuery(value: string): boolean {
+  if (!value.trim()) return false
+  const hasHouse = /\b\d+[a-zа-я]?\b/iu.test(value)
+  const hasStreet = /\b(?:ул(?:\.|ица)?|пр(?:-|\.)?|просп(?:\.|ект)?|пер(?:\.|еулок)?|наб(?:\.|ережная)?|шоссе|бул(?:\.|ьвар)?|street|st\.?|road|rd\.?|avenue|ave\.?|lane|ln\.?|drive|dr\.?)\b/iu.test(value)
+  return hasHouse || hasStreet
+}
+
+function MapCenterSync({ point }: { point: GeoPoint | null }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!point) return
+    map.setView([point.lat, point.lon], Math.max(map.getZoom(), 14), { animate: true })
+  }, [map, point?.lat, point?.lon])
+
+  return null
+}
+
+function MapClickCapture({ onSelect }: { onSelect: (point: GeoPoint) => void }) {
+  useMapEvents({
+    click(event) {
+      onSelect({
+        lat: Number(event.latlng.lat.toFixed(6)),
+        lon: Number(event.latlng.lng.toFixed(6)),
+      })
+    },
+  })
+  return null
 }
 
 async function uploadImage(token: string, file: File): Promise<string> {
@@ -65,6 +139,18 @@ function getMinPositive(values: Array<number | undefined>): number | undefined {
   return min
 }
 
+function dedupeUrls(urls: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const raw of urls) {
+    const url = raw.trim()
+    if (!url || seen.has(url)) continue
+    seen.add(url)
+    result.push(url)
+  }
+  return result
+}
+
 export default function AdminComplexSettingsPage() {
   const token = useUiStore((s) => s.adminToken)
   const headers = useMemo(() => ({ 'x-admin-token': token || '' }), [token])
@@ -84,11 +170,19 @@ export default function AdminComplexSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [activePlanId, setActivePlanId] = useState('')
   const [customFeaturePresets, setCustomFeaturePresets] = useState<LandingFeaturePreset[]>([])
+  const [hiddenBuiltinKeys, setHiddenBuiltinKeys] = useState<Set<string>>(new Set())
   const [presetError, setPresetError] = useState<string | null>(null)
   const [creatingPreset, setCreatingPreset] = useState(false)
   const [deletingPresetKey, setDeletingPresetKey] = useState<string | null>(null)
   const [newPresetTitle, setNewPresetTitle] = useState('')
   const [newPresetImage, setNewPresetImage] = useState('')
+  const [nearbyLoading, setNearbyLoading] = useState(false)
+  const [nearbyError, setNearbyError] = useState<string | null>(null)
+  const [nearbyPhotoLoadingById, setNearbyPhotoLoadingById] = useState<Record<string, boolean>>({})
+  const [autoNearbyGeneratedFor, setAutoNearbyGeneratedFor] = useState('')
+  const [mapSearchQuery, setMapSearchQuery] = useState('')
+  const [mapLookupLoading, setMapLookupLoading] = useState(false)
+  const [mapLookupError, setMapLookupError] = useState<string | null>(null)
 
   const filteredComplexes = useMemo(() => {
     const q = pickerFilter.trim().toLowerCase()
@@ -107,15 +201,23 @@ export default function AdminComplexSettingsPage() {
     if (activePlan.preview_image) return [activePlan.preview_image]
     return []
   }, [activePlan])
+  const nearbyConfig = useMemo<ComplexLandingNearby | null>(() => {
+    if (!draftLanding) return null
+    return createLandingNearby(draftLanding.nearby)
+  }, [draftLanding])
+  const nearbySelectedIds = useMemo(() => new Set(nearbyConfig?.selected_ids || []), [nearbyConfig?.selected_ids])
+  const mapPoint = useMemo(() => normalizeGeoPoint(draftComplex?.geo_lat, draftComplex?.geo_lon), [draftComplex?.geo_lat, draftComplex?.geo_lon])
 
   const featurePresetOptions = useMemo(() => {
     const map = new Map<string, LandingFeaturePreset>()
-    LANDING_FEATURE_PRESETS.forEach((preset) => map.set(preset.key, preset))
+    LANDING_FEATURE_PRESETS.forEach((preset) => {
+      if (!hiddenBuiltinKeys.has(preset.key)) map.set(preset.key, preset)
+    })
     customFeaturePresets.forEach((preset) => {
       if (!map.has(preset.key)) map.set(preset.key, preset)
     })
     return Array.from(map.values())
-  }, [customFeaturePresets])
+  }, [customFeaturePresets, hiddenBuiltinKeys])
 
   const selectedFeaturePresetKeys = useMemo(() => {
     const keys = new Set<string>()
@@ -150,8 +252,11 @@ export default function AdminComplexSettingsPage() {
 
   const loadCustomFeaturePresets = useCallback(() => {
     setPresetError(null)
-    apiGet<LandingFeaturePreset[]>('/api/admin/landing-feature-presets', headers)
-      .then((res) => setCustomFeaturePresets(res))
+    apiGet<{ presets: LandingFeaturePreset[]; hidden_builtin_keys: string[] }>('/api/admin/landing-feature-presets', headers)
+      .then((res) => {
+        setCustomFeaturePresets(res.presets)
+        setHiddenBuiltinKeys(new Set(res.hidden_builtin_keys))
+      })
       .catch((e) => setPresetError(e instanceof Error ? e.message : 'Ошибка загрузки пресетов'))
   }, [headers])
 
@@ -167,6 +272,11 @@ export default function AdminComplexSettingsPage() {
     if (!selectedId) return
     setDetailsLoading(true)
     setDetailsError(null)
+    setNearbyError(null)
+    setMapSearchQuery('')
+    setMapLookupError(null)
+    setNearbyPhotoLoadingById({})
+    setAutoNearbyGeneratedFor('')
     apiGet<ComplexDetailsResponse>(`/api/admin/catalog/complex/${selectedId}`, headers)
       .then((res) => {
         const minPrice = getMinPositive(res.properties.map((item) => item.status === 'active' ? item.price : undefined))
@@ -177,6 +287,7 @@ export default function AdminComplexSettingsPage() {
           area_from: typeof res.complex.area_from === 'number' ? res.complex.area_from : minArea,
         }
         setDraftComplex(normalizedComplex)
+        setMapSearchQuery(buildMapSearchQuery(normalizedComplex))
         setLinkedProperties(res.properties)
         setDraftLanding(normalizeLandingConfig(res.complex.landing, normalizedComplex, res.properties))
       })
@@ -215,6 +326,182 @@ export default function AdminComplexSettingsPage() {
       facts: cfg.facts.map((fact) => (fact.id === id ? { ...fact, ...patch } : fact)),
     }))
   }
+
+  const patchNearby = (updater: (value: ComplexLandingNearby) => ComplexLandingNearby) => {
+    patchLanding((cfg) => ({
+      ...cfg,
+      nearby: updater(createLandingNearby(cfg.nearby)),
+    }))
+  }
+
+  const updateNearbyCandidate = (id: string, patch: Partial<ComplexNearbyPlace>) => {
+    patchNearby((nearby) => ({
+      ...nearby,
+      candidates: nearby.candidates.map((candidate) =>
+        candidate.id === id ? createLandingNearbyPlace({ ...candidate, ...patch }) : candidate
+      ),
+    }))
+  }
+
+  const toggleNearbySelection = (id: string) => {
+    patchNearby((nearby) => {
+      const selected = new Set(nearby.selected_ids)
+      if (selected.has(id)) selected.delete(id)
+      else selected.add(id)
+      return {
+        ...nearby,
+        selected_ids: nearby.candidates.map((item) => item.id).filter((itemId) => selected.has(itemId)).slice(0, 20),
+      }
+    })
+  }
+
+  const selectAllNearbyCandidates = () => {
+    patchNearby((nearby) => ({
+      ...nearby,
+      selected_ids: nearby.candidates.map((item) => item.id).slice(0, 20),
+    }))
+  }
+
+  const clearNearbySelection = () => {
+    patchNearby((nearby) => ({ ...nearby, selected_ids: [] }))
+  }
+
+  const setComplexMapPoint = (point: GeoPoint | null) => {
+    setDraftComplex((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        geo_lat: point?.lat,
+        geo_lon: point?.lon,
+      }
+    })
+  }
+
+  const resolveMapPoint = useCallback(async () => {
+    if (!draftComplex) return
+    const typedQuery = mapSearchQuery.trim()
+    const query = typedQuery || buildMapSearchQuery(draftComplex)
+    if (!query) {
+      setMapLookupError('Введите название и адрес ЖК, чтобы найти точку на карте.')
+      return
+    }
+
+    setMapLookupLoading(true)
+    setMapLookupError(null)
+    try {
+      const useComplexNameBias = !looksLikeAddressQuery(query)
+      const result = await geocodeAddress(query, {
+        city: 'Moscow',
+        complexName: useComplexNameBias ? (draftComplex.title || undefined) : undefined,
+      })
+      if (!result) {
+        setMapLookupError('Не удалось определить координаты автоматически. Укажите точку вручную на карте.')
+        return
+      }
+      setMapSearchQuery(query)
+      setComplexMapPoint({
+        lat: Number(result.lat.toFixed(6)),
+        lon: Number(result.lon.toFixed(6)),
+      })
+    } catch (error) {
+      setMapLookupError(error instanceof Error ? error.message : 'Ошибка определения координат.')
+    } finally {
+      setMapLookupLoading(false)
+    }
+  }, [draftComplex, mapSearchQuery])
+
+  const generateNearbyCandidates = useCallback(async () => {
+    if (!draftComplex) return
+    setNearbyLoading(true)
+    setNearbyError(null)
+    try {
+      const payload = mapPoint ? { origin_lat: mapPoint.lat, origin_lon: mapPoint.lon } : {}
+      const generated = await apiPost<NearbyGenerateResponse>(
+        `/api/admin/catalog/complex/${draftComplex.id}/nearby/generate`,
+        payload,
+        headers
+      )
+
+      const previous = createLandingNearby(draftLanding?.nearby)
+      const previousById = new Map(previous.candidates.map((item) => [item.id, item]))
+
+      const merged = generated.candidates.slice(0, 20).map((raw) => {
+        const next = createLandingNearbyPlace(raw)
+        const prev = previousById.get(next.id)
+        if (!prev?.image_custom || !prev.image_url) return next
+
+        const variants = dedupeUrls([prev.image_url, ...(prev.image_variants || []), ...(next.image_variants || [])]).slice(0, MAX_NEARBY_IMAGE_VARIANTS)
+        return createLandingNearbyPlace({
+          ...next,
+          image_url: prev.image_url,
+          image_custom: true,
+          image_fallback: false,
+          image_variants: variants,
+        })
+      })
+
+      const mergedIdSet = new Set(merged.map((item) => item.id))
+      const preservedSelected = previous.selected_ids.filter((id) => mergedIdSet.has(id))
+      const nextSelected = preservedSelected.length ? preservedSelected : merged.map((item) => item.id)
+
+      patchNearby((nearby) => ({
+        ...nearby,
+        refreshed_at: generated.refreshed_at,
+        candidates: merged,
+        selected_ids: nextSelected.slice(0, 20),
+      }))
+      if (!mapPoint && Number.isFinite(generated.origin.lat) && Number.isFinite(generated.origin.lon)) {
+        setComplexMapPoint({
+          lat: Number(generated.origin.lat.toFixed(6)),
+          lon: Number(generated.origin.lon.toFixed(6)),
+        })
+      }
+    } catch (e) {
+      setNearbyError(e instanceof Error ? e.message : 'Ошибка генерации мест поблизости')
+    } finally {
+      setNearbyLoading(false)
+    }
+  }, [draftComplex, draftLanding?.nearby, headers, mapPoint])
+
+  const loadMoreNearbyPhotos = useCallback(async (candidate: ComplexNearbyPlace) => {
+    if (!draftComplex) return
+    setNearbyPhotoLoadingById((prev) => ({ ...prev, [candidate.id]: true }))
+    setNearbyError(null)
+    try {
+      const data = await apiPost<NearbyPhotoVariantsResponse>(
+        `/api/admin/catalog/complex/${draftComplex.id}/nearby/photo-variants`,
+        { name: candidate.name, district: draftComplex.district, category: candidate.category, lat: candidate.lat, lon: candidate.lon },
+        headers
+      )
+      const variants = dedupeUrls([...(candidate.image_variants || []), ...data.urls]).slice(0, MAX_NEARBY_IMAGE_VARIANTS)
+      updateNearbyCandidate(candidate.id, {
+        image_variants: variants,
+        image_url: candidate.image_custom ? candidate.image_url : (candidate.image_url || variants[0]),
+        image_fallback: candidate.image_custom ? candidate.image_fallback : false,
+      })
+    } catch (e) {
+      setNearbyError(e instanceof Error ? e.message : 'Ошибка загрузки дополнительных фото')
+    } finally {
+      setNearbyPhotoLoadingById((prev) => {
+        const next = { ...prev }
+        delete next[candidate.id]
+        return next
+      })
+    }
+  }, [draftComplex, headers])
+
+  useEffect(() => {
+    if (!selectedId || !draftComplex || !nearbyConfig) return
+    if (autoNearbyGeneratedFor === selectedId) return
+
+    if (nearbyConfig.candidates.length > 0) {
+      setAutoNearbyGeneratedFor(selectedId)
+      return
+    }
+
+    setAutoNearbyGeneratedFor(selectedId)
+    generateNearbyCandidates().catch(() => {})
+  }, [autoNearbyGeneratedFor, draftComplex, generateNearbyCandidates, nearbyConfig, selectedId])
 
   const toggleFeaturePreset = (presetKey: string) => {
     patchLanding((cfg) => {
@@ -287,13 +574,17 @@ export default function AdminComplexSettingsPage() {
     }
   }
 
-  const deleteCustomPreset = async (key: string) => {
-    if (!confirm('Удалить пользовательскую фишку из системы?')) return
+  const deletePreset = async (key: string) => {
+    if (!confirm('Удалить фишку из системы?')) return
     setDeletingPresetKey(key)
     setPresetError(null)
     try {
       await apiDelete(`/api/admin/landing-feature-presets/${encodeURIComponent(key)}`, headers)
-      setCustomFeaturePresets((prev) => prev.filter((preset) => preset.key !== key))
+      if (key.startsWith('custom_')) {
+        setCustomFeaturePresets((prev) => prev.filter((preset) => preset.key !== key))
+      } else {
+        setHiddenBuiltinKeys((prev) => new Set([...prev, key]))
+      }
       patchLanding((cfg) => ({
         ...cfg,
         feature_ticker: cfg.feature_ticker.filter((item) => (inferFeaturePresetKey(item) || item.preset_key) !== key),
@@ -307,6 +598,7 @@ export default function AdminComplexSettingsPage() {
 
   const save = async () => {
     if (!draftComplex || !draftLanding) return
+    const point = normalizeGeoPoint(draftComplex.geo_lat, draftComplex.geo_lon)
     setSaving(true)
     try {
       await apiPut(`/api/admin/catalog/items/complex/${draftComplex.id}`, {
@@ -322,6 +614,8 @@ export default function AdminComplexSettingsPage() {
         handover_date: draftComplex.handover_date,
         class: draftComplex.class,
         finish_type: draftComplex.finish_type,
+        geo_lat: point?.lat,
+        geo_lon: point?.lon,
         landing: draftLanding,
       }, headers)
       alert('Настройки ЖК сохранены')
@@ -665,7 +959,6 @@ export default function AdminComplexSettingsPage() {
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {featurePresetOptions.map((preset) => {
                   const enabled = selectedFeaturePresetKeys.has(preset.key)
-                  const isCustom = preset.key.startsWith('custom_')
                   return (
                     <article
                       key={preset.key}
@@ -689,23 +982,261 @@ export default function AdminComplexSettingsPage() {
                           </div>
                         </div>
                       </button>
-                      {isCustom ? (
-                        <div className="border-t border-white/10 px-3 py-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            className="w-full"
-                            disabled={deletingPresetKey === preset.key}
-                            onClick={() => deleteCustomPreset(preset.key)}
-                          >
-                            {deletingPresetKey === preset.key ? 'Удаление...' : 'Удалить из системы'}
-                          </Button>
-                        </div>
-                      ) : null}
+                      <div className="border-t border-white/10 px-3 py-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="w-full"
+                          disabled={deletingPresetKey === preset.key}
+                          onClick={() => deletePreset(preset.key)}
+                        >
+                          {deletingPresetKey === preset.key ? 'Удаление...' : 'Удалить'}
+                        </Button>
+                      </div>
                     </article>
                   )
                 })}
               </div>
+
+            </section>
+
+            <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-white">Карта ЖК</h3>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => setComplexMapPoint(null)} disabled={!mapPoint}>
+                    Сбросить метку
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                <div>
+                  <label className="mb-1 block text-xs text-white/60">Поиск точки (название + адрес)</label>
+                  <Input
+                    value={mapSearchQuery}
+                    className="border-white/20 bg-white/5 text-white"
+                    placeholder="Например: ЖК Republic, Москва, Пресненский Вал 27"
+                    onChange={(e) => {
+                      setMapLookupError(null)
+                      setMapSearchQuery(e.target.value)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return
+                      e.preventDefault()
+                      resolveMapPoint().catch(() => {})
+                    }}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button size="sm" onClick={resolveMapPoint} disabled={mapLookupLoading}>
+                    {mapLookupLoading ? 'Ищем...' : 'Найти на карте'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="text-xs text-white/60">
+                Введите адрес и нажмите «Найти на карте», затем при необходимости поправьте метку кликом по карте.
+              </div>
+
+              {mapPoint ? (
+                <div className="text-xs text-white/65">
+                  Текущая метка: {mapPoint.lat.toFixed(6)}, {mapPoint.lon.toFixed(6)}
+                </div>
+              ) : null}
+
+              <div className="overflow-hidden rounded-xl border border-white/10">
+                <MapContainer
+                  center={mapPoint ? [mapPoint.lat, mapPoint.lon] : DEFAULT_MAP_CENTER}
+                  zoom={mapPoint ? 14 : 11}
+                  scrollWheelZoom
+                  className="h-[300px] w-full md:h-[360px]"
+                >
+                  <TileLayer attribution={MAP_TILE_ATTR} url={MAP_TILE_URL} />
+                  <MapCenterSync point={mapPoint} />
+                  <MapClickCapture
+                    onSelect={(point) => {
+                      setMapLookupError(null)
+                      setComplexMapPoint(point)
+                    }}
+                  />
+                  {mapPoint ? (
+                    <CircleMarker
+                      center={[mapPoint.lat, mapPoint.lon]}
+                      radius={11}
+                      pathOptions={{ color: '#F8D77D', fillColor: '#F8D77D', fillOpacity: 0.92, weight: 2 }}
+                    />
+                  ) : null}
+                </MapContainer>
+              </div>
+
+              {mapLookupError ? <div className="text-xs text-rose-300">{mapLookupError}</div> : null}
+            </section>
+
+            <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-white">
+                  Места поблизости {nearbyConfig ? `(${nearbyConfig.selected_ids.length}/${nearbyConfig.candidates.length})` : ''}
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" onClick={selectAllNearbyCandidates} disabled={!nearbyConfig?.candidates.length}>
+                    Выбрать все
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={clearNearbySelection} disabled={!nearbyConfig?.selected_ids.length}>
+                    Очистить выбор
+                  </Button>
+                  <Button size="sm" onClick={generateNearbyCandidates} disabled={nearbyLoading}>
+                    {nearbyLoading ? 'Загрузка...' : 'Обновить из карты'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-white/60">Заголовок блока</label>
+                  <Input
+                    value={nearbyConfig?.title || ''}
+                    className="border-white/20 bg-white/5 text-white"
+                    onChange={(e) => patchNearby((nearby) => ({ ...nearby, title: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-white/60">Подзаголовок блока</label>
+                  <Input
+                    value={nearbyConfig?.subtitle || ''}
+                    className="border-white/20 bg-white/5 text-white"
+                    onChange={(e) => patchNearby((nearby) => ({ ...nearby, subtitle: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 text-xs text-white/60">
+                <span>Показываем до 20 карточек</span>
+                {nearbyConfig?.refreshed_at ? <span>Обновлено: {new Date(nearbyConfig.refreshed_at).toLocaleString('ru-RU')}</span> : null}
+              </div>
+
+              {nearbyError ? <div className="text-xs text-rose-300">{nearbyError}</div> : null}
+
+              {!nearbyConfig?.candidates.length ? (
+                <div className="rounded-xl border border-dashed border-white/20 bg-white/[0.03] p-4 text-sm text-white/55">
+                  Нажмите «Обновить из карты», чтобы получить список мест поблизости с предрасчетом времени пешком и на машине.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {nearbyConfig.candidates.map((candidate) => {
+                      const selected = nearbySelectedIds.has(candidate.id)
+                      const imageVariants = dedupeUrls([candidate.image_url || '', ...(candidate.image_variants || [])]).slice(0, MAX_NEARBY_IMAGE_VARIANTS)
+                      const photoLoading = Boolean(nearbyPhotoLoadingById[candidate.id])
+                      return (
+                        <article
+                          key={candidate.id}
+                          className={`rounded-xl border p-3 ${
+                            selected ? 'border-amber-300/70 bg-amber-200/10' : 'border-white/10 bg-white/[0.03]'
+                          }`}
+                        >
+                          <div className="relative h-40 overflow-hidden rounded-lg border border-white/10">
+                            {candidate.image_url ? (
+                              <img src={candidate.image_url} alt={candidate.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-white/5 text-xs text-white/55">
+                                Нет фото
+                              </div>
+                            )}
+                            {candidate.image_fallback ? (
+                              <span className="absolute left-2 top-2 rounded bg-black/60 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/75">
+                                Иллюстративное
+                              </span>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-2 flex items-start justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-semibold text-white">{candidate.name}</div>
+                              <div className="mt-1 text-xs text-white/65">
+                                Пешком: {Math.round(candidate.walk_minutes)} мин · На машине: {Math.round(candidate.drive_minutes)} мин
+                              </div>
+                            </div>
+                            <Button size="sm" variant={selected ? 'secondary' : 'default'} onClick={() => toggleNearbySelection(candidate.id)}>
+                              {selected ? 'Убрать' : 'Добавить'}
+                            </Button>
+                          </div>
+
+                          <div className="mt-2 grid gap-2 md:grid-cols-[1fr_auto]">
+                            <Input
+                              value={candidate.image_url || ''}
+                              className="border-white/20 bg-white/5 text-white"
+                              placeholder="URL фото"
+                              onChange={(e) =>
+                                updateNearbyCandidate(candidate.id, {
+                                  image_url: e.target.value,
+                                  image_custom: true,
+                                  image_fallback: false,
+                                  image_variants: dedupeUrls([e.target.value, ...(candidate.image_variants || [])]).slice(0, MAX_NEARBY_IMAGE_VARIANTS),
+                                })
+                              }
+                            />
+                            <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-white/25 bg-white/10 px-3 text-xs hover:bg-white/15">
+                              Файл
+                              <input
+                                type="file"
+                                className="hidden"
+                                accept="image/*"
+                                onChange={async (e) => {
+                                  if (!e.target.files?.[0]) return
+                                  try {
+                                    const url = await uploadImage(token || '', e.target.files[0])
+                                    updateNearbyCandidate(candidate.id, {
+                                      image_url: url,
+                                      image_custom: true,
+                                      image_fallback: false,
+                                      image_variants: dedupeUrls([url, ...(candidate.image_variants || [])]).slice(0, MAX_NEARBY_IMAGE_VARIANTS),
+                                    })
+                                  } catch (err) {
+                                    alert(err instanceof Error ? err.message : 'Upload error')
+                                  } finally {
+                                    e.target.value = ''
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Button size="sm" variant="secondary" onClick={() => loadMoreNearbyPhotos(candidate)} disabled={photoLoading}>
+                              {photoLoading ? 'Ищем...' : 'Загрузить еще фото'}
+                            </Button>
+                          </div>
+
+                          {imageVariants.length > 0 && (
+                            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                              {imageVariants.map((src, index) => (
+                                <button
+                                  key={`${candidate.id}_img_${index}`}
+                                  type="button"
+                                  onClick={() =>
+                                    updateNearbyCandidate(candidate.id, {
+                                      image_url: src,
+                                      image_custom: true,
+                                      image_fallback: false,
+                                      image_variants: imageVariants,
+                                    })
+                                  }
+                                  className={`h-14 w-20 shrink-0 overflow-hidden rounded border ${
+                                    candidate.image_url === src ? 'border-amber-300' : 'border-white/20'
+                                  }`}
+                                >
+                                  <img src={src} alt="" className="h-full w-full object-cover" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </article>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </section>
 
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
@@ -792,3 +1323,4 @@ export default function AdminComplexSettingsPage() {
     </div>
   )
 }
+

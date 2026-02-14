@@ -3,8 +3,10 @@ import type {
   ComplexLandingConfig,
   ComplexLandingFact,
   ComplexLandingFeature,
+  ComplexLandingNearby,
   ComplexLandingPlanItem,
   ComplexLandingTag,
+  ComplexNearbyPlace,
   Property,
 } from '../../shared/types'
 
@@ -13,6 +15,8 @@ const DEFAULT_SURFACE = '#071520'
 const KREMLIN_COORDS = { lat: 55.752023, lon: 37.617499 }
 const PLAN_IMAGE_RX = /(plan|layout|preset|floor)/i
 export const MAX_LANDING_FACTS = 12
+const MAX_NEARBY_ITEMS = 20
+const MAX_NEARBY_IMAGE_VARIANTS = 24
 
 export const FACT_IMAGE_PRESETS = [
   'https://images.unsplash.com/photo-1515263487990-61b07816b324?auto=format&fit=crop&w=1200&q=80',
@@ -335,6 +339,62 @@ export function createLandingPlanItem(partial?: Partial<ComplexLandingPlanItem>)
   }
 }
 
+export function createLandingNearbyPlace(partial?: Partial<ComplexNearbyPlace>): ComplexNearbyPlace {
+  const imageVariants = safeArray<string>(partial?.image_variants)
+    .map((item) => toText(item))
+    .filter(Boolean)
+    .slice(0, MAX_NEARBY_IMAGE_VARIANTS)
+
+  return {
+    id: partial?.id || makeId('nearby'),
+    name: toText(partial?.name) || 'Место поблизости',
+    category: toText(partial?.category) || undefined,
+    lat: toFiniteNumber(partial?.lat) ?? 0,
+    lon: toFiniteNumber(partial?.lon) ?? 0,
+    walk_minutes: Math.max(1, Math.round(toFiniteNumber(partial?.walk_minutes) ?? 0)),
+    drive_minutes: Math.max(1, Math.round(toFiniteNumber(partial?.drive_minutes) ?? 0)),
+    image_url: toText(partial?.image_url) || undefined,
+    image_variants: imageVariants.length ? imageVariants : undefined,
+    image_fallback: typeof partial?.image_fallback === 'boolean' ? partial.image_fallback : undefined,
+    image_custom: typeof partial?.image_custom === 'boolean' ? partial.image_custom : undefined,
+  }
+}
+
+export function createLandingNearby(partial?: Partial<ComplexLandingNearby>): ComplexLandingNearby {
+  const candidates = safeArray<Partial<ComplexNearbyPlace>>(partial?.candidates)
+    .map((item) => createLandingNearbyPlace(item))
+    .filter((item) =>
+      Number.isFinite(item.lat)
+      && Number.isFinite(item.lon)
+      && (Math.abs(item.lat) > 0.0001 || Math.abs(item.lon) > 0.0001)
+      && item.name.trim().length > 1
+    )
+    .slice(0, MAX_NEARBY_ITEMS)
+
+  const candidateIds = new Set(candidates.map((item) => item.id))
+  const selectedRaw = safeArray<string>(partial?.selected_ids)
+    .map((item) => toText(item))
+    .filter((item) => item.length > 0 && candidateIds.has(item))
+
+  const seenSelected = new Set<string>()
+  const selected_ids = selectedRaw
+    .filter((item) => {
+      if (seenSelected.has(item)) return false
+      seenSelected.add(item)
+      return true
+    })
+    .slice(0, MAX_NEARBY_ITEMS)
+
+  return {
+    enabled: typeof partial?.enabled === 'boolean' ? partial.enabled : true,
+    title: toText(partial?.title) || 'Места поблизости',
+    subtitle: toText(partial?.subtitle) || 'Пешком и на машине от жилого комплекса',
+    refreshed_at: toText(partial?.refreshed_at) || undefined,
+    candidates,
+    selected_ids: selected_ids.length ? selected_ids : candidates.map((item) => item.id),
+  }
+}
+
 function buildAutoTags(complex: Complex): ComplexLandingTag[] {
   return uniq([
     complex.class || '',
@@ -417,6 +477,7 @@ export function buildAutoLandingConfig(complex: Complex, properties: Property[])
       cta_label: 'Все планировки',
       items: planItems,
     },
+    nearby: createLandingNearby(),
   }
 }
 
@@ -505,6 +566,10 @@ export function normalizeLandingConfig(
 
   const plansData = (candidate.plans && typeof candidate.plans === 'object' ? (candidate.plans as Record<string, unknown>) : {}) || {}
   const planItems = inferPlanItems(complex, properties)
+  const nearbyData =
+    candidate.nearby && typeof candidate.nearby === 'object'
+      ? createLandingNearby(candidate.nearby as Partial<ComplexLandingNearby>)
+      : auto.nearby
 
   return {
     enabled: typeof candidate.enabled === 'boolean' ? candidate.enabled : auto.enabled,
@@ -522,6 +587,7 @@ export function normalizeLandingConfig(
       cta_label: toText(plansData.cta_label) || auto.plans.cta_label,
       items: planItems,
     },
+    nearby: nearbyData,
   }
 }
 

@@ -267,11 +267,14 @@ export function ensureSeed(): void {
       },
     ],
     landing_feature_presets: [],
+    hidden_landing_feature_preset_keys: [],
     complexes,
     properties,
     collections,
+    admin_users: [],
     leads: [],
     import_runs: [],
+    audit_logs: [],
   }
 
   writeDb(db)

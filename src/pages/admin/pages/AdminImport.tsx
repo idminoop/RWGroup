@@ -643,7 +643,7 @@ export default function AdminImportPage() {
                       )}
                       </div>
                     </td>
-                    <td className="px-3 py-2">\n                      {displayRun ? (
+                    <td className="px-3 py-2">{displayRun ? (
                         <div className="flex flex-col items-start gap-1">
                           <Badge variant={displayRun.status === 'success' ? 'default' : displayRun.status === 'partial' ? 'warning' : 'destructive'}>
                             {statusLabel(displayRun.status, displayRun.action)}

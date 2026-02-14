@@ -14,10 +14,11 @@ import { apiGet } from '@/lib/api'
 import { formatPriceRub } from '@/lib/format'
 import { getPresentableImages, selectCoverImage } from '@/lib/images'
 import { normalizeLandingConfig } from '@/lib/complexLanding'
-import type { Complex, ComplexLandingConfig, ComplexLandingPlanItem, Property } from '../../shared/types'
+import type { Complex, ComplexLandingConfig, ComplexLandingPlanItem, ComplexNearbyPlace, Property } from '../../shared/types'
 import { useUiStore } from '@/store/useUiStore'
 
 const ComplexMap = lazy(() => import('@/components/complex/ComplexMap'))
+const NearbyPlaces = lazy(() => import('@/components/complex/NearbyPlaces'))
 
 const UI = {
   complex: 'Жилой комплекс',
@@ -175,6 +176,26 @@ export default function ComplexPage() {
 
   const photoFacts = useMemo(() => landing?.facts.slice(6) || [], [landing?.facts])
   const photoFactsRemainder = photoFacts.length % 3
+  const nearbySection = useMemo(() => {
+    const nearby = landing?.nearby
+    if (!nearby || nearby.enabled === false) {
+      return {
+        title: 'Места поблизости',
+        subtitle: 'Пешком и на машине от жилого комплекса',
+        items: [] as ComplexNearbyPlace[],
+      }
+    }
+
+    const candidates = Array.isArray(nearby.candidates) ? nearby.candidates : []
+    const selectedSet = new Set((nearby.selected_ids || []).map((id) => String(id)))
+    const selected = selectedSet.size ? candidates.filter((item) => selectedSet.has(item.id)) : candidates
+
+    return {
+      title: nearby.title || 'Места поблизости',
+      subtitle: nearby.subtitle || 'Пешком и на машине от жилого комплекса',
+      items: selected.slice(0, 20),
+    }
+  }, [landing?.nearby])
 
   const minPropertyPrice = useMemo(() => {
     const withPrice = properties
@@ -563,15 +584,16 @@ export default function ComplexPage() {
                   <div className="text-xs uppercase tracking-[0.1em] text-white/45">Формат</div>
                   <div className="mt-1 text-lg font-semibold text-white">{decodeEscapedUnicode(activePlan?.name || 'Планировка')}</div>
                   <div className="mt-3 text-sm text-white/65">{defaultPlanNote(activePlan)}</div>
-                  <div className="mt-4 overflow-hidden rounded-xl border border-white/10">
+                  <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]">
                     {activePlanImages.length ? (
                       <img
                         src={activePlanImages[activePlanImageIndex] || activePlanImages[0]}
                         alt={activePlan?.name}
-                        className="h-[180px] w-full object-cover sm:h-[200px]"
+                        className="h-[220px] w-full object-contain p-2 sm:h-[260px]"
+                        onError={(e) => { e.currentTarget.style.display = 'none' }}
                       />
                     ) : (
-                      <div className="flex h-[180px] items-center justify-center bg-white/[0.04] text-sm text-white/35 sm:h-[200px]">
+                      <div className="flex h-[220px] items-center justify-center text-sm text-white/35 sm:h-[260px]">
                         Планы из фида появятся после импорта
                       </div>
                     )}
@@ -583,11 +605,16 @@ export default function ComplexPage() {
                           key={`${activePlan?.id}_preview_${index}`}
                           type="button"
                           onClick={() => setActivePlanImageIndex(index)}
-                          className={`h-14 w-20 shrink-0 overflow-hidden rounded border ${
+                          className={`h-16 w-20 shrink-0 overflow-hidden rounded border bg-white/[0.04] ${
                             index === activePlanImageIndex ? 'border-white/80' : 'border-white/20'
                           }`}
                         >
-                          <img src={src} alt="" className="h-full w-full object-cover" />
+                          <img
+                            src={src}
+                            alt=""
+                            className="h-full w-full object-contain p-0.5"
+                            onError={(e) => { e.currentTarget.style.display = 'none' }}
+                          />
                         </button>
                       ))}
                     </div>
@@ -595,6 +622,25 @@ export default function ComplexPage() {
                 </aside>
               </div>
             </section>
+
+            {nearbySection.items.length > 0 && (
+              <section className="mt-12">
+                <Suspense
+                  fallback={(
+                    <div className="h-[360px] animate-pulse rounded-3xl border border-white/10 bg-white/[0.03] sm:h-[460px]" />
+                  )}
+                >
+                  <NearbyPlaces
+                    title={decodeEscapedUnicode(nearbySection.title)}
+                    subtitle={decodeEscapedUnicode(nearbySection.subtitle)}
+                    items={nearbySection.items}
+                    originLat={c.geo_lat}
+                    originLon={c.geo_lon}
+                    surfaceColor={surface}
+                  />
+                </Suspense>
+              </section>
+            )}
 
             <section className="mt-12">
               <Suspense

@@ -1,10 +1,29 @@
 import { Router, type Request, type Response } from 'express'
 import multer from 'multer'
 import { z } from 'zod'
-import { adminAuth } from '../middleware/adminAuth.js'
+import {
+  adminAuth,
+  issueAdminToken,
+  requireAdminAnyPermission,
+  requireAdminPermission,
+} from '../middleware/adminAuth.js'
 import { getPublishStatus, publishDraft, withDb } from '../lib/storage.js'
 import { newId, slugify } from '../lib/ids.js'
 import { resolveCollectionItems } from '../lib/collections.js'
+import {
+  countActiveOwners,
+  ensureAdminUsers,
+  findAdminUserByLogin,
+  hasAdminRole,
+  hashAdminPassword,
+  normalizeAdminLogin,
+  normalizeAdminRoles,
+  toAdminIdentity,
+  toAdminUserPublic,
+  verifyAdminPassword,
+} from '../lib/admin-users.js'
+import { generateNearbyPlacesForComplex, searchNearbyPhotoVariants } from '../lib/nearby.js'
+import { addAuditLog } from '../lib/audit.js'
 import fs from 'fs'
 import path from 'path'
 import { 
@@ -23,7 +42,7 @@ import {
   normalizeCategory,
   normalizeDealType
 } from '../lib/import-logic.js'
-import type { Category, Complex, DbShape, LandingFeaturePreset, Lead, LeadStatus, Property } from '../../shared/types.js'
+import type { AdminRole, AdminUser, Category, Complex, DbShape, LandingFeaturePreset, Lead, LeadStatus, Property } from '../../shared/types.js'
 import { XMLParser } from 'fast-xml-parser'
 import { parse as parseCsv } from 'csv-parse/sync'
 import * as XLSX from 'xlsx'
@@ -44,6 +63,13 @@ function ensureCustomLandingFeaturePresets(db: DbShape): LandingFeaturePreset[] 
   return db.landing_feature_presets
 }
 
+function ensureHiddenPresetKeys(db: DbShape): string[] {
+  if (!Array.isArray(db.hidden_landing_feature_preset_keys)) {
+    db.hidden_landing_feature_preset_keys = []
+  }
+  return db.hidden_landing_feature_preset_keys
+}
+
 function toCustomLandingFeatureKey(value: string): string {
   return slugify(value)
     .replace(/-/g, '_')
@@ -51,22 +77,250 @@ function toCustomLandingFeatureKey(value: string): string {
     .replace(/^_+|_+$/g, '')
 }
 
+function resolveRolesInput(input: { roles?: AdminRole[]; role?: AdminRole }): AdminRole[] {
+  return normalizeAdminRoles(input.roles ?? input.role)
+}
+
 router.post('/login', (req: Request, res: Response) => {
-  const schema = z.object({ password: z.string().min(1) })
+  const schema = z.object({
+    login: z.string().min(1),
+    password: z.string().min(1),
+  })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ success: false, error: 'Invalid payload' })
     return
   }
-  const expected = process.env.ADMIN_PASSWORD || 'admin'
-  if (parsed.data.password !== expected) {
-    res.status(401).json({ success: false, error: 'Invalid password' })
+
+  const login = normalizeAdminLogin(parsed.data.login)
+  const identity = withDb((db) => {
+    const users = ensureAdminUsers(db)
+    const user = findAdminUserByLogin(users, login)
+    if (!user || !user.is_active) return null
+    if (!verifyAdminPassword(parsed.data.password, user.password_hash)) return null
+    return toAdminIdentity(user)
+  })
+
+  if (!identity) {
+    res.status(401).json({ success: false, error: 'Invalid credentials' })
     return
   }
-  res.json({ success: true, data: { token: process.env.ADMIN_TOKEN || 'dev-token' } })
+
+  const token = issueAdminToken(identity)
+  addAuditLog(identity.id, identity.login, 'login', 'user', identity.id, `Вход в систему: ${identity.login}`)
+  res.json({
+    success: true,
+    data: {
+      token,
+      id: identity.id,
+      login: identity.login,
+      roles: identity.roles,
+      permissions: identity.permissions,
+    },
+  })
 })
 
 router.use(adminAuth)
+
+router.get('/me', (req: Request, res: Response) => {
+  if (!req.admin) {
+    res.status(401).json({ success: false, error: 'Unauthorized' })
+    return
+  }
+  res.json({ success: true, data: req.admin })
+})
+
+router.get('/users', requireAdminPermission('admin_users.read'), (req: Request, res: Response) => {
+  const data = withDb((db) => {
+    const users = ensureAdminUsers(db)
+    return users
+      .map(toAdminUserPublic)
+      .sort((a, b) => a.login.localeCompare(b.login))
+  })
+  res.json({ success: true, data })
+})
+
+router.post('/users', requireAdminPermission('admin_users.write'), (req: Request, res: Response) => {
+  const roleSchema = z.enum(['owner', 'content', 'import', 'sales'])
+  const schema = z.object({
+    login: z.string().min(3).max(64).regex(/^[a-zA-Z0-9._-]+$/),
+    password: z.string().min(1).max(256),
+    roles: z.array(roleSchema).min(1).optional(),
+    role: roleSchema.optional(),
+    is_active: z.boolean().optional(),
+  }).refine((payload) => (payload.roles && payload.roles.length > 0) || payload.role !== undefined, {
+    message: 'Roles are required',
+  })
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+  const roles = resolveRolesInput(parsed.data)
+  if (!roles.length) {
+    res.status(400).json({ success: false, error: 'Roles are required' })
+    return
+  }
+
+  const login = normalizeAdminLogin(parsed.data.login)
+  let created: AdminUser | null = null
+  const result = withDb((db) => {
+    const users = ensureAdminUsers(db)
+    const duplicate = findAdminUserByLogin(users, login)
+    if (duplicate) return { ok: false as const, error: 'Login already exists' }
+
+    const now = new Date().toISOString()
+    const next: AdminUser = {
+      id: newId(),
+      login,
+      password_hash: hashAdminPassword(parsed.data.password),
+      roles,
+      is_active: parsed.data.is_active ?? true,
+      created_at: now,
+      updated_at: now,
+    }
+    users.push(next)
+    created = next
+    return { ok: true as const }
+  })
+
+  if (!result.ok || !created) {
+    res.status(409).json({ success: false, error: result.error || 'Login already exists' })
+    return
+  }
+
+  addAuditLog(req.admin!.id, req.admin!.login, 'create', 'user', created.id, `Создан пользователь: ${created.login}`)
+  res.json({ success: true, data: toAdminUserPublic(created) })
+})
+
+router.put('/users/:id', requireAdminPermission('admin_users.write'), (req: Request, res: Response) => {
+  const roleSchema = z.enum(['owner', 'content', 'import', 'sales'])
+  const schema = z
+    .object({
+      login: z.string().min(3).max(64).regex(/^[a-zA-Z0-9._-]+$/).optional(),
+      password: z.string().min(1).max(256).optional(),
+      roles: z.array(roleSchema).min(1).optional(),
+      role: roleSchema.optional(),
+      is_active: z.boolean().optional(),
+    })
+    .refine(
+      (payload) =>
+        payload.login !== undefined ||
+        payload.password !== undefined ||
+        payload.roles !== undefined ||
+        payload.role !== undefined ||
+        payload.is_active !== undefined,
+      { message: 'No fields to update' },
+    )
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+
+  const targetId = req.params.id
+  const nextLogin = parsed.data.login !== undefined ? normalizeAdminLogin(parsed.data.login) : undefined
+  let updated: AdminUser | null = null
+
+  const result = withDb((db) => {
+    const users = ensureAdminUsers(db)
+    const user = users.find((item) => item.id === targetId)
+    if (!user) return { ok: false as const, code: 404, error: 'Not found' }
+
+    if (nextLogin) {
+      const duplicate = users.find((item) => item.id !== targetId && normalizeAdminLogin(item.login) === nextLogin)
+      if (duplicate) return { ok: false as const, code: 409, error: 'Login already exists' }
+    }
+
+    const roles =
+      parsed.data.roles !== undefined || parsed.data.role !== undefined
+        ? resolveRolesInput(parsed.data)
+        : normalizeAdminRoles(user.roles)
+    if (!roles.length) {
+      return { ok: false as const, code: 400, error: 'Roles are required' }
+    }
+
+    const isActive = parsed.data.is_active ?? user.is_active
+    const isLosingOwnerAccess = hasAdminRole(user, 'owner') && user.is_active && (!hasAdminRole(roles, 'owner') || !isActive)
+    if (isLosingOwnerAccess && countActiveOwners(users) <= 1) {
+      return { ok: false as const, code: 400, error: 'At least one active owner is required' }
+    }
+
+    if (nextLogin) user.login = nextLogin
+    if (parsed.data.password !== undefined) {
+      user.password_hash = hashAdminPassword(parsed.data.password)
+    }
+    user.roles = roles
+    user.is_active = isActive
+    user.updated_at = new Date().toISOString()
+    updated = user
+    return { ok: true as const, code: 200 }
+  })
+
+  if (!result.ok || !updated) {
+    res.status(result.code).json({ success: false, error: result.error })
+    return
+  }
+
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'user', updated.id, `Обновлён пользователь: ${updated.login}`)
+  res.json({ success: true, data: toAdminUserPublic(updated) })
+})
+
+router.delete('/users/:id', requireAdminPermission('admin_users.write'), (req: Request, res: Response) => {
+  const targetId = req.params.id
+  const result = withDb((db) => {
+    const users = ensureAdminUsers(db)
+    const index = users.findIndex((user) => user.id === targetId)
+    if (index === -1) return { ok: false as const, code: 404, error: 'Not found' }
+
+    const user = users[index]
+    const isLastOwner = hasAdminRole(user, 'owner') && user.is_active && countActiveOwners(users) <= 1
+    if (isLastOwner) {
+      return { ok: false as const, code: 400, error: 'At least one active owner is required' }
+    }
+
+    users.splice(index, 1)
+    return { ok: true as const, code: 200 }
+  })
+
+  if (!result.ok) {
+    res.status(result.code).json({ success: false, error: result.error })
+    return
+  }
+
+  addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'user', targetId, `Удалён пользователь (id: ${targetId})`)
+  res.json({ success: true })
+})
+
+router.use('/upload', requireAdminPermission('upload.write'))
+router.use('/home', requireAdminAnyPermission('home.read', 'home.write'))
+router.use('/publish/status', requireAdminPermission('publish.read'))
+router.use('/publish/apply', requireAdminPermission('publish.apply'))
+router.use('/leads', requireAdminAnyPermission('leads.read', 'leads.write'))
+router.use('/feeds', requireAdminAnyPermission('feeds.read', 'feeds.write'))
+router.use('/landing-feature-presets', requireAdminAnyPermission('landing_presets.read', 'landing_presets.write'))
+router.use('/collections', requireAdminAnyPermission('collections.read', 'collections.write'))
+router.use('/catalog', requireAdminAnyPermission('catalog.read', 'catalog.write'))
+router.use('/import', requireAdminAnyPermission('import.read', 'import.write'))
+router.use('/logs', requireAdminPermission('logs.read'))
+
+router.get('/logs', (req: Request, res: Response) => {
+  const page = Math.max(parseInt(req.query.page as string) || 1, 1)
+  const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 50, 1), 200)
+  const entityFilter = typeof req.query.entity === 'string' ? req.query.entity : ''
+  const actionFilter = typeof req.query.action === 'string' ? req.query.action : ''
+
+  const data = withDb((db) => {
+    if (!Array.isArray(db.audit_logs)) db.audit_logs = []
+    let logs = [...db.audit_logs].sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+    if (entityFilter) logs = logs.filter((l) => l.entity === entityFilter)
+    if (actionFilter) logs = logs.filter((l) => l.action === actionFilter)
+    const total = logs.length
+    const start = (page - 1) * limit
+    return { items: logs.slice(start, start + limit), total, page, limit }
+  })
+  res.json({ success: true, data })
+})
 
 router.post('/upload', upload.single('file'), (req: Request, res: Response) => {
   if (!req.file) {
@@ -103,7 +357,7 @@ router.get('/home', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-router.put('/home', (req: Request, res: Response) => {
+router.put('/home', requireAdminPermission('home.write'), (req: Request, res: Response) => {
   const schema = z.object({ home: z.any() })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) {
@@ -113,6 +367,7 @@ router.put('/home', (req: Request, res: Response) => {
   withDb((db) => {
     db.home = { ...db.home, ...(parsed.data.home as DbShape['home']), updated_at: new Date().toISOString() }
   })
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'home', undefined, 'Обновлена витрина')
   res.json({ success: true })
 })
 
@@ -123,6 +378,7 @@ router.get('/publish/status', (req: Request, res: Response) => {
 
 router.post('/publish/apply', (req: Request, res: Response) => {
   publishDraft()
+  addAuditLog(req.admin!.id, req.admin!.login, 'publish', 'settings', undefined, 'Применены изменения на сайт')
   const status = getPublishStatus()
   res.json({ success: true, data: status })
 })
@@ -141,7 +397,7 @@ router.get('/leads', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-router.put('/leads/:id', (req: Request, res: Response) => {
+router.put('/leads/:id', requireAdminPermission('leads.write'), (req: Request, res: Response) => {
   const id = req.params.id
   const schema = z.object({
     lead_status: z.enum(['new', 'in_progress', 'done', 'spam']).optional(),
@@ -185,6 +441,7 @@ router.put('/leads/:id', (req: Request, res: Response) => {
     res.status(404).json({ success: false, error: 'Not found' })
     return
   }
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'lead', id, `Обновлён лид: ${updatedLead.name}`)
   res.json({ success: true, data: updatedLead })
 })
 
@@ -196,12 +453,16 @@ router.get('/feeds', (req: Request, res: Response) => {
 router.get('/landing-feature-presets', (req: Request, res: Response) => {
   const data = withDb((db) => {
     const presets = ensureCustomLandingFeaturePresets(db)
-    return [...presets].sort((a, b) => a.title.localeCompare(b.title, 'ru'))
+    const hiddenKeys = ensureHiddenPresetKeys(db)
+    return {
+      presets: [...presets].sort((a, b) => a.title.localeCompare(b.title, 'ru')),
+      hidden_builtin_keys: [...hiddenKeys],
+    }
   })
   res.json({ success: true, data })
 })
 
-router.post('/landing-feature-presets', (req: Request, res: Response) => {
+router.post('/landing-feature-presets', requireAdminPermission('landing_presets.write'), (req: Request, res: Response) => {
   const schema = z.object({
     title: z.string().min(1).max(80),
     image: z.string().min(1).max(500),
@@ -236,18 +497,26 @@ router.post('/landing-feature-presets', (req: Request, res: Response) => {
   res.json({ success: true, data: created })
 })
 
-router.delete('/landing-feature-presets/:key', (req: Request, res: Response) => {
+router.delete('/landing-feature-presets/:key', requireAdminPermission('landing_presets.write'), (req: Request, res: Response) => {
   const key = (req.params.key || '').trim()
   if (!key) {
     res.status(400).json({ success: false, error: 'Invalid key' })
     return
   }
 
+  const isCustom = key.startsWith('custom_')
+
   const ok = withDb((db) => {
-    const presets = ensureCustomLandingFeaturePresets(db)
-    const before = presets.length
-    db.landing_feature_presets = presets.filter((preset) => preset.key !== key)
-    if (db.landing_feature_presets.length === before) return false
+    if (isCustom) {
+      const presets = ensureCustomLandingFeaturePresets(db)
+      const before = presets.length
+      db.landing_feature_presets = presets.filter((preset) => preset.key !== key)
+      if (db.landing_feature_presets.length === before) return false
+    } else {
+      const hiddenKeys = ensureHiddenPresetKeys(db)
+      if (hiddenKeys.includes(key)) return false
+      hiddenKeys.push(key)
+    }
 
     for (const complex of db.complexes) {
       if (!complex.landing?.feature_ticker?.length) continue
@@ -325,7 +594,7 @@ router.get('/feeds/diagnostics', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-router.post('/feeds', (req: Request, res: Response) => {
+router.post('/feeds', requireAdminPermission('feeds.write'), (req: Request, res: Response) => {
   const schema = z.object({ 
     name: z.string().min(1), 
     mode: z.enum(['upload', 'url']), 
@@ -364,10 +633,11 @@ router.post('/feeds', (req: Request, res: Response) => {
       created_at: new Date().toISOString(),
     })
   })
+  addAuditLog(req.admin!.id, req.admin!.login, 'create', 'feed', id, `Создан источник: ${parsed.data.name}`)
   res.json({ success: true, data: { id } })
 })
 
-router.put('/feeds/:id', (req: Request, res: Response) => {
+router.put('/feeds/:id', requireAdminPermission('feeds.write'), (req: Request, res: Response) => {
   const id = req.params.id
   const schema = z.object({
     name: z.string().min(1).optional(),
@@ -411,10 +681,11 @@ router.put('/feeds/:id', (req: Request, res: Response) => {
     res.status(404).json({ success: false, error: 'Not found' })
     return
   }
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'feed', id, `Обновлён источник (id: ${id})`)
   res.json({ success: true })
 })
 
-router.delete('/feeds/:id', (req: Request, res: Response) => {
+router.delete('/feeds/:id', requireAdminPermission('feeds.write'), (req: Request, res: Response) => {
   const id = req.params.id
   const snapshot = withDb((db) => db.feed_sources.find((x) => x.id === id))
   const ok = withDb((db) => {
@@ -455,6 +726,7 @@ router.delete('/feeds/:id', (req: Request, res: Response) => {
       })
     })
   }
+  addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'feed', id, `Удалён источник: ${snapshot?.name || id}`)
   res.json({ success: true })
 })
 
@@ -463,7 +735,7 @@ router.get('/collections', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-router.post('/collections', (req: Request, res: Response) => {
+router.post('/collections', requireAdminPermission('collections.write'), (req: Request, res: Response) => {
   const autoRulesSchema = z.object({
     type: z.enum(['property', 'complex']),
     category: z.enum(['newbuild', 'secondary', 'rent']).optional(),
@@ -512,10 +784,11 @@ router.post('/collections', (req: Request, res: Response) => {
       updated_at: new Date().toISOString(),
     })
   })
+  addAuditLog(req.admin!.id, req.admin!.login, 'create', 'collection', id, `Создана подборка: ${parsed.data.title}`)
   res.json({ success: true, data: { id } })
 })
 
-router.put('/collections/:id', (req: Request, res: Response) => {
+router.put('/collections/:id', requireAdminPermission('collections.write'), (req: Request, res: Response) => {
   const id = req.params.id
   const autoRulesSchema = z.object({
     type: z.enum(['property', 'complex']),
@@ -568,10 +841,11 @@ router.put('/collections/:id', (req: Request, res: Response) => {
     res.status(404).json({ success: false, error: 'Not found' })
     return
   }
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'collection', id, `Обновлена подборка (id: ${id})`)
   res.json({ success: true })
 })
 
-router.delete('/collections/:id', (req: Request, res: Response) => {
+router.delete('/collections/:id', requireAdminPermission('collections.write'), (req: Request, res: Response) => {
   const id = req.params.id
   const ok = withDb((db) => {
     const before = db.collections.length
@@ -582,10 +856,11 @@ router.delete('/collections/:id', (req: Request, res: Response) => {
     res.status(404).json({ success: false, error: 'Not found' })
     return
   }
+  addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'collection', id, `Удалена подборка (id: ${id})`)
   res.json({ success: true })
 })
 
-router.post('/collections/:id/toggle-status', (req: Request, res: Response) => {
+router.post('/collections/:id/toggle-status', requireAdminPermission('collections.write'), (req: Request, res: Response) => {
   const id = req.params.id
   let newStatus: 'visible' | 'hidden' | null = null
   const ok = withDb((db) => {
@@ -647,7 +922,7 @@ router.get('/collections/:id/preview', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-router.post('/collections/preview-auto', (req: Request, res: Response) => {
+router.post('/collections/preview-auto', requireAdminPermission('collections.write'), (req: Request, res: Response) => {
   const autoRulesSchema = z.object({
     type: z.enum(['property', 'complex']),
     category: z.enum(['newbuild', 'secondary', 'rent']).optional(),
@@ -696,7 +971,7 @@ router.post('/collections/preview-auto', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-router.post('/collections/:id/validate-items', (req: Request, res: Response) => {
+router.post('/collections/:id/validate-items', requireAdminPermission('collections.write'), (req: Request, res: Response) => {
   const id = req.params.id
   const schema = z.object({ cleanInvalid: z.boolean().optional() })
   const parsed = schema.safeParse(req.body)
@@ -825,7 +1100,99 @@ router.get('/catalog/complex/:id', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-router.put('/catalog/items/:type/:id', (req: Request, res: Response) => {
+router.post('/catalog/complex/:id/nearby/generate', requireAdminPermission('catalog.write'), async (req: Request, res: Response) => {
+  const id = req.params.id
+  const payloadSchema = z.object({
+    origin_lat: z.number().min(-90).max(90).optional(),
+    origin_lon: z.number().min(-180).max(180).optional(),
+  })
+  const payloadParsed = payloadSchema.safeParse(req.body || {})
+  if (!payloadParsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+
+  const hasOriginLat = typeof payloadParsed.data.origin_lat === 'number'
+  const hasOriginLon = typeof payloadParsed.data.origin_lon === 'number'
+  if ((hasOriginLat && !hasOriginLon) || (!hasOriginLat && hasOriginLon)) {
+    res.status(400).json({ success: false, error: 'Provide both origin_lat and origin_lon' })
+    return
+  }
+
+  const complex = withDb((db) => db.complexes.find((item) => item.id === id) || null)
+
+  if (!complex) {
+    res.status(404).json({ success: false, error: 'Not found' })
+    return
+  }
+
+  try {
+    const generated = await generateNearbyPlacesForComplex(
+      complex,
+      hasOriginLat && hasOriginLon
+        ? { lat: payloadParsed.data.origin_lat as number, lon: payloadParsed.data.origin_lon as number }
+        : undefined
+    )
+    if (!generated.origin) {
+      res.status(422).json({ success: false, error: generated.reason || 'Unable to resolve coordinates' })
+      return
+    }
+
+    res.json({
+      success: true,
+      data: {
+        origin: generated.origin,
+        refreshed_at: new Date().toISOString(),
+        candidates: generated.items.slice(0, 20),
+      },
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Nearby generation failed' })
+  }
+})
+
+router.post('/catalog/complex/:id/nearby/photo-variants', requireAdminPermission('catalog.write'), async (req: Request, res: Response) => {
+  const id = req.params.id
+  const schema = z.object({
+    name: z.string().min(2).max(180),
+    district: z.string().optional(),
+    category: z.string().max(80).optional(),
+    lat: z.number().min(-90).max(90).optional(),
+    lon: z.number().min(-180).max(180).optional(),
+  })
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+
+  const hasLat = typeof parsed.data.lat === 'number'
+  const hasLon = typeof parsed.data.lon === 'number'
+  if ((hasLat && !hasLon) || (!hasLat && hasLon)) {
+    res.status(400).json({ success: false, error: 'Provide both lat and lon' })
+    return
+  }
+
+  const complex = withDb((db) => db.complexes.find((item) => item.id === id) || null)
+  if (!complex) {
+    res.status(404).json({ success: false, error: 'Not found' })
+    return
+  }
+
+  try {
+    const urls = await searchNearbyPhotoVariants(
+      parsed.data.name,
+      parsed.data.district || complex.district || '',
+      parsed.data.category,
+      hasLat && hasLon ? { lat: parsed.data.lat as number, lon: parsed.data.lon as number } : undefined
+    )
+    res.json({ success: true, data: { urls } })
+  } catch (error) {
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Photo search failed' })
+  }
+})
+
+router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), (req: Request, res: Response) => {
   const { type, id } = req.params
 
   const landingTagSchema = z.object({
@@ -860,6 +1227,29 @@ router.put('/catalog/items/:type/:id', (req: Request, res: Response) => {
     preview_images: z.array(z.string()).optional(),
   })
 
+  const landingNearbyPlaceSchema = z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    category: z.string().optional(),
+    lat: z.number(),
+    lon: z.number(),
+    walk_minutes: z.number(),
+    drive_minutes: z.number(),
+    image_url: z.string().optional(),
+    image_variants: z.array(z.string()).optional(),
+    image_fallback: z.boolean().optional(),
+    image_custom: z.boolean().optional(),
+  })
+
+  const landingNearbySchema = z.object({
+    enabled: z.boolean().optional(),
+    title: z.string().optional(),
+    subtitle: z.string().optional(),
+    refreshed_at: z.string().optional(),
+    selected_ids: z.array(z.string()).max(20),
+    candidates: z.array(landingNearbyPlaceSchema).max(20),
+  })
+
   const landingSchema = z.object({
     enabled: z.boolean(),
     accent_color: z.string().optional(),
@@ -876,6 +1266,7 @@ router.put('/catalog/items/:type/:id', (req: Request, res: Response) => {
       cta_label: z.string().optional(),
       items: z.array(landingPlanSchema),
     }),
+    nearby: landingNearbySchema.optional(),
   })
 
   // Common fields for both Property and Complex
@@ -918,6 +1309,8 @@ router.put('/catalog/items/:type/:id', (req: Request, res: Response) => {
     handover_date: z.string().optional(),
     class: z.string().optional(),
     finish_type: z.string().optional(),
+    geo_lat: z.number().min(-90).max(90).optional(),
+    geo_lon: z.number().min(-180).max(180).optional(),
     landing: landingSchema.optional(),
   }
 
@@ -950,10 +1343,12 @@ router.put('/catalog/items/:type/:id', (req: Request, res: Response) => {
     res.status(404).json({ success: false, error: 'Not found' })
     return
   }
+  const entityType = type === 'property' ? 'property' : 'complex' as const
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', entityType, id, `Обновлён ${type === 'property' ? 'лот' : 'ЖК'} (id: ${id})`)
   res.json({ success: true })
 })
 
-router.delete('/catalog/items/:type/:id', (req: Request, res: Response) => {
+router.delete('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), (req: Request, res: Response) => {
   const { type, id } = req.params
   
   const ok = withDb((db) => {
@@ -979,16 +1374,19 @@ router.delete('/catalog/items/:type/:id', (req: Request, res: Response) => {
     res.status(404).json({ success: false, error: 'Not found' })
     return
   }
+  const entityType2 = type === 'property' ? 'property' : 'complex' as const
+  addAuditLog(req.admin!.id, req.admin!.login, 'delete', entityType2, id, `Удалён ${type === 'property' ? 'лот' : 'ЖК'} (id: ${id})`)
   res.json({ success: true })
 })
 
-router.delete('/catalog/reset', (req: Request, res: Response) => {
+router.delete('/catalog/reset', requireAdminPermission('catalog.write'), (req: Request, res: Response) => {
   withDb((db) => {
     db.properties = []
     db.complexes = []
     // Optional: also clear feed sources if requested, but for now just catalog
-    // db.feed_sources = [] 
+    // db.feed_sources = []
   })
+  addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'property', undefined, 'Сброс каталога: удалены все лоты и ЖК')
   res.json({ success: true })
 })
 
@@ -997,7 +1395,7 @@ router.get('/import/runs', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-router.post('/import/run', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/import/run', requireAdminPermission('import.write'), upload.single('file'), async (req: Request, res: Response) => {
   const schema = z.object({
     source_id: z.string().min(1),
     entity: z.enum(['property', 'complex']),
@@ -1107,6 +1505,13 @@ router.post('/import/run', upload.single('file'), async (req: Request, res: Resp
       })
     })
   }
+
+  addAuditLog(
+    req.admin!.id, req.admin!.login, 'import', 'property',
+    run.source_id,
+    `Импорт (${run.entity}): ${run.status} — +${run.stats.inserted}/${run.stats.updated}/${run.stats.hidden}`,
+    run.feed_name || undefined,
+  )
 
   if (run.status === 'failed') {
     res.status(500).json({ success: false, error: 'Import failed', details: errorLog })
@@ -1326,7 +1731,7 @@ function previewComplexes(rows: Record<string, unknown>[], mapping?: Record<stri
 }
 
 // Preview endpoint
-router.post('/import/preview', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/import/preview', requireAdminPermission('import.write'), upload.single('file'), async (req: Request, res: Response) => {
   const schema = z.object({
     source_id: z.string().min(1),
     entity: z.enum(['property', 'complex']),

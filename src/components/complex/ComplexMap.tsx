@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Tooltip } from 'react-leaflet'
 import type { LatLngExpression } from 'leaflet'
 import { Heading, Text } from '@/components/ui/Typography'
-import { fetchPOIs, geocodeAddress, type PoiResult } from '@/lib/overpass'
+import { fetchPOIs, geocodeAddress, type GeoCoords, type PoiResult } from '@/lib/overpass'
 import 'leaflet/dist/leaflet.css'
 
 type PoiCategory = {
@@ -13,6 +13,12 @@ type PoiCategory = {
 
 const DEFAULT_CENTER: LatLngExpression = [55.751244, 37.618423]
 const KREMLIN_COORDS = { lat: 55.752023, lon: 37.617499 }
+const MOSCOW_BOUNDS = {
+  minLat: 55.0,
+  maxLat: 56.2,
+  minLon: 36.7,
+  maxLon: 38.3,
+}
 
 const POI_CATEGORIES: PoiCategory[] = [
   { key: 'cafe', label: 'Кафе и рестораны', color: '#FB7185' },
@@ -45,6 +51,20 @@ function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): num
   return earthRadius * c
 }
 
+function isWithinMoscowBounds(lat: number, lon: number): boolean {
+  return lat >= MOSCOW_BOUNDS.minLat
+    && lat <= MOSCOW_BOUNDS.maxLat
+    && lon >= MOSCOW_BOUNDS.minLon
+    && lon <= MOSCOW_BOUNDS.maxLon
+}
+
+function normalizeDirectCoords(lat?: number, lon?: number): { lat: number; lon: number } | null {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  if (isWithinMoscowBounds(lat!, lon!)) return { lat: lat!, lon: lon! }
+  if (isWithinMoscowBounds(lon!, lat!)) return { lat: lon!, lon: lat! }
+  return null
+}
+
 export type ComplexMapProps = {
   title: string
   district: string
@@ -69,21 +89,48 @@ export default function ComplexMap({
   const [loading, setLoading] = useState<Set<string>>(() => new Set())
   const [nearestMetro, setNearestMetro] = useState<{ name: string; walkMinutes: number } | null>(null)
 
-  const [geocoded, setGeocoded] = useState<{ lat: number; lon: number } | null>(null)
+  const [geocoded, setGeocoded] = useState<GeoCoords | null>(null)
   const [geocoding, setGeocoding] = useState(false)
 
-  const hasDirectCoords = typeof geo_lat === 'number' && typeof geo_lon === 'number'
+  const directCoords = useMemo(() => normalizeDirectCoords(geo_lat, geo_lon), [geo_lat, geo_lon])
+  const hasDirectCoords = Boolean(directCoords)
 
   useEffect(() => {
-    if (hasDirectCoords || geocoded) return
-    setGeocoding(true)
-    geocodeAddress(district)
-      .then((result) => { if (result) setGeocoded(result) })
-      .finally(() => setGeocoding(false))
-  }, [district, hasDirectCoords, geocoded])
+    if (hasDirectCoords) {
+      setGeocoded(null)
+      setGeocoding(false)
+      return
+    }
 
-  const resolvedLat = hasDirectCoords ? geo_lat : geocoded?.lat
-  const resolvedLon = hasDirectCoords ? geo_lon : geocoded?.lon
+    const address = district.trim()
+    const complexName = title.trim()
+    const source = address || complexName
+    if (!source) {
+      setGeocoded(null)
+      return
+    }
+
+    let cancelled = false
+    if (!hasDirectCoords) setGeocoding(true)
+
+    geocodeAddress(source, {
+      city: 'Moscow',
+      complexName: complexName || undefined,
+    })
+      .then((result) => {
+        if (!cancelled) setGeocoded(result)
+      })
+      .finally(() => {
+        if (!cancelled && !hasDirectCoords) setGeocoding(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [district, hasDirectCoords, title])
+
+  const resolvedLat = directCoords?.lat ?? geocoded?.lat
+  const resolvedLon = directCoords?.lon ?? geocoded?.lon
   const hasCoords = typeof resolvedLat === 'number' && typeof resolvedLon === 'number'
 
   const center = useMemo<LatLngExpression>(() => {

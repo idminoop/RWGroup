@@ -16,6 +16,161 @@ function dedupe(arr: string[]): string[] {
   return Array.from(set)
 }
 
+const MOSCOW_BOUNDS = {
+  minLat: 54.9,
+  maxLat: 56.3,
+  minLon: 36.2,
+  maxLon: 38.8,
+}
+
+const MOSCOW_VIEWBOX = `${MOSCOW_BOUNDS.minLon},${MOSCOW_BOUNDS.maxLat},${MOSCOW_BOUNDS.maxLon},${MOSCOW_BOUNDS.minLat}`
+const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search'
+const NOMINATIM_TIMEOUT_MS = 3200
+const STRONG_GEOCODE_SCORE = 175
+const GEOCODE_CACHE_TTL_MS = 15 * 60 * 1000
+
+const GEOCODE_STOPWORDS = new Set([
+  'москва',
+  'moscow',
+  'жк',
+  'жилой',
+  'комплекс',
+  'ул',
+  'улица',
+  'проспект',
+  'пр',
+  'дом',
+])
+
+function isWithinMoscowBounds(lat: number, lon: number): boolean {
+  return lat >= MOSCOW_BOUNDS.minLat
+    && lat <= MOSCOW_BOUNDS.maxLat
+    && lon >= MOSCOW_BOUNDS.minLon
+    && lon <= MOSCOW_BOUNDS.maxLon
+}
+
+type NominatimCandidate = {
+  lat: string
+  lon: string
+  display_name?: string
+  class?: string
+  type?: string
+  importance?: number
+  address?: Record<string, string>
+}
+
+type RankedCandidate = {
+  lat: number
+  lon: number
+  score: number
+  displayName?: string
+}
+
+type CachedGeocodeResult = {
+  lat: number
+  lon: number
+  score?: number
+  display_name?: string
+} | null
+
+type GeocodeCacheEntry = {
+  data: CachedGeocodeResult
+  expiresAt: number
+}
+
+const geocodeResultCache = new Map<string, GeocodeCacheEntry>()
+
+function tokenize(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2 && !GEOCODE_STOPWORDS.has(item))
+}
+
+function roadLikePenalty(className?: string, type?: string): number {
+  const cls = (className || '').toLowerCase()
+  const tp = (type || '').toLowerCase()
+  if (cls === 'highway') return -120
+  if (/(motorway|trunk|primary|secondary|tertiary|road|service|track|path|footway)/i.test(tp)) return -90
+  return 0
+}
+
+function localityPenalty(displayName?: string): number {
+  const text = (displayName || '').toLowerCase()
+  if (!text) return 0
+  if (/\b(деревн|село|пос[её]лок|village|hamlet)\b/i.test(text)) return -70
+  return 0
+}
+
+function buildCandidateScore(candidate: NominatimCandidate, query: string, moscowFirst: boolean): RankedCandidate | null {
+  const lat = Number.parseFloat(candidate.lat)
+  const lon = Number.parseFloat(candidate.lon)
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+
+  if (moscowFirst && !isWithinMoscowBounds(lat, lon)) return null
+
+  const displayName = candidate.display_name || ''
+  const candidateText = [
+    displayName,
+    candidate.address?.road,
+    candidate.address?.house_number,
+    candidate.address?.city,
+    candidate.address?.state,
+    candidate.address?.suburb,
+  ]
+    .filter((item): item is string => typeof item === 'string' && item.length > 0)
+    .join(' ')
+    .toLowerCase()
+
+  const queryTokens = tokenize(query)
+  const tokenHits = queryTokens.reduce((acc, token) => (candidateText.includes(token) ? acc + 1 : acc), 0)
+  const hasHouseInQuery = /\b\d+[a-zа-я]?\b/ui.test(query)
+  const candidateHouse = candidate.address?.house_number || ''
+  const houseMatched = hasHouseInQuery && candidateHouse ? query.toLowerCase().includes(candidateHouse.toLowerCase()) : false
+
+  let score = 0
+  score += tokenHits * 22
+  score += Math.round((candidate.importance || 0) * 100)
+  score += isWithinMoscowBounds(lat, lon) ? 30 : -200
+  score += roadLikePenalty(candidate.class, candidate.type)
+  score += localityPenalty(displayName)
+
+  if (candidate.class === 'building') score += 40
+  if (candidate.type === 'house') score += 40
+  if (candidate.class === 'place') score -= 35
+  if (candidate.type === 'neighbourhood') score -= 12
+
+  if (hasHouseInQuery) score += houseMatched ? 35 : -12
+  if (tokenHits === 0) score -= 40
+  if (tokenHits >= Math.max(2, Math.floor(queryTokens.length / 2))) score += 25
+
+  return { lat, lon, score, displayName }
+}
+
+async function fetchNominatimCandidates(params: URLSearchParams): Promise<NominatimCandidate[]> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), NOMINATIM_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(`${NOMINATIM_SEARCH_URL}?${params}`, {
+      headers: {
+        'Accept-Language': 'ru',
+        'User-Agent': 'RWGroupWebsite/1.0',
+      },
+      signal: controller.signal,
+    })
+    if (!response.ok) return []
+    const json = await response.json() as NominatimCandidate[]
+    return Array.isArray(json) ? json : []
+  } catch {
+    return []
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 function tabToCategory(tab: CatalogTab): Category {
   if (tab === 'secondary') return 'secondary'
   if (tab === 'rent') return 'rent'
@@ -181,35 +336,135 @@ router.get('/collection/:id', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-// Прокси для Nominatim геокодинга (обход CORS)
+// Proxy for Nominatim geocoding (CORS workaround)
 router.get('/geocode', async (req: Request, res: Response) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : ''
   if (!q) return res.json({ success: true, data: null })
 
   try {
-    const params = new URLSearchParams({
-      q,
-      format: 'json',
-      limit: '1',
-      countrycodes: 'ru',
+    const city = typeof req.query.city === 'string' ? req.query.city.trim() : ''
+    const moscowFirstRaw = typeof req.query.moscowFirst === 'string' ? req.query.moscowFirst.trim().toLowerCase() : ''
+    const moscowByFlag = moscowFirstRaw === '1' || moscowFirstRaw === 'true' || moscowFirstRaw === 'yes'
+    const moscowByCity = /(?:\u043c\u043e\u0441\u043a|moscow)/i.test(city)
+    const moscowFirst = moscowByFlag || moscowByCity
+    const cacheKey = `${q}|${city}|${moscowFirst ? '1' : '0'}`
+    const now = Date.now()
+    const cached = geocodeResultCache.get(cacheKey)
+    if (cached && cached.expiresAt > now) {
+      return res.json({ success: true, data: cached.data })
+    }
+
+    const qLc = q.toLowerCase()
+    const cityLc = city.toLowerCase()
+    const candidateQueries = Array.from(
+      new Set(
+        [
+          q,
+          city && !qLc.includes(cityLc) ? `${q}, ${city}` : '',
+        ]
+          .map((item) => item.trim())
+          .filter(Boolean)
+      )
+    )
+
+    const paramsQueue: Array<{ params: URLSearchParams; query: string }> = []
+    const prioritizedCandidates = candidateQueries.slice(0, 2)
+    prioritizedCandidates.forEach((candidate, index) => {
+      if (moscowFirst) {
+        paramsQueue.push({
+          query: candidate,
+          params: new URLSearchParams({
+            q: candidate,
+            format: 'json',
+            limit: '5',
+            addressdetails: '1',
+            countrycodes: 'ru',
+            viewbox: MOSCOW_VIEWBOX,
+            bounded: '1',
+          }),
+        })
+      }
+
+      // Keep global fallback only for the first query to avoid long chains.
+      if (index === 0) {
+        paramsQueue.push({
+          query: candidate,
+          params: new URLSearchParams({
+            q: candidate,
+            format: 'json',
+            limit: '5',
+            addressdetails: '1',
+            countrycodes: 'ru',
+          }),
+        })
+      }
     })
-    const resp = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
-      headers: {
-        'Accept-Language': 'ru',
-        'User-Agent': 'RWGroupWebsite/1.0',
+
+    let best: RankedCandidate | null = null
+    const seen = new Set<string>()
+
+    for (const attempt of paramsQueue) {
+      const candidates = await fetchNominatimCandidates(attempt.params)
+      for (const candidate of candidates) {
+        const rankedCandidate = buildCandidateScore(candidate, attempt.query, moscowFirst)
+        if (!rankedCandidate) continue
+
+        const key = `${rankedCandidate.lat.toFixed(6)}|${rankedCandidate.lon.toFixed(6)}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        if (!best || rankedCandidate.score > best.score) best = rankedCandidate
+      }
+
+      if (best && best.score >= STRONG_GEOCODE_SCORE) {
+        geocodeResultCache.set(cacheKey, {
+          data: {
+            lat: best.lat,
+            lon: best.lon,
+            score: best.score,
+            display_name: best.displayName,
+          },
+          expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
+        })
+        return res.json({
+          success: true,
+          data: {
+            lat: best.lat,
+            lon: best.lon,
+            score: best.score,
+            display_name: best.displayName,
+          },
+        })
+      }
+    }
+
+    if (!best) {
+      geocodeResultCache.set(cacheKey, {
+        data: null,
+        expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
+      })
+      return res.json({ success: true, data: null })
+    }
+
+    geocodeResultCache.set(cacheKey, {
+      data: {
+        lat: best.lat,
+        lon: best.lon,
+        score: best.score,
+        display_name: best.displayName,
+      },
+      expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
+    })
+    return res.json({
+      success: true,
+      data: {
+        lat: best.lat,
+        lon: best.lon,
+        score: best.score,
+        display_name: best.displayName,
       },
     })
-    if (!resp.ok) return res.json({ success: true, data: null })
-
-    const json = (await resp.json()) as Array<{ lat: string; lon: string; display_name: string }>
-    if (!json.length) return res.json({ success: true, data: null })
-
-    res.json({
-      success: true,
-      data: { lat: parseFloat(json[0].lat), lon: parseFloat(json[0].lon) },
-    })
   } catch {
-    res.json({ success: true, data: null })
+    return res.json({ success: true, data: null })
   }
 })
 

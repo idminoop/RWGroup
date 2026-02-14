@@ -6,16 +6,20 @@ const DATA_DIR = path.join(process.cwd(), 'server', 'data')
 const DB_FILE = path.join(DATA_DIR, 'db.json')
 const PUBLISHED_DB_FILE = path.join(DATA_DIR, 'db.published.json')
 
-type PublishSnapshot = Omit<DbShape, 'leads' | 'import_runs'> & {
+type PublishSnapshot = Omit<DbShape, 'admin_users' | 'leads' | 'import_runs' | 'audit_logs'> & {
+  admin_users: []
   leads: []
   import_runs: []
+  audit_logs: []
 }
 
 function toPublishSnapshot(db: DbShape): PublishSnapshot {
   return {
     ...db,
+    admin_users: [],
     leads: [],
     import_runs: [],
+    audit_logs: [],
   }
 }
 
@@ -25,7 +29,9 @@ function readDbFromFile(filePath: string): DbShape {
     throw new Error('DB_NOT_INITIALIZED')
   }
   const raw = fs.readFileSync(filePath, 'utf-8')
-  return JSON.parse(raw) as DbShape
+  const db = JSON.parse(raw) as DbShape
+  if (!Array.isArray(db.audit_logs)) db.audit_logs = []
+  return db
 }
 
 function writeDbToFile(filePath: string, db: DbShape): void {

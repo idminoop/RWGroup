@@ -16,6 +16,7 @@ import adminRoutes from './routes/admin.js'
 import { ensureSeed } from './lib/seed.js'
 import analyticsRoutes from './routes/analytics.js'
 import path from 'path'
+import fs from 'fs'
 
 // load env
 dotenv.config()
@@ -39,6 +40,26 @@ app.use('/api', publicRoutes)
 app.use('/api/leads', leadsRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/analytics', analyticsRoutes)
+
+const DIST_DIR = path.join(process.cwd(), 'dist')
+const DIST_INDEX = path.join(DIST_DIR, 'index.html')
+const HAS_DIST = fs.existsSync(DIST_INDEX)
+
+if (HAS_DIST) {
+  app.use(express.static(DIST_DIR))
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
+    const isApiOrUpload = req.path.startsWith('/api') || req.path.startsWith('/uploads')
+    const isFileRequest = path.extname(req.path) !== ''
+    const acceptsHtml = req.headers.accept?.includes('text/html')
+
+    if (isApiOrUpload || isFileRequest || !acceptsHtml) {
+      next()
+      return
+    }
+
+    res.sendFile(DIST_INDEX)
+  })
+}
 
 /**
  * health

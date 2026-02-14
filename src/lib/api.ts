@@ -27,7 +27,7 @@ export async function apiGet<T>(url: string, headers?: Record<string, string>): 
   let json: unknown
   try {
     json = await res.json()
-  } catch (e) {
+  } catch {
     throw new Error('Invalid JSON response from server')
   }
 
@@ -57,7 +57,7 @@ export async function apiPost<T>(url: string, body: unknown, headers?: Record<st
   let json: unknown
   try {
     json = await res.json()
-  } catch (e) {
+  } catch {
     throw new Error('Invalid JSON response from server')
   }
 
@@ -74,10 +74,13 @@ export async function apiPut<T>(url: string, body: unknown, headers?: Record<str
     body: JSON.stringify(body),
   })
   const json = (await res.json()) as unknown
-  if (!res.ok) throw new Error('Request failed')
+  if (!res.ok) {
+    if (isApiError(json)) throw new Error(json.error)
+    throw new Error(`Request failed: ${res.status} ${res.statusText}`)
+  }
   if (isApiError(json)) throw new Error(json.error)
   const r = asRecord(json)
-  if (!r || r.success !== true) throw new Error('Request failed')
+  if (!r || r.success !== true) throw new Error('Invalid API response format')
   return (json as ApiSuccess<T>).data
 }
 
@@ -87,9 +90,12 @@ export async function apiDelete<T>(url: string, headers?: Record<string, string>
     headers: { accept: 'application/json', ...(headers || {}) },
   })
   const json = (await res.json()) as unknown
-  if (!res.ok) throw new Error('Request failed')
+  if (!res.ok) {
+    if (isApiError(json)) throw new Error(json.error)
+    throw new Error(`Request failed: ${res.status} ${res.statusText}`)
+  }
   if (isApiError(json)) throw new Error(json.error)
   const r = asRecord(json)
-  if (!r || r.success !== true) throw new Error('Request failed')
+  if (!r || r.success !== true) throw new Error('Invalid API response format')
   return (json as ApiSuccess<T>).data
 }
