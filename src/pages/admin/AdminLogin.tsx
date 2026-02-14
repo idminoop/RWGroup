@@ -65,7 +65,7 @@ export default function AdminLoginPage() {
           <div className="mt-1 text-sm text-slate-300">{UI.subtitle}</div>
         </div>
         <div className="rounded-2xl border border-white/10 bg-[#0b1d2b]/80 p-6 backdrop-blur-md">
-          <div className="grid gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <div>
               <div className="mb-1 text-xs font-medium text-slate-300">{UI.login}</div>
               <Input value={login} onChange={(e) => setLogin(e.target.value)} placeholder={UI.login} autoComplete="username" />

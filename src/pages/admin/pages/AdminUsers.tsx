@@ -204,7 +204,7 @@ export default function AdminUsersPage() {
 
       <div className="rounded-xl border border-white/10 bg-[#0b1d2b]/60 p-4">
         <div className="mb-3 text-xs font-medium text-slate-300">Новый пользователь</div>
-        <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_1.5fr_auto_auto] md:items-end">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1.2fr_1fr_1.5fr_auto_auto] md:items-end">
           <div>
             <div className="mb-1 text-xs text-slate-400">Логин</div>
             <Input value={newLogin} onChange={(e) => setNewLogin(e.target.value)} placeholder="user_login" />

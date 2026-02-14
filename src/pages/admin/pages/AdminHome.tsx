@@ -45,7 +45,7 @@ export default function AdminHomePage() {
         <div className="mt-1 text-sm text-slate-600">Быстро редактируйте заголовки и тексты (обновление без фидов).</div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <div className="mb-1 text-xs font-medium text-slate-700">Hero: заголовок</div>
           <Input value={home.hero.title} onChange={(e) => setHome({ ...home, hero: { ...home.hero, title: e.target.value } })} />

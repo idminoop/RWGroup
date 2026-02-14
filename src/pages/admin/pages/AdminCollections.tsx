@@ -92,7 +92,7 @@ export default function AdminCollectionsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">Подборки</div>
           <div className="mt-1 text-sm text-slate-600">Управление подборками объектов и ЖК.</div>

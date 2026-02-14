@@ -640,7 +640,7 @@ export default function AdminComplexSettingsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -689,9 +689,9 @@ export default function AdminComplexSettingsPage() {
             </div>
           </div>
 
-          <article className="space-y-6 rounded-2xl border border-slate-900/30 bg-[#05131c] p-4 text-white md:p-6">
+          <article className="min-w-0 space-y-6 rounded-2xl border border-slate-900/30 bg-[#05131c] p-4 text-white md:p-6">
             <section className="space-y-3 rounded-2xl border border-white/10 bg-[#081b27] p-3 md:p-4">
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-xs text-white/60">Название ЖК</label>
                   <Input
@@ -711,7 +711,7 @@ export default function AdminComplexSettingsPage() {
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3">
                 <div>
                   <label className="mb-1 block text-xs text-white/60">Район</label>
                   <Input
@@ -749,7 +749,7 @@ export default function AdminComplexSettingsPage() {
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-[#05131c] via-[#05131c]/70 to-transparent" />
 
-              <div className="absolute left-4 right-4 top-4 grid gap-2 rounded-xl border border-white/15 bg-black/35 p-3 backdrop-blur md:grid-cols-[1fr_auto]">
+              <div className="absolute left-4 right-4 top-4 grid min-w-0 grid-cols-1 gap-2 rounded-xl border border-white/15 bg-black/35 p-3 backdrop-blur md:grid-cols-[minmax(0,1fr)_auto]">
                 <div className="space-y-2">
                   <label className="text-xs text-white/60">Фото первого экрана (URL)</label>
                   <Input
@@ -805,7 +805,7 @@ export default function AdminComplexSettingsPage() {
             </section>
 
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-white">Факты и карточки ({draftLanding.facts.length}/{MAX_LANDING_FACTS})</h3>
                 <Button
                   size="sm"
@@ -816,10 +816,10 @@ export default function AdminComplexSettingsPage() {
                   + Карточка
                 </Button>
               </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {draftLanding.facts.map((fact, index) => (
-                  <article key={fact.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                    <div className="mb-2 flex items-center justify-between">
+                  <article key={fact.id} className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <div className="text-xs text-white/60">Блок факта</div>
                       <button
                         type="button"
@@ -830,7 +830,7 @@ export default function AdminComplexSettingsPage() {
                       </button>
                     </div>
 
-                    <div className="grid gap-2 md:grid-cols-2">
+                    <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2">
                       <Input
                         value={fact.title}
                         className="border-white/20 bg-white/5 text-white"
@@ -852,7 +852,7 @@ export default function AdminComplexSettingsPage() {
                     />
                     {index >= 6 ? (
                       <>
-                        <div className="mt-2 grid gap-2 md:grid-cols-[1fr_auto]">
+                        <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
                           <Input
                             value={fact.image || ''}
                             className="border-white/20 bg-white/5 text-white"
@@ -913,7 +913,7 @@ export default function AdminComplexSettingsPage() {
                 </div>
               </div>
 
-              <div className="grid gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 md:grid-cols-[1fr_1fr_auto_auto]">
+              <div className="grid min-w-0 grid-cols-1 gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:grid-cols-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
                 <Input
                   value={newPresetTitle}
                   onChange={(e) => setNewPresetTitle(e.target.value)}
@@ -956,7 +956,7 @@ export default function AdminComplexSettingsPage() {
 
               {presetError ? <div className="text-xs text-rose-300">{presetError}</div> : null}
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {featurePresetOptions.map((preset) => {
                   const enabled = selectedFeaturePresetKeys.has(preset.key)
                   return (
@@ -975,7 +975,7 @@ export default function AdminComplexSettingsPage() {
                           <img src={preset.image} alt={preset.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
                           <div className="absolute inset-0 bg-gradient-to-t from-[#05131c] via-transparent to-transparent" />
                         </div>
-                        <div className="flex items-center justify-between px-3 py-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                           <div className="text-sm text-white">{preset.title}</div>
                           <div className={`rounded-full px-2 py-0.5 text-xs ${enabled ? 'bg-amber-300/30 text-amber-100' : 'bg-white/10 text-white/65'}`}>
                             {enabled ? 'Вкл' : 'Выкл'}
@@ -1010,7 +1010,7 @@ export default function AdminComplexSettingsPage() {
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+              <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
                 <div>
                   <label className="mb-1 block text-xs text-white/60">Поиск точки (название + адрес)</label>
                   <Input
@@ -1091,7 +1091,7 @@ export default function AdminComplexSettingsPage() {
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs text-white/60">Заголовок блока</label>
                   <Input
@@ -1123,7 +1123,7 @@ export default function AdminComplexSettingsPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {nearbyConfig.candidates.map((candidate) => {
                       const selected = nearbySelectedIds.has(candidate.id)
                       const imageVariants = dedupeUrls([candidate.image_url || '', ...(candidate.image_variants || [])]).slice(0, MAX_NEARBY_IMAGE_VARIANTS)
@@ -1131,7 +1131,7 @@ export default function AdminComplexSettingsPage() {
                       return (
                         <article
                           key={candidate.id}
-                          className={`rounded-xl border p-3 ${
+                          className={`min-w-0 overflow-hidden rounded-xl border p-3 ${
                             selected ? 'border-amber-300/70 bg-amber-200/10' : 'border-white/10 bg-white/[0.03]'
                           }`}
                         >
@@ -1150,9 +1150,9 @@ export default function AdminComplexSettingsPage() {
                             ) : null}
                           </div>
 
-                          <div className="mt-2 flex items-start justify-between gap-2">
-                            <div>
-                              <div className="text-sm font-semibold text-white">{candidate.name}</div>
+                          <div className="mt-2 flex min-w-0 items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="break-words text-sm font-semibold text-white">{candidate.name}</div>
                               <div className="mt-1 text-xs text-white/65">
                                 Пешком: {Math.round(candidate.walk_minutes)} мин · На машине: {Math.round(candidate.drive_minutes)} мин
                               </div>
@@ -1162,7 +1162,7 @@ export default function AdminComplexSettingsPage() {
                             </Button>
                           </div>
 
-                          <div className="mt-2 grid gap-2 md:grid-cols-[1fr_auto]">
+                          <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
                             <Input
                               value={candidate.image_url || ''}
                               className="border-white/20 bg-white/5 text-white"
@@ -1240,7 +1240,7 @@ export default function AdminComplexSettingsPage() {
             </section>
 
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-xs text-white/60">Заголовок блока планировок</label>
                   <Input
@@ -1268,8 +1268,8 @@ export default function AdminComplexSettingsPage() {
                 Данные по планировкам собираются автоматически из фида: тип, цена от, площадь от, число вариантов и превью-планы.
               </div>
 
-              <div className="overflow-hidden rounded-xl border border-white/10">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto rounded-xl border border-white/10">
+                <table className="min-w-[640px] w-full text-sm">
                   <thead className="bg-white/[0.04] text-white/70">
                     <tr>
                       <th className="px-2 py-2 text-left">Тип</th>

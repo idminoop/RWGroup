@@ -109,7 +109,7 @@ export default function AdminLeadsPage() {
         <div className="mt-1 text-sm text-slate-600">Контроль заявок, статусов и ответственных.</div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
         <Stat title="Все" value={counters.all} active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
         <Stat title="Новые" value={counters.new} active={statusFilter === 'new'} onClick={() => setStatusFilter('new')} />
         <Stat title="В работе" value={counters.in_progress} active={statusFilter === 'in_progress'} onClick={() => setStatusFilter('in_progress')} />
@@ -117,7 +117,7 @@ export default function AdminLeadsPage() {
         <Stat title="Спам" value={counters.spam} active={statusFilter === 'spam'} onClick={() => setStatusFilter('spam')} />
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[220px_1fr]">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[220px_1fr]">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-700">Фильтр статуса</label>
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as LeadStatusFilter)}>

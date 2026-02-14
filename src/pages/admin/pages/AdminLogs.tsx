@@ -163,7 +163,7 @@ export default function AdminLogsPage() {
       </div>
 
       {total > LIMIT && (
-        <div className="flex items-center justify-between text-xs text-slate-400">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
           <span>
             Страница {page} из {totalPages} · Всего: {total}
           </span>

@@ -84,8 +84,8 @@ export default function ItemPickerModal({ open, onClose, onAdd, existingIds = []
   return (
     <Modal open={open} onClose={handleClose} title="Добавить объекты" className="max-w-4xl">
       <div className="space-y-4">
-        <div className="flex gap-3">
-          <div className="flex gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-wrap gap-2">
             <Button size="sm" variant={type === 'property' ? 'default' : 'secondary'} onClick={() => setType('property')}>
               Лоты
             </Button>
@@ -139,7 +139,7 @@ export default function ItemPickerModal({ open, onClose, onAdd, existingIds = []
               {items.length === 0 && <div className="col-span-full text-center text-slate-500">Нет объектов</div>}
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-200 pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
               <div className="text-sm text-slate-600">
                 Выбрано: <span className="font-semibold text-slate-900">{selected.size}</span>
               </div>

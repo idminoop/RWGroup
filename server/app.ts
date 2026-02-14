@@ -17,6 +17,7 @@ import { ensureSeed } from './lib/seed.js'
 import analyticsRoutes from './routes/analytics.js'
 import path from 'path'
 import fs from 'fs'
+import { UPLOADS_DIR } from './lib/paths.js'
 
 // load env
 dotenv.config()
@@ -30,7 +31,7 @@ app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Serve uploaded files
-app.use('/uploads', express.static(path.join(process.cwd(), 'server', 'uploads')))
+app.use('/uploads', express.static(UPLOADS_DIR))
 
 /**
  * API Routes

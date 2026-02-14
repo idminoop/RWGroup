@@ -24,6 +24,7 @@ import {
 } from '../lib/admin-users.js'
 import { generateNearbyPlacesForComplex, searchNearbyPhotoVariants } from '../lib/nearby.js'
 import { addAuditLog } from '../lib/audit.js'
+import { UPLOADS_DIR } from '../lib/paths.js'
 import fs from 'fs'
 import path from 'path'
 import { 
@@ -337,7 +338,7 @@ router.post('/upload', upload.single('file'), (req: Request, res: Response) => {
     }
 
     const filename = `${newId()}${ext}`
-    const uploadsDir = path.join(process.cwd(), 'server', 'uploads')
+    const uploadsDir = UPLOADS_DIR
     
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true })

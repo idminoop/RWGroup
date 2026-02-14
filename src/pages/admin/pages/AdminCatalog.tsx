@@ -125,7 +125,7 @@ export default function AdminCatalogPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">Каталог</div>
           <div className="mt-1 text-sm text-slate-600">Управление лотами и ЖК.</div>
@@ -221,7 +221,7 @@ export default function AdminCatalogPage() {
           className="max-w-4xl"
         >
           <div className="max-h-[75vh] space-y-4 overflow-y-auto p-1">
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Название</label>
                 <Input value={String(editForm.title || '')} onChange={(e) => setEditForm((prev) => ({ ...prev, title: e.target.value }))} />
@@ -236,7 +236,7 @@ export default function AdminCatalogPage() {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Район</label>
                 <Input value={String(editForm.district || '')} onChange={(e) => setEditForm((prev) => ({ ...prev, district: e.target.value }))} />
@@ -251,7 +251,7 @@ export default function AdminCatalogPage() {
             </div>
 
             {tab === 'property' ? (
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-700">Цена</label>
                   <Input
@@ -278,7 +278,7 @@ export default function AdminCatalogPage() {
                 </div>
               </div>
             ) : (
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-700">Цена от</label>
                   <Input
@@ -324,7 +324,7 @@ export default function AdminCatalogPage() {
             </div>
 
             <div>
-              <div className="mb-2 flex items-center justify-between">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <label className="text-xs font-medium text-slate-700">Фото</label>
                 <label className="cursor-pointer text-xs font-medium text-sky-700 hover:text-sky-900">
                   + Добавить

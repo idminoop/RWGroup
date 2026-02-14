@@ -1,8 +1,8 @@
 import fs from 'fs'
 import path from 'path'
 import type { DbShape } from '../../shared/types.js'
+import { DATA_DIR } from './paths.js'
 
-const DATA_DIR = path.join(process.cwd(), 'server', 'data')
 const DB_FILE = path.join(DATA_DIR, 'db.json')
 const PUBLISHED_DB_FILE = path.join(DATA_DIR, 'db.published.json')
 

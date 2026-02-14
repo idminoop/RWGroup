@@ -2,186 +2,397 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+---
 
-RWGroup real estate agency website - a property catalog platform with feed import capabilities. The system displays residential complexes (ЖК), properties for sale/rent, and manages lead generation forms.
+## 1. Project Overview
 
-## Development Commands
+### What is RWGroup?
 
-### Running the Application
-```bash
-npm run dev              # Run both client (Vite) and server (Express) concurrently
-npm run client:dev       # Client only on http://localhost:5173
-npm run server:dev       # Server only on http://localhost:3001
-```
+**RWGroup** — это сайт агентства недвижимости, работающий как **публичная витрина объектов** и **лидогенерационная платформа** с автоматическим импортом данных из фидов застройщиков и партнёров.
 
-### Build & Quality
-```bash
-npm run build           # TypeScript check + Vite production build
-npm run check           # TypeScript type checking (no emit)
-npm run lint            # ESLint across the codebase
-npm run preview         # Preview production build locally
-```
+### Concept
 
-## Architecture
+Сайт построен по модели **"витрина + фиды"**:
+- **Контент доверия** (экспертиза, команда, отзывы, миссия) — управляется вручную через админку
+- **Каталоги и объекты** (новостройки, вторичка, аренда) — автоматически обновляются из внешних фидов
+- **Лидогенерация** — 4 типа форм заявок с отслеживанием источника (экран, объект, вкладка)
 
-### Stack
-- **Frontend**: React 18 + TypeScript + Vite + React Router v7
-- **Backend**: Express.js REST API (port 3001)
-- **Database**: JSON file storage (`server/data/db.json`)
-- **Styling**: TailwindCSS + class-variance-authority (CVA)
-- **State**: Zustand for UI state
-- **Dev Setup**: Vite proxy forwards `/api/*` to Express server
+### Mission & Goals
+
+**Основная цель:** Получение заявок на покупку/продажу/аренду недвижимости и партнёрство.
+
+**Вторичные цели:**
+- Формирование доверия к бренду RWGroup
+- Демонстрация экспертности команды
+- Быстрый доступ клиентов к актуальным объектам недвижимости
+- Позиционирование как "персональный гарант на рынке недвижимости"
+
+### Marketing Strategy
+
+Сайт реализует многоуровневую маркетинговую воронку:
+
+1. **Привлечение** — SEO-оптимизация (ЧПУ, OpenGraph, Schema.org), каталог объектов
+2. **Вовлечение** — 10 экранов лендинга с якорной навигацией, фильтры каталога, карточки объектов
+3. **Доверие** — блоки преимуществ, этапов работы, миссии, команды, отзывов реальных клиентов
+4. **Конверсия** — 4 типа лид-форм, стратегически расположенных по всему сайту
+5. **Аналитика** — фиксация источника каждой заявки (страница, блок, объект, вкладка), трекинг событий
+
+**Целевые сценарии конверсии:**
+- Главная → Каталог → Карточка → Заявка "Записаться на просмотр"
+- Главная → CTA "Получить консультацию" → Заявка
+- Главная → Блок "Стать партнёром" → Заявка партнёрства
+- Каталог → CTA "Купить/Продать" → Заявка с вкладками
+
+---
+
+## 2. Architecture
+
+### Technology Stack
+
+| Layer | Technology | Details |
+|-------|-----------|---------|
+| **Frontend** | React 18 + TypeScript + Vite | SPA с React Router v7 |
+| **Backend** | Express.js REST API | Порт 3001, TypeScript через tsx |
+| **Database** | JSON file storage | `server/data/db.json` (планируется миграция на PostgreSQL/Supabase) |
+| **Styling** | TailwindCSS + CVA | class-variance-authority для вариантов компонентов |
+| **State** | Zustand | Клиентское состояние UI |
+| **Validation** | Zod | Валидация данных на сервере |
+| **Maps** | Leaflet + React-Leaflet | Карты для ЖК и объектов |
+| **File Import** | xlsx, csv-parse, fast-xml-parser | Парсинг фидов |
+| **File Upload** | Multer | Обработка загрузки файлов |
+| **Dev Tools** | Vite proxy, Nodemon, Concurrently | Параллельный запуск клиента и сервера |
 
 ### Project Structure
+
 ```
-src/
-  components/
-    catalog/         # Property/complex cards, filters, tabs
-    forms/          # Lead generation modals
-    layout/         # Header, Footer, SiteLayout
-    ui/             # Reusable UI components (Button, Input, Modal, etc.)
-  pages/            # Route pages (Home, Catalog, Property, Complex, Collection)
-    admin/          # Admin panel pages (feeds, imports, collections, leads)
-  store/            # Zustand stores
-
-server/
-  routes/           # Express routes (auth, public, leads, admin, analytics)
-  lib/              # Utilities (storage, seed, phone formatting, ID generation)
-  middleware/       # adminAuth, rateLimit
-  data/             # db.json file storage
-
-shared/
-  types.ts          # Shared TypeScript types used by both client and server
+RWGroup/
+├── src/                          # Frontend (React)
+│   ├── components/
+│   │   ├── catalog/              # Карточки объектов, фильтры, вкладки каталога
+│   │   │   ├── CatalogFilters.tsx    # Фильтры: спальни, цена, район, метро
+│   │   │   ├── CatalogTabs.tsx       # Вкладки: Новостройки/Вторичка/Аренда
+│   │   │   ├── PropertyCard.tsx      # Карточка лота
+│   │   │   └── ComplexCard.tsx       # Карточка ЖК
+│   │   ├── complex/              # Компоненты страницы ЖК
+│   │   │   ├── ComplexMap.tsx        # Карта расположения ЖК (Leaflet)
+│   │   │   └── NearbyPlaces.tsx      # Ближайшие места
+│   │   ├── forms/                # Лид-формы
+│   │   │   └── LeadModal.tsx         # Универсальная модалка заявки (4 типа форм)
+│   │   ├── layout/               # Общий лейаут
+│   │   │   ├── Header.tsx            # Шапка: логотип, телефон, меню, CTA
+│   │   │   ├── Footer.tsx            # Подвал: контакты, соцсети, политика
+│   │   │   └── SiteLayout.tsx        # Обёртка страницы
+│   │   └── ui/                   # Переиспользуемые UI-компоненты
+│   │       ├── Button.tsx            # Кнопка с вариантами (CVA)
+│   │       ├── Input.tsx             # Текстовое поле
+│   │       ├── Select.tsx            # Выпадающий список
+│   │       ├── Modal.tsx             # Модальное окно
+│   │       ├── Drawer.tsx            # Выдвижная панель (мобильные фильтры)
+│   │       ├── Card.tsx              # Карточка
+│   │       ├── Badge.tsx             # Бейдж
+│   │       ├── Skeleton.tsx          # Скелетон загрузки
+│   │       ├── ImageGallery.tsx      # Галерея изображений
+│   │       └── Typography.tsx        # Типографика
+│   ├── pages/                    # Страницы маршрутов
+│   │   ├── Home.tsx                  # Главная (10 экранов лендинга)
+│   │   ├── Catalog.tsx               # Каталог недвижимости
+│   │   ├── Property.tsx              # Карточка лота
+│   │   ├── Complex.tsx               # Карточка ЖК
+│   │   ├── Collection.tsx            # Страница подборки
+│   │   ├── Privacy.tsx               # Политика конфиденциальности
+│   │   ├── UiKit.tsx                 # UI Kit (для разработки)
+│   │   └── admin/                    # Админ-панель
+│   │       ├── AdminEntry.tsx        # Точка входа админки
+│   │       ├── AdminLogin.tsx        # Страница авторизации
+│   │       ├── AdminLayout.tsx       # Лейаут с сайдбаром
+│   │       ├── components/           # Общие компоненты админки
+│   │       │   ├── ManualItemsEditor.tsx    # Редактор ручных подборок
+│   │       │   ├── CollectionPreview.tsx    # Превью подборки
+│   │       │   ├── CollectionModal.tsx      # Модалка создания/редактирования подборки
+│   │       │   ├── AutoRulesBuilder.tsx     # Конструктор авто-правил подборок
+│   │       │   └── ItemPickerModal.tsx      # Выбор объектов для подборки
+│   │       └── pages/                # Страницы админки
+│   │           ├── AdminHome.tsx          # Управление витриной (экраны главной)
+│   │           ├── AdminCatalog.tsx       # Управление каталогом
+│   │           ├── AdminCollections.tsx   # Управление подборками
+│   │           ├── AdminImport.tsx        # Импорт фидов (маппинг, превью)
+│   │           ├── AdminLeads.tsx         # CRM лидов (заявки)
+│   │           ├── AdminUsers.tsx         # Управление администраторами
+│   │           ├── AdminLogs.tsx          # Аудит-логи
+│   │           └── AdminComplexSettings.tsx # Настройки лендинга ЖК
+│   └── store/                    # Zustand stores
+│
+├── server/                       # Backend (Express.js)
+│   ├── app.ts                    # Express application setup
+│   ├── server.ts                 # Server entry point (порт 3001)
+│   ├── routes/
+│   │   ├── public.ts             # Публичное API: каталог, объекты, ЖК, подборки, главная
+│   │   ├── admin.ts              # Админское API: CRUD объектов, импорт, настройки
+│   │   ├── auth.ts               # Авторизация: login, verify, управление пользователями
+│   │   ├── leads.ts              # API лидов: создание заявок, CRM
+│   │   └── analytics.ts          # API аналитики
+│   ├── middleware/
+│   │   ├── adminAuth.ts          # JWT-based middleware авторизации админа
+│   │   └── rateLimit.ts          # Rate limiting для API
+│   ├── lib/
+│   │   ├── storage.ts            # Хелперы работы с БД (readDb, writeDb, withDb)
+│   │   ├── seed.ts               # Начальное заполнение данными
+│   │   ├── phone.ts              # Форматирование телефонов (RU маска)
+│   │   └── ids.ts                # Генерация UUID
+│   ├── data/
+│   │   └── db.json               # JSON-база данных (файловое хранилище)
+│   └── uploads/                  # Загруженные файлы (фиды)
+│
+├── shared/
+│   └── types.ts                  # Общие TypeScript-типы (клиент + сервер)
+│
+├── .trae/documents/              # Проектная документация
+│   ├── tech_arch_rwgroup_website.md    # Техническая архитектура
+│   ├── prd_rwgroup_website.md          # PRD (Product Requirements)
+│   └── page_design_rwgroup_website.md  # Дизайн-спецификация страниц
+│
+├── user_data/
+│   └── ТЗ RW Group.docx         # Техническое задание от заказчика
+│
+├── Dockerfile                    # Docker multi-stage build (Node 22 Alpine)
+├── captain-definition.json       # CapRover deployment config
+├── vite.config.ts                # Vite config (proxy, path aliases)
+├── tailwind.config.js            # TailwindCSS config
+└── package.json                  # Dependencies & scripts
 ```
 
 ### Data Flow
-1. Client makes API calls to `/api/*` endpoints
-2. Vite dev server proxies to Express backend at `localhost:3001`
-3. Express routes use `storage.ts` helpers to read/write `db.json`
-4. Shared types (`shared/types.ts`) ensure type safety across stack
 
-## Key Domain Concepts
+```
+[Пользователь] → [React SPA] → [Vite Dev Proxy /api/*] → [Express API :3001]
+                                                                    ↓
+                                                           [storage.ts helpers]
+                                                                    ↓
+                                                           [server/data/db.json]
 
-### Property Data Model
-The system manages three core entities:
-
-1. **Complex** (Жилой комплекс / ЖК) - Residential development projects
-   - Category: always `'newbuild'`
-   - Contains multiple properties
-   - Has price_from, area_from (minimum values)
-   - Linked to properties via `external_id`/`complex_external_id`
-
-2. **Property** (Лот) - Individual units
-   - Categories: `'newbuild' | 'secondary' | 'rent'`
-   - Deal types: `'sale' | 'rent'`
-   - Key fields: bedrooms, price, area_total, district, metro
-   - Can belong to a complex or standalone
-
-3. **Collection** (Подборка) - Curated property/complex lists
-   - Manually managed in admin panel
-   - Used for "Featured of the Week" sections
-
-### Feed Import System
-The system imports property data from external sources (developers, partners):
-- **Formats**: XLSX, CSV, XML, JSON
-- **Modes**: Manual upload or auto-fetch via URL
-- **Process**: Upload → Column mapping → Preview → Import
-- **Lifecycle**: Records matched by `source_id + external_id`, missing records marked as `hidden`
-
-### Lead Forms
-Four form types with specific purposes:
-1. `consultation` - General inquiry (name + phone)
-2. `buy_sell` - Purchase/sale request with tabs (name + phone)
-3. `view_details` - Property viewing request (name + phone)
-4. `partner` - Partnership inquiry (name + phone + comment)
-
-All forms track source context (page, block, object_id) for analytics.
-
-## Code Patterns
-
-### Type Safety
-- All shared types in `shared/types.ts` imported with `.js` extension for ESM compatibility
-- Use `DbShape` interface for database structure
-- Type guards ensure runtime safety when reading external data
-
-### UI Component Patterns
-- UI components in `src/components/ui/` use CVA for variant management
-- Example: `Button` has `variant` and `size` props managed via `cva()`
-- Consistent use of `cn()` utility (tailwind-merge + clsx) for className merging
-
-### API Conventions
-- Public routes in `server/routes/public.ts`
-- Admin routes in `server/routes/admin.ts` with `adminAuth` middleware
-- Responses follow `{ success: boolean, data?: any, error?: string }` pattern
-- Lead creation includes IP and user-agent tracking
-
-### Storage Helpers
-Use functions from `server/lib/storage.ts`:
-- `readDb()` - Read entire database
-- `writeDb(db)` - Write entire database
-- `withDb(fn)` - Atomic read-modify-write operation
-
-### Path Aliases
-TypeScript paths configured with `@/*` pointing to `src/*`:
-```typescript
-import { Button } from '@/components/ui/Button'
+[Администратор] → [Админ-панель /admin] → [JWT Auth] → [Admin API /api/admin/*]
+                                                                    ↓
+                                                           [CRUD + Import Logic]
+                                                                    ↓
+                                                           [db.json + uploads/]
 ```
 
-## Technical Specifications
+### Data Model (Entities)
 
-### Real Estate Business Rules
-Based on `website_tech_spec.md` and `.trae/documents/tech_arch_rwgroup_website.md`:
+1. **Complex** (Жилой комплекс / ЖК) — Жилые комплексы новостроек
+   - Всегда `category: 'newbuild'`
+   - Содержит множество Property через `complex_external_id`
+   - Поля: `price_from`, `area_from` (минимальные значения), район, метро, изображения
+   - Поддерживает landing-конфигурацию (цвета, теги, факты, планировки, ближайшие места)
 
-1. **Data Normalization**:
-   - Bedrooms: numeric only (0-4)
-   - Price: numeric only
-   - District/metro: from reference lists
-   - Status: `'active' | 'hidden' | 'archived'`
+2. **Property** (Лот) — Отдельные объекты недвижимости
+   - Категории: `newbuild | secondary | rent`
+   - Типы сделки: `sale | rent`
+   - Ключевые поля: bedrooms (0-4), price, area_total, district, metro
+   - Дополнительно: floor, floors_total, renovation, old_price, description
 
-2. **Import Mapping**:
-   - Admin UI allows column mapping for XLSX/CSV/XML/JSON
-   - Preview before commit
-   - Error logs for failed imports
-   - Template saving for recurring imports
+3. **Collection** (Подборка) — Кураторские подборки объектов
+   - Режимы: `manual` (ручной выбор) | `auto` (по правилам фильтрации)
+   - Содержит items — ссылки на Property или Complex
+   - Используется для "Лучших предложений недели"
 
-3. **SEO Requirements**:
-   - Slugs for all entities (properties, complexes, collections)
-   - Meta tags and OpenGraph support needed
-   - Schema.org structured data planned
-   - Analytics tracking via source metadata
+4. **Lead** (Заявка) — Лиды от посетителей
+   - 4 типа форм: `consultation`, `buy_sell`, `view_details`, `partner`
+   - CRM-поля: `lead_status`, `assignee`, `admin_note`
+   - Трекинг: IP, user_agent, source (page/block/object_id/object_type)
 
-4. **Home Page Structure** (10 sections):
-   - Hero, Catalogs, Featured, Advantages, Pricing, Steps, Mission, Team, Reviews, Partner form
-   - Content managed via `db.json` home object
+5. **FeedSource** (Источник фида) — Конфигурация внешних источников данных
+   - Форматы: XLSX, CSV, XML, JSON
+   - Режимы: ручная загрузка / автообновление по URL
+   - Хранение маппинга полей
 
-## Development Workflow
+6. **ImportRun** (Прогон импорта) — Логи импорта
+   - Статусы: `success | failed | partial`
+   - Статистика: inserted, updated, hidden
+
+7. **AdminUser** — Администраторы системы
+   - Роли: `owner | content | import | sales`
+   - Гранулярные права доступа (20+ permissions)
+
+8. **AuditLog** — Журнал аудита действий администраторов
+   - Действия: create, update, delete, login, publish, import
+
+### API Endpoints
+
+**Публичное API:**
+- `GET /api/catalog` — Каталог с фильтрами (deal_type, category, bedrooms, price, district, metro, search)
+- `GET /api/property/:slug` — Карточка лота
+- `GET /api/complex/:slug` — Карточка ЖК + лоты
+- `GET /api/collection/:slug` — Подборка
+- `GET /api/home` — Контент главной страницы
+- `POST /api/leads` — Создание заявки (лида)
+
+**Админское API (требует JWT):**
+- `POST /api/auth/login` — Авторизация
+- `GET /api/auth/verify` — Проверка токена
+- `GET/POST/PUT/DELETE /api/admin/...` — CRUD для всех сущностей
+- `POST /api/admin/feed/upload` — Загрузка файла фида
+- `POST /api/admin/import/preview` — Предпросмотр маппинга
+- `POST /api/admin/import/run` — Запуск импорта
+- `GET /api/admin/import/runs` — Логи импортов
+- `GET /api/admin/leads` — Список лидов (CRM)
+
+---
+
+## 3. Development Commands
+
+### Running the Application
+
+```bash
+npm run dev              # Запуск клиента (Vite :5173) + сервера (Express :3001) одновременно
+npm run client:dev       # Только клиент на http://localhost:5173
+npm run server:dev       # Только сервер на http://localhost:3001
+```
+
+### Build & Quality
+
+```bash
+npm run build           # TypeScript проверка + Vite production build
+npm run check           # TypeScript type checking (без эмита)
+npm run lint            # ESLint по всей кодовой базе
+npm run preview         # Предпросмотр production-билда
+```
+
+### Docker
+
+```bash
+docker build -t rwgroup .                    # Сборка Docker-образа
+docker run -p 3000:3000 rwgroup              # Запуск контейнера (production, порт 3000)
+```
+
+**Docker-образ** использует multi-stage build:
+- Builder: `node:22-alpine` — устанавливает зависимости, собирает клиент
+- Runner: `node:22-alpine` — минимальный образ с production-кодом
+- Сервер запускается через `tsx` для поддержки TypeScript
+
+### Deployment (CapRover)
+
+Проект настроен для деплоя на CapRover:
+- Файл `captain-definition.json` указывает на `Dockerfile`
+- Production-сервер обслуживает и API, и статику из `dist/`
+- Порт: 3000 (переменная `PORT`)
+
+---
+
+## 4. Management & Monitoring
+
+### Admin Panel (`/admin`)
+
+**Авторизация:**
+- Роутинг: `/admin` → `AdminLogin.tsx` → `AdminLayout.tsx`
+- JWT-based аутентификация через `server/middleware/adminAuth.ts`
+- Роли: `owner` (полный доступ), `content`, `import`, `sales`
+
+**Разделы админки:**
+
+| Раздел | Путь | Описание |
+|--------|------|----------|
+| Витрина | `/admin/home` | Управление 10 экранами главной страницы |
+| Каталог | `/admin/catalog` | Просмотр/редактирование объектов и ЖК |
+| Подборки | `/admin/collections` | Создание подборок (ручных и автоматических) |
+| Импорт | `/admin/import` | Загрузка фидов, маппинг, превью, запуск |
+| Лиды | `/admin/leads` | CRM: заявки, статусы, назначение, заметки |
+| Пользователи | `/admin/users` | Управление администраторами |
+| Логи | `/admin/logs` | Аудит-журнал действий |
+| Настройки ЖК | `/admin/complex/:id/settings` | Конфигурация лендинга ЖК |
+
+### Feed Import Workflow
+
+1. **Создание источника** — указать имя, формат (XLSX/CSV/XML/JSON), режим (файл/URL)
+2. **Загрузка/скачивание** — загрузить файл или указать URL для автообновления
+3. **Маппинг** — сопоставление колонок фида с полями системы
+4. **Предпросмотр** — просмотр распознанных данных, ошибок и предупреждений
+5. **Запуск импорта** — вставка/обновление записей в БД
+6. **Жизненный цикл** — `external_id + source_id` = уникальный ключ; пропавшие из фида записи → `hidden`
+
+### Database Management
+
+- **Хранение:** `server/data/db.json` — файловое JSON-хранилище
+- **Backup:** Копировать файл `db.json` перед обновлениями
+- **Seed:** При первом запуске (или если `db.json` отсутствует) выполняется `ensureSeed()` из `server/lib/seed.ts`
+- **Миграция:** При изменении `DbShape` в `shared/types.ts` — ручная миграция `db.json`
+
+### Monitoring
+
+- **Аудит-логи** в БД: все действия администраторов (CRUD, логины, импорты) записываются в `audit_logs`
+- **Import logs:** каждый прогон импорта сохраняется в `import_runs` со статистикой и ошибками
+- **Lead tracking:** все заявки содержат IP, user-agent, источник (страница/блок/объект)
+- **Rate limiting:** защита API через `rateLimit` middleware
+
+---
+
+## 5. Code Patterns & Conventions
+
+### Type Safety
+- Все общие типы в `shared/types.ts`, импортируются с `.js` для ESM-совместимости
+- `DbShape` — интерфейс структуры всей базы данных
+- Валидация данных через Zod на серверной стороне
+
+### UI Components (CVA pattern)
+```typescript
+// Компоненты в src/components/ui/ используют CVA для вариантов
+import { cva } from 'class-variance-authority'
+const buttonVariants = cva('base-classes', {
+  variants: { variant: { primary: '...', secondary: '...' }, size: { sm: '...', md: '...' } }
+})
+// Объединение классов через cn() (tailwind-merge + clsx)
+import { cn } from '@/lib/utils'
+```
+
+### API Response Format
+```typescript
+{ success: boolean, data?: any, error?: string }
+```
+
+### Storage Helpers
+```typescript
+import { readDb, writeDb, withDb } from './lib/storage.js'
+// readDb()    — чтение всей БД
+// writeDb(db) — запись всей БД
+// withDb(fn)  — атомарная операция чтение→модификация→запись
+```
+
+### Path Aliases
+```typescript
+import { Button } from '@/components/ui/Button'  // @ → src/
+```
+
+### Design Tokens (from spec)
+- Background: `#FFFFFF`, Text: `#0F172A`, Secondary: `#475569`
+- Accent: `#0EA5E9`, Borders: `#E2E8F0`
+- Breakpoints: Desktop ≥1200, Tablet 768–1199, Mobile <768
+
+---
+
+## 6. Development Workflow
 
 ### Adding a New Feature
-1. Define types in `shared/types.ts` if needed
-2. Create API route in `server/routes/`
-3. Update `DbShape` if database structure changes
-4. Implement UI components in `src/components/`
-5. Add page route if needed in `src/pages/`
-6. Use `npm run check` to verify types
+1. Определить типы в `shared/types.ts`
+2. Обновить `DbShape` если нужна новая коллекция в БД
+3. Создать API route в `server/routes/`
+4. Реализовать UI-компоненты в `src/components/`
+5. Добавить страницу в `src/pages/` если нужна
+6. Выполнить `npm run check` для проверки типов
 
 ### Modifying the Database
-1. Update `DbShape` interface in `shared/types.ts`
-2. Modify seed logic in `server/lib/seed.ts` if needed
-3. Database auto-reseeds on server restart if empty
-4. For production, manual migration of `db.json` required
+1. Обновить `DbShape` в `shared/types.ts`
+2. Обновить seed-логику в `server/lib/seed.ts` если нужно
+3. БД auto-seed при первом запуске (если `db.json` отсутствует)
+4. В production — ручная миграция `db.json`
 
-### Admin Panel Access
-- Route: `/admin`
-- Authentication managed via `server/middleware/adminAuth.ts`
-- Login credentials configured in environment or hardcoded
-- All admin routes prefixed with `/api/admin/*`
+---
 
-## Important Notes
+## 7. Important Notes
 
-- **Database**: Currently JSON file-based, designed to migrate to PostgreSQL (Supabase planned per tech spec)
-- **Image Handling**: URLs stored in arrays, actual storage TBD (S3-compatible planned)
-- **Phone Formatting**: Use `formatPhone()` from `server/lib/phone.ts` for Russian numbers
-- **ID Generation**: Use `newId()` from `server/lib/ids.ts` for consistent UUID format
-- **Seed Data**: Runs once on server start if `db.json` missing, controlled by `ensureSeed()` in `server/lib/seed.ts`
-- **Concurrent Development**: Always use `npm run dev` to run both client and server together
+- **Database:** Сейчас JSON file-based, в ТЗ запланирован PostgreSQL (Supabase)
+- **Image Handling:** URL-ы в массивах, хранилище TBD (запланировано S3-совместимое)
+- **Phone Formatting:** `formatPhone()` из `server/lib/phone.ts` для RU номеров
+- **ID Generation:** `newId()` из `server/lib/ids.ts` для UUID
+- **Seed Data:** Запускается при старте сервера если `db.json` нет
+- **Concurrent Dev:** Всегда используйте `npm run dev` для одновременного запуска клиента и сервера
+- **Production Port:** 3000 (в Docker/CapRover), 3001 (dev)

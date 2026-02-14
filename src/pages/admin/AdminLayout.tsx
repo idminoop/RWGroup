@@ -163,7 +163,7 @@ export default function AdminLayout() {
 
   return (
     <div className="admin-shell min-h-screen overflow-x-hidden">
-      <div className="mx-auto w-full max-w-[1800px] px-[2vw] py-[2vw] sm:px-4 md:py-6">
+      <div className="mx-auto w-full max-w-[1800px] px-3 py-3 sm:px-4 md:py-6">
         <div className="admin-topbar flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0b1d2b]/75 p-4 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="text-2xl font-semibold tracking-tight text-white">Админка</div>
@@ -185,25 +185,26 @@ export default function AdminLayout() {
             )}
             {publishError ? <div className="mt-1 text-xs text-rose-300">{publishError}</div> : null}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
             <Button
               onClick={handlePublish}
               disabled={!canApplyPublish || publishLoading || !publishStatus?.has_pending_changes}
+              className="w-full sm:w-auto"
             >
               {publishLoading ? 'Публикация...' : 'Применить изменения на сайт'}
             </Button>
-            <Link className="text-sm text-slate-300 hover:text-white" to="/">
+            <Link className="text-center text-sm text-slate-300 hover:text-white" to="/">
               На сайт
             </Link>
-            <Button variant="secondary" onClick={() => setAdminSession(null)}>
+            <Button variant="secondary" onClick={() => setAdminSession(null)} className="w-full sm:w-auto">
               Выйти
             </Button>
           </div>
         </div>
 
-        <div className="mt-6 grid gap-5 md:grid-cols-[220px_1fr]">
-          <aside className="rounded-2xl border border-white/10 bg-[#081724]/80 p-3 backdrop-blur-md md:sticky md:top-4">
-            <nav className="flex gap-2 overflow-x-auto text-sm md:block md:space-y-1 md:overflow-visible">
+        <div className="mt-6 grid min-w-0 grid-cols-1 gap-5 md:grid-cols-[220px_minmax(0,1fr)]">
+          <aside className="min-w-0 rounded-2xl border border-white/10 bg-[#081724]/80 p-3 backdrop-blur-md md:sticky md:top-4">
+            <nav className="grid min-w-0 grid-cols-2 gap-2 text-sm sm:flex sm:overflow-x-auto md:block md:space-y-1 md:overflow-visible">
               {canAccessHome && <NavLink to="/admin" current={loc.pathname === '/admin'} title="Витрина" />}
               {canAccessCatalog && <NavLink to="/admin/catalog" current={loc.pathname.startsWith('/admin/catalog')} title="Каталог" />}
               {canAccessComplexSettings && <NavLink to="/admin/complex-settings" current={loc.pathname.startsWith('/admin/complex-settings')} title="Настройка ЖК" />}
@@ -214,7 +215,7 @@ export default function AdminLayout() {
               {canAccessLogs && <NavLink to="/admin/logs" current={loc.pathname.startsWith('/admin/logs')} title="Логи" />}
             </nav>
           </aside>
-          <section className="admin-content min-w-0 rounded-2xl border border-white/10 bg-[#0a1b29]/82 p-4 backdrop-blur-md sm:p-[3vw] md:p-5">
+          <section className="admin-content min-w-0 rounded-2xl border border-white/10 bg-[#0a1b29]/82 p-3 backdrop-blur-md sm:p-4 md:p-5">
             <Routes>
               <Route path="/" element={canAccessHome ? <AdminHomePage /> : <Navigate to={defaultAdminPath} replace />} />
               <Route path="/catalog" element={canAccessCatalog ? <AdminCatalogPage /> : <Navigate to={defaultAdminPath} replace />} />
@@ -239,8 +240,8 @@ function NavLink({ to, title, current }: { to: string; title: string; current: b
       to={to}
       className={
         current
-          ? 'inline-flex whitespace-nowrap rounded-md bg-primary px-3 py-2 font-medium text-white md:block'
-          : 'inline-flex whitespace-nowrap rounded-md px-3 py-2 text-slate-300 hover:bg-white/10 hover:text-white md:block'
+          ? 'flex w-full items-center justify-center rounded-md bg-primary px-3 py-2 text-center font-medium text-white sm:inline-flex sm:whitespace-nowrap md:block md:text-left'
+          : 'flex w-full items-center justify-center rounded-md px-3 py-2 text-center text-slate-300 hover:bg-white/10 hover:text-white sm:inline-flex sm:whitespace-nowrap md:block md:text-left'
       }
     >
       {title}

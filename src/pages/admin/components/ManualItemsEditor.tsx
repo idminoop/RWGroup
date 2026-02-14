@@ -86,7 +86,7 @@ export default function ManualItemsEditor({ value, onChange, collectionId }: Pro
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-slate-600">
           Объектов в подборке: <span className="font-semibold text-slate-900">{value.length}</span>
           {invalidIds.size > 0 && (
@@ -95,7 +95,7 @@ export default function ManualItemsEditor({ value, onChange, collectionId }: Pro
             </Badge>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {invalidIds.size > 0 && (
             <Button size="sm" variant="secondary" onClick={handleCleanInvalid}>
               Очистить невалидные

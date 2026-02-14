@@ -143,7 +143,7 @@ export default function AutoRulesBuilder({ value, onChange }: Props) {
         />
       </div>
 
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="text-sm text-slate-600">
           {previewLoading ? (
             'Загрузка...'

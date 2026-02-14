@@ -109,6 +109,7 @@ export default function AdminImportPage() {
   } | null>(null)
   const [viewMode, setViewMode] = useState<'table' | 'visual'>('visual')
   const [cardsPerRow, setCardsPerRow] = useState(3)
+  const [isMobilePreview, setIsMobilePreview] = useState(false)
   const [autoPreviewSourceId, setAutoPreviewSourceId] = useState<string | null>(null)
   const [hideInvalid, setHideInvalid] = useState(true)
 
@@ -120,6 +121,26 @@ export default function AdminImportPage() {
     const data = row.data as Record<string, any>
     return data.external_id || data.id || data.externalId || ''
   }
+
+  const cardsPerRowOptions = isMobilePreview ? [1] : [1, 2, 3, 4, 5]
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const media = window.matchMedia('(max-width: 640px)')
+    const apply = () => setIsMobilePreview(media.matches)
+    apply()
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', apply)
+      return () => media.removeEventListener('change', apply)
+    }
+    media.addListener(apply)
+    return () => media.removeListener(apply)
+  }, [])
+
+  useEffect(() => {
+    if (!isPreviewMode || viewMode !== 'visual' || !isMobilePreview) return
+    if (cardsPerRow !== 1) setCardsPerRow(1)
+  }, [cardsPerRow, isMobilePreview, isPreviewMode, viewMode])
 
   const load = useCallback(async () => {
     if (!token) return
@@ -597,7 +618,7 @@ export default function AdminImportPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">Импорт и Фиды</div>
           <div className="mt-1 text-sm text-slate-600">Управление источниками данных и запуск импорта.</div>
@@ -803,7 +824,7 @@ export default function AdminImportPage() {
               </table>
             </div>
             {runs.length > 0 && (
-              <div className="mt-3 flex items-center justify-between text-xs text-slate-600">
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
                 <span>Страница {runsPage} из {runsTotalPages}</span>
                 <div className="flex gap-2">
                   <Button size="sm" variant="secondary" onClick={() => setRunsPage((p) => Math.max(1, p - 1))} disabled={runsPage === 1}>
@@ -821,18 +842,18 @@ export default function AdminImportPage() {
       {/* Import View */}
       <div className="space-y-6 border-t border-slate-200 pt-6">
 
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <div className="text-sm font-semibold">
                 Импорт{activeImportSource ? (
-                  <>: <span className="text-slate-900">{activeImportSource.name}</span></>
+                  <>: <span className="break-words text-slate-900">{activeImportSource.name}</span></>
                 ) : null}
               </div>
               <div className="text-xs text-slate-500">Настройте параметры и проверьте данные перед импортом.</div>
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-4 items-end">
+          <div className="grid min-w-0 grid-cols-1 items-end gap-3 md:grid-cols-4">
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Источник</label>
               <Select
@@ -887,16 +908,16 @@ export default function AdminImportPage() {
             >
               {!preview ? (
                 <div className="flex h-40 items-center justify-center text-sm text-slate-600">
-                  {loading ? '������� ������������' : '��� ������ ��� �������������'}
+                  {loading ? 'Загрузка предпросмотра...' : 'Нет данных для предпросмотра'}
                 </div>
               ) : (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-4 text-slate-900">
-                <div className="flex items-center justify-between">
+              <div className="min-w-0 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="text-sm font-semibold">Предпросмотр</div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
                     {previewContext?.sourceName && (
                       <div className="text-xs text-slate-500">
-                        Источник: <span className="font-medium text-slate-700">{previewContext.sourceName}</span>
+                        Источник: <span className="font-medium break-all text-slate-700">{previewContext.sourceName}</span>
                       </div>
                     )}
                     <label className="inline-flex items-center gap-2 text-xs text-slate-600">
@@ -907,7 +928,7 @@ export default function AdminImportPage() {
                       />
                       Скрывать записи с ошибками
                     </label>
-                    <div className="flex bg-slate-200 rounded p-1">
+                    <div className="flex shrink-0 rounded bg-slate-200 p-1">
                       <button 
                         className={cn("px-3 py-1 text-xs rounded transition-colors", viewMode === 'table' ? "bg-white text-slate-900 shadow" : "text-slate-600 hover:text-slate-900")}
                         onClick={() => setViewMode('table')}
@@ -922,8 +943,8 @@ export default function AdminImportPage() {
                       </button>
                     </div>
                     {viewMode === 'visual' && (
-                      <div className="flex items-center gap-1">
-                        {[2, 3, 4, 5].map((count) => (
+                      <div className="flex shrink-0 items-center gap-1">
+                        {cardsPerRowOptions.map((count) => (
                           <button
                             key={count}
                             className={cn(
@@ -939,7 +960,7 @@ export default function AdminImportPage() {
                         ))}
                       </div>
                     )}
-                    <div className="text-xs text-slate-600">
+                    <div className="w-full text-xs text-slate-600 sm:w-auto">
                       Всего: {preview.totalRows} | Валидных: {preview.validRows} | Ошибок: {preview.invalidRows}
                     </div>
                   </div>
@@ -1003,7 +1024,7 @@ export default function AdminImportPage() {
                           <Button size="sm" variant="secondary" onClick={() => handleEdit(index)}>Ред.</Button>
                         </div>
                         
-                        <div className="flex items-start justify-between mb-2">
+                        <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                           <span className="font-medium">Строка {row.rowIndex}</span>
                           <span className="text-slate-500">{row.mappedFields.length} полей</span>
                         </div>
@@ -1023,11 +1044,11 @@ export default function AdminImportPage() {
                   </div>
                 ) : (
                   <div
-                    className="grid gap-6 max-h-[800px] overflow-y-auto p-2"
-                    style={{ gridTemplateColumns: `repeat(${cardsPerRow}, minmax(220px, 1fr))` }}
+                    className="grid min-w-0 max-h-[800px] gap-4 overflow-x-hidden overflow-y-auto p-2 sm:gap-6"
+                    style={{ gridTemplateColumns: `repeat(${cardsPerRow}, minmax(0, 1fr))` }}
                   >
                     {preview.mappedItems.map((item, index) => (
-                      <div key={index} className="relative group">
+                      <div key={index} className="group relative min-w-0">
                         {entity === 'property' ? <PropertyCard item={item as Property} showStatusBadge /> : <ComplexCard item={item as Complex} showStatusBadge />}
                         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                           <Button size="sm" onClick={() => handleEdit(index)}>Ред.</Button>
@@ -1037,11 +1058,15 @@ export default function AdminImportPage() {
                   </div>
                 )}
 
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="secondary" onClick={closePreview}>
+                <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
+                  <Button variant="secondary" onClick={closePreview} className="w-full sm:w-auto">
                     Оставить
                   </Button>
-                  <Button onClick={runImport} disabled={loading || (activeImportSource ? pendingSourceIds.has(activeImportSource.id) : false)}>
+                  <Button
+                    onClick={runImport}
+                    disabled={loading || (activeImportSource ? pendingSourceIds.has(activeImportSource.id) : false)}
+                    className="w-full sm:w-auto"
+                  >
                     {loading
                       ? 'Импорт…'
                       : (previewContext?.entity || entity) === 'complex'
@@ -1157,7 +1182,7 @@ export default function AdminImportPage() {
           <div className="border-t pt-4 mt-4">
             <button
               type="button"
-              className="flex w-full items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-left"
+              className="flex w-full flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 px-3 py-2 text-left"
               onClick={() => setIsMappingExpanded((prev) => !prev)}
             >
               <span className="text-sm font-semibold">Маппинг полей</span>

@@ -14,6 +14,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV RW_DATA_DIR=/app/server/data
+ENV RW_UPLOADS_DIR=/app/server/uploads
 
 # Keep full node_modules because runtime uses tsx to execute TypeScript server files.
 COPY --from=builder /app/node_modules ./node_modules
