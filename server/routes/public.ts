@@ -283,10 +283,12 @@ router.get('/catalog', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-router.get('/property/:id', (req: Request, res: Response) => {
-  const id = req.params.id
+router.get('/property/:idOrSlug', (req: Request, res: Response) => {
+  const idOrSlug = req.params.idOrSlug
   const data = withPublishedDb((db) => {
-    const property = db.properties.find((p) => p.id === id && p.status === 'active')
+    const property = db.properties.find(
+      (p) => p.status === 'active' && (p.slug === idOrSlug || p.id === idOrSlug),
+    )
     if (!property) return null
     const complex = property.complex_id ? db.complexes.find((c) => c.id === property.complex_id) : undefined
     return { property, complex }
@@ -298,10 +300,12 @@ router.get('/property/:id', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-router.get('/complex/:id', (req: Request, res: Response) => {
-  const id = req.params.id
+router.get('/complex/:idOrSlug', (req: Request, res: Response) => {
+  const idOrSlug = req.params.idOrSlug
   const data = withPublishedDb((db) => {
-    const complex = db.complexes.find((c) => c.id === id && c.status === 'active')
+    const complex = db.complexes.find(
+      (c) => c.status === 'active' && (c.slug === idOrSlug || c.id === idOrSlug),
+    )
     if (!complex) return null
     const properties = db.properties
       .filter((p) => p.status === 'active')
@@ -316,10 +320,12 @@ router.get('/complex/:id', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-router.get('/collection/:id', (req: Request, res: Response) => {
-  const id = req.params.id
+router.get('/collection/:idOrSlug', (req: Request, res: Response) => {
+  const idOrSlug = req.params.idOrSlug
   const data = withPublishedDb((db) => {
-    const collection = db.collections.find((c) => c.id === id)
+    const collection = db.collections.find(
+      (c) => c.slug === idOrSlug || c.id === idOrSlug,
+    )
     if (!collection) return null
 
     // Check if collection is visible

@@ -396,3 +396,29 @@ import { Button } from '@/components/ui/Button'  // @ → src/
 - **Seed Data:** Запускается при старте сервера если `db.json` нет
 - **Concurrent Dev:** Всегда используйте `npm run dev` для одновременного запуска клиента и сервера
 - **Production Port:** 3000 (в Docker/CapRover), 3001 (dev)
+- **No test framework:** В проекте нет тестов и test runner не настроен
+- **Health endpoint:** `GET /api/health` — проверка работоспособности сервера
+- **Vite proxy:** Проксирует и `/api/*`, и `/uploads/*` на Express :3001
+
+---
+
+## 8. Environment Variables
+
+| Переменная | По умолчанию | Описание |
+|------------|-------------|----------|
+| `PORT` | `3001` (dev), `3000` (Docker) | Порт сервера |
+| `RW_DATA_DIR` | `server/data` | Директория для `db.json` |
+| `RW_UPLOADS_DIR` | `server/uploads` (или `$RW_DATA_DIR/uploads`) | Директория для загруженных файлов |
+| `NODE_ENV` | `development` | Режим окружения |
+
+Логика разрешения путей — в `server/lib/paths.ts`. Переменные поддерживают как абсолютные, так и относительные пути.
+
+---
+
+## 9. TypeScript Configuration
+
+- `strict: false` — строгий режим выключен
+- `noEmit: true` — только проверка типов, сборку выполняет Vite
+- Target: ES2020, Module: ESNext, moduleResolution: bundler
+- Path alias `@/` → `src/` настроен и в `tsconfig.json`, и в `vite.config.ts` (через `vite-tsconfig-paths`)
+- Серверные импорты используют расширение `.js` для ESM-совместимости (даже если исходные файлы `.ts`)

@@ -1,11 +1,29 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
-import { apiGet, apiPut } from '@/lib/api'
+import { apiGet, apiPost, apiPut } from '@/lib/api'
 import { useUiStore } from '@/store/useUiStore'
 import type { Lead, LeadStatus } from '../../../../shared/types'
 
 type LeadStatusFilter = LeadStatus | 'all'
+type BackupKind = 'auto' | 'manual'
+
+type LeadProcessingBackupMeta = {
+  id: string
+  kind: BackupKind
+  label?: string
+  created_at: string
+  snapshot_leads_count: number
+}
+
+type LeadProcessingRestoreResult = {
+  backup_id: string
+  total_snapshot: number
+  applied: number
+  unchanged: number
+  missing: number
+}
 
 const STATUS_LABELS: Record<LeadStatus, string> = {
   new: 'Новый',
@@ -17,11 +35,17 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 export default function AdminLeadsPage() {
   const token = useUiStore((s) => s.adminToken)
   const headers = useMemo(() => ({ 'x-admin-token': token || '' }), [token])
+
   const [list, setList] = useState<Lead[]>([])
   const [error, setError] = useState<string | null>(null)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<LeadStatusFilter>('all')
   const [query, setQuery] = useState('')
+
+  const [restoreOptions, setRestoreOptions] = useState<LeadProcessingBackupMeta[]>([])
+  const [selectedBackupId, setSelectedBackupId] = useState('')
+  const [restoreLoading, setRestoreLoading] = useState(false)
+  const [restoreNotice, setRestoreNotice] = useState<string | null>(null)
 
   const labelType = (lead: Lead) => {
     switch (lead.form_type) {
@@ -38,21 +62,34 @@ export default function AdminLeadsPage() {
     }
   }
 
-  const loadLeads = () => {
+  const loadLeads = useCallback(() => {
     apiGet<Lead[]>('/api/admin/leads', headers)
       .then((rows) => setList(rows))
       .catch((e) => setError(e instanceof Error ? e.message : 'Ошибка'))
-  }
+  }, [headers])
+
+  const loadRestoreOptions = useCallback(() => {
+    apiGet<LeadProcessingBackupMeta[]>('/api/admin/leads/processing-backups', headers)
+      .then((rows) => {
+        setRestoreOptions(rows)
+        setSelectedBackupId((prev) => prev || rows[0]?.id || '')
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Ошибка загрузки бекапов лидов'))
+  }, [headers])
 
   useEffect(() => {
     loadLeads()
-  }, [headers])
+    loadRestoreOptions()
+  }, [loadLeads, loadRestoreOptions])
 
   const patchLeadLocal = (id: string, patch: Partial<Lead>) => {
     setList((prev) => prev.map((lead) => (lead.id === id ? { ...lead, ...patch } : lead)))
   }
 
-  const updateLead = async (id: string, patch: { lead_status?: LeadStatus; assignee?: string; admin_note?: string }) => {
+  const updateLead = async (
+    id: string,
+    patch: { lead_status?: LeadStatus; assignee?: string; admin_note?: string },
+  ) => {
     setUpdatingId(id)
     setError(null)
     try {
@@ -63,6 +100,36 @@ export default function AdminLeadsPage() {
       loadLeads()
     } finally {
       setUpdatingId((prev) => (prev === id ? null : prev))
+    }
+  }
+
+  const restoreLeadProcessing = async () => {
+    if (!selectedBackupId || restoreLoading || restoreOptions.length === 0) return
+    if (
+      !window.confirm(
+        'Восстановить обработку лидов из выбранного бекапа? Новые лиды не удаляются.',
+      )
+    ) {
+      return
+    }
+
+    setRestoreLoading(true)
+    setError(null)
+    setRestoreNotice(null)
+    try {
+      const result = await apiPost<LeadProcessingRestoreResult>(
+        '/api/admin/leads/restore-processing',
+        { backup_id: selectedBackupId },
+        headers,
+      )
+      setRestoreNotice(
+        `Готово: применено ${result.applied}, без изменений ${result.unchanged}, отсутствуют ${result.missing}, всего в снимке ${result.total_snapshot}.`,
+      )
+      loadLeads()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка восстановления обработки лидов')
+    } finally {
+      setRestoreLoading(false)
     }
   }
 
@@ -109,10 +176,46 @@ export default function AdminLeadsPage() {
         <div className="mt-1 text-sm text-slate-600">Контроль заявок, статусов и ответственных.</div>
       </div>
 
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <div className="text-xs font-medium text-slate-700">
+          Восстановление обработки лидов из бекапа
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+          <Select value={selectedBackupId} onChange={(e) => setSelectedBackupId(e.target.value)}>
+            {restoreOptions.length === 0 ? <option value="">Нет доступных бекапов</option> : null}
+            {restoreOptions.map((item) => (
+              <option key={item.id} value={item.id}>
+                {new Date(item.created_at).toLocaleString('ru-RU')} ·{' '}
+                {item.kind === 'manual' ? 'Ручной' : 'Авто'} · {item.label || item.id} · лидов:{' '}
+                {item.snapshot_leads_count}
+              </option>
+            ))}
+          </Select>
+          <Button variant="secondary" onClick={loadRestoreOptions}>
+            Обновить бекапы
+          </Button>
+          <Button
+            onClick={restoreLeadProcessing}
+            disabled={!selectedBackupId || restoreLoading || restoreOptions.length === 0}
+          >
+            {restoreLoading ? 'Восстановление...' : 'Восстановить обработку'}
+          </Button>
+        </div>
+        <div className="mt-2 text-[11px] text-slate-500">
+          Обновляются только поля обработки (`status`, `assignee`, `admin_note`) у уже существующих лидов.
+        </div>
+        {restoreNotice ? <div className="mt-2 text-xs text-emerald-700">{restoreNotice}</div> : null}
+      </div>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
         <Stat title="Все" value={counters.all} active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
         <Stat title="Новые" value={counters.new} active={statusFilter === 'new'} onClick={() => setStatusFilter('new')} />
-        <Stat title="В работе" value={counters.in_progress} active={statusFilter === 'in_progress'} onClick={() => setStatusFilter('in_progress')} />
+        <Stat
+          title="В работе"
+          value={counters.in_progress}
+          active={statusFilter === 'in_progress'}
+          onClick={() => setStatusFilter('in_progress')}
+        />
         <Stat title="Закрыты" value={counters.done} active={statusFilter === 'done'} onClick={() => setStatusFilter('done')} />
         <Stat title="Спам" value={counters.spam} active={statusFilter === 'spam'} onClick={() => setStatusFilter('spam')} />
       </div>
@@ -130,7 +233,11 @@ export default function AdminLeadsPage() {
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-700">Поиск</label>
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Имя, телефон, источник, комментарий..." />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Имя, телефон, источник, комментарий..."
+          />
         </div>
       </div>
 
@@ -185,12 +292,18 @@ export default function AdminLeadsPage() {
                 <td className="px-3 py-2">
                   <Input
                     value={lead.admin_note || ''}
-                    placeholder={lead.comment?.trim() ? `Клиент: ${lead.comment}` : 'Комментарий по обработке'}
+                    placeholder={
+                      lead.comment?.trim()
+                        ? `Клиент: ${lead.comment}`
+                        : 'Комментарий по обработке'
+                    }
                     className="h-9 min-w-[220px]"
                     onChange={(e) => patchLeadLocal(lead.id, { admin_note: e.target.value })}
                     onBlur={(e) => void updateLead(lead.id, { admin_note: e.target.value })}
                   />
-                  {updatingId === lead.id ? <div className="mt-1 text-[10px] text-slate-500">Сохранение...</div> : null}
+                  {updatingId === lead.id ? (
+                    <div className="mt-1 text-[10px] text-slate-500">Сохранение...</div>
+                  ) : null}
                 </td>
                 <td className="px-3 py-2 text-slate-700">
                   {lead.source.page}
@@ -213,7 +326,17 @@ export default function AdminLeadsPage() {
   )
 }
 
-function Stat({ title, value, active, onClick }: { title: string; value: number; active: boolean; onClick: () => void }) {
+function Stat({
+  title,
+  value,
+  active,
+  onClick,
+}: {
+  title: string
+  value: number
+  active: boolean
+  onClick: () => void
+}) {
   return (
     <button
       type="button"

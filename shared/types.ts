@@ -1,4 +1,4 @@
-﻿export type DealType = 'sale' | 'rent'
+﻿﻿export type DealType = 'sale' | 'rent'
 export type Category = 'newbuild' | 'secondary' | 'rent'
 export type RecordStatus = 'active' | 'hidden' | 'archived'
 

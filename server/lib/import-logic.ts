@@ -61,6 +61,23 @@ export function normalizeStatus(v: unknown): 'active' | 'hidden' | 'archived' {
   return 'active'
 }
 
+function transitionMissingRecordStatus(
+  record: { status: 'active' | 'hidden' | 'archived'; updated_at: string },
+  now: string,
+): 'hidden' | 'archived' | null {
+  if (record.status === 'active') {
+    record.status = 'hidden'
+    record.updated_at = now
+    return 'hidden'
+  }
+  if (record.status === 'hidden') {
+    record.status = 'archived'
+    record.updated_at = now
+    return 'archived'
+  }
+  return null
+}
+
 export function normalizeCategory(v: unknown): Category {
   const s = asString(v).toLowerCase().trim()
   if (s === 'secondary') return 'secondary'
@@ -400,7 +417,7 @@ export function upsertComplexes(db: DbShape, sourceId: string, rows: Record<stri
   let updated = 0
   let hidden = 0
   let targetComplexId: string | undefined
-  let errors: Array<{ rowIndex: number; externalId?: string; error: string }> = [] // Not used by aggregation but kept for signature compatibility if needed
+  const errors: Array<{ rowIndex: number; externalId?: string; error: string }> = [] // Not used by aggregation but kept for signature compatibility if needed
 
   for (const next of aggregated) {
     seen.add(next.external_id)
@@ -419,13 +436,14 @@ export function upsertComplexes(db: DbShape, sourceId: string, rows: Record<stri
     }
   }
 
-  // Handle hidden/removed complexes
+  // Lifecycle for complexes missing in the current feed: active -> hidden -> archived
   for (const c of db.complexes) {
     if (c.source_id !== sourceId) continue
-    if (!seen.has(c.external_id) && c.status === 'active') {
-      c.status = 'hidden'
-      c.updated_at = now
-      hidden += 1
+    if (!seen.has(c.external_id)) {
+      const transition = transitionMissingRecordStatus(c, now)
+      if (transition === 'hidden') {
+        hidden += 1
+      }
     }
   }
 
@@ -579,12 +597,14 @@ export function upsertProperties(
     }
   }
 
+  // Lifecycle for properties missing in the current feed: active -> hidden -> archived
   for (const p of db.properties) {
     if (p.source_id !== sourceId) continue
-    if (!seen.has(p.external_id) && p.status === 'active') {
-      p.status = 'hidden'
-      p.updated_at = now
-      hidden += 1
+    if (!seen.has(p.external_id)) {
+      const transition = transitionMissingRecordStatus(p, now)
+      if (transition === 'hidden') {
+        hidden += 1
+      }
     }
   }
   return { inserted, updated, hidden, errors }

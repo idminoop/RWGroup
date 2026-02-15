@@ -12,6 +12,7 @@ import { trackEvent } from '@/lib/analytics'
 const UI = {
   complex: '\u0416\u041a',
   hidden: '\u0421\u043a\u0440\u044b\u0442\u043e (\u043d\u0435 \u0432 \u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0435)',
+  archived: '\u0412 \u0430\u0440\u0445\u0438\u0432\u0435',
   priceFrom: '\u0426\u0435\u043d\u0430 \u043e\u0442',
   areaFrom: '\u041f\u043b\u043e\u0449\u0430\u0434\u044c \u043e\u0442',
   pricePerM2: '\u0426\u0435\u043d\u0430 \u0437\u0430 \u043c\u00b2',
@@ -40,11 +41,16 @@ export default function ComplexCard({
   const priceFrom = toFiniteNumber(item.price_from)
   const areaFrom = toFiniteNumber(item.area_from)
   const pricePerM2 = typeof priceFrom === 'number' && typeof areaFrom === 'number' && areaFrom > 0 ? priceFrom / areaFrom : undefined
+  const statusLabel = item.status === 'archived' ? UI.archived : UI.hidden
+  const statusClass =
+    item.status === 'archived'
+      ? 'bg-slate-700/90 text-white shadow-sm backdrop-blur-sm'
+      : 'bg-amber-600/90 text-white shadow-sm backdrop-blur-sm'
 
   return (
     <Card className="flex flex-col overflow-hidden border-slate-200 bg-white transition-shadow hover:shadow-md">
       <Link
-        to={`/complex/${item.id}`}
+        to={`/complex/${item.slug || item.id}`}
         onClick={() => trackEvent('open_card', { type: 'complex', id: item.id })}
         className="relative block aspect-[4/3] w-full bg-slate-100"
       >
@@ -54,8 +60,8 @@ export default function ComplexCard({
             {UI.complex}
           </Badge>
           {showStatusBadge && item.status !== 'active' && (
-            <Badge variant="warning" className="bg-amber-600/90 text-white shadow-sm backdrop-blur-sm">
-              {UI.hidden}
+            <Badge variant="warning" className={statusClass}>
+              {statusLabel}
             </Badge>
           )}
         </div>
@@ -63,7 +69,7 @@ export default function ComplexCard({
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
           <Link
-            to={`/complex/${item.id}`}
+            to={`/complex/${item.slug || item.id}`}
             onClick={() => trackEvent('open_card', { type: 'complex', id: item.id })}
             className="text-base font-semibold leading-snug text-slate-900 transition-colors hover:text-primary hover:underline"
           >
@@ -93,7 +99,7 @@ export default function ComplexCard({
         </div>
       </CardContent>
       <CardFooter className="mt-auto flex items-center justify-between p-4 pt-0">
-        <Link to={`/complex/${item.id}`} className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900">
+        <Link to={`/complex/${item.slug || item.id}`} className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900">
           {UI.view}
         </Link>
         <Button

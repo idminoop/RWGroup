@@ -2,6 +2,11 @@ import fs from 'fs'
 import path from 'path'
 import type { DbShape } from '../../shared/types.js'
 import { DATA_DIR } from './paths.js'
+import {
+  createStateRepository,
+  readLocalStateFiles,
+  type StateRepository,
+} from './state-repository.js'
 
 const DB_FILE = path.join(DATA_DIR, 'db.json')
 const PUBLISHED_DB_FILE = path.join(DATA_DIR, 'db.published.json')
@@ -23,27 +28,115 @@ function toPublishSnapshot(db: DbShape): PublishSnapshot {
   }
 }
 
-function readDbFromFile(filePath: string): DbShape {
-  ensureDataDir()
-  if (!fs.existsSync(filePath)) {
-    throw new Error('DB_NOT_INITIALIZED')
+function deepClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+let repository: StateRepository | null = null
+let initialized = false
+
+let draftDbCache: DbShape | null = null
+let publishedDbCache: DbShape | null = null
+let draftUpdatedAt: string | undefined
+let publishedAt: string | undefined
+
+let persistQueue: Promise<void> = Promise.resolve()
+
+type PersistRequest = {
+  persistDraft: boolean
+  persistPublished: boolean
+}
+
+function parseBooleanEnv(value: string | undefined): boolean | undefined {
+  if (value === undefined) return undefined
+  const normalized = value.trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false
+  return undefined
+}
+
+function assertInitialized(): void {
+  if (!initialized) {
+    throw new Error('Storage is not initialized. Call initializeStorage() before using storage API.')
   }
-  const raw = fs.readFileSync(filePath, 'utf-8')
-  const db = JSON.parse(raw) as DbShape
-  if (!Array.isArray(db.audit_logs)) db.audit_logs = []
-  return db
 }
 
-function writeDbToFile(filePath: string, db: DbShape): void {
-  ensureDataDir()
-  const tmp = `${filePath}.tmp`
-  fs.writeFileSync(tmp, JSON.stringify(db, null, 2), 'utf-8')
-  fs.renameSync(tmp, filePath)
+function queuePersist(request: PersistRequest): void {
+  if (!repository || !draftDbCache || !publishedDbCache) return
+  if (!request.persistDraft && !request.persistPublished) return
+
+  const draftSnapshot = deepClone(draftDbCache)
+  const publishedSnapshot = deepClone(publishedDbCache)
+
+  persistQueue = persistQueue
+    .then(async () => {
+      if (!repository) return
+      const meta = await repository.saveState(draftSnapshot, publishedSnapshot, request)
+      if (meta.draftUpdatedAt) draftUpdatedAt = meta.draftUpdatedAt
+      if (meta.publishedAt) publishedAt = meta.publishedAt
+    })
+    .catch((error) => {
+      console.error('[storage] Persist error:', error)
+    })
 }
 
-function getFileMtimeIso(filePath: string): string | undefined {
-  if (!fs.existsSync(filePath)) return undefined
-  return fs.statSync(filePath).mtime.toISOString()
+function setDraft(db: DbShape): void {
+  draftDbCache = db
+  draftUpdatedAt = new Date().toISOString()
+}
+
+function setPublished(db: DbShape): void {
+  publishedDbCache = db
+  publishedAt = new Date().toISOString()
+}
+
+export async function initializeStorage(): Promise<void> {
+  if (initialized) return
+
+  const repo = createStateRepository()
+  await repo.initialize()
+
+  const loaded = await repo.loadState()
+  repository = repo
+  draftDbCache = loaded.draft
+  publishedDbCache = loaded.published
+  draftUpdatedAt = loaded.draftUpdatedAt
+  publishedAt = loaded.publishedAt
+
+  // One-time bootstrap from local JSON into PostgreSQL is opt-in only.
+  // This prevents accidental data replacement on deploy.
+  const bootstrapFromLocal = parseBooleanEnv(process.env.RW_PG_BOOTSTRAP_FROM_LOCAL) === true
+  if (repo.driver === 'postgres' && !draftDbCache && bootstrapFromLocal) {
+    const local = readLocalStateFiles()
+    if (local.draft) {
+      draftDbCache = local.draft
+      publishedDbCache = local.published || toPublishSnapshot(local.draft)
+      const meta = await repo.saveState(draftDbCache, publishedDbCache)
+      draftUpdatedAt = meta.draftUpdatedAt || local.draftUpdatedAt
+      publishedAt = meta.publishedAt || local.publishedAt
+      console.log('[storage] Bootstrapped PostgreSQL state from local JSON files')
+    }
+  } else if (repo.driver === 'postgres' && !draftDbCache && !bootstrapFromLocal) {
+    console.log(
+      '[storage] PostgreSQL is empty. Local bootstrap is disabled (set RW_PG_BOOTSTRAP_FROM_LOCAL=true for one-time import).',
+    )
+  }
+
+  initialized = true
+}
+
+export async function flushStorage(): Promise<void> {
+  await persistQueue
+}
+
+export async function closeStorage(): Promise<void> {
+  if (!initialized) return
+  await flushStorage()
+  if (repository) {
+    await repository.close()
+  }
+  repository = null
+  initialized = false
 }
 
 export function getDbFilePath(): string {
@@ -55,13 +148,13 @@ export function getPublishedDbFilePath(): string {
 }
 
 export function dbExists(): boolean {
-  ensureDataDir()
-  return fs.existsSync(DB_FILE)
+  if (!initialized) return false
+  return Boolean(draftDbCache)
 }
 
 export function publishedDbExists(): boolean {
-  ensureDataDir()
-  return fs.existsSync(PUBLISHED_DB_FILE)
+  if (!initialized) return false
+  return Boolean(publishedDbCache)
 }
 
 export function ensureDataDir(): void {
@@ -69,41 +162,66 @@ export function ensureDataDir(): void {
 }
 
 export function readDb(): DbShape {
-  return readDbFromFile(DB_FILE)
+  assertInitialized()
+  if (!draftDbCache) {
+    throw new Error('DB_NOT_INITIALIZED')
+  }
+  return deepClone(draftDbCache)
 }
 
 export function writeDb(db: DbShape): void {
-  writeDbToFile(DB_FILE, db)
+  assertInitialized()
+  const hadPublished = Boolean(publishedDbCache)
+  setDraft(db)
+  if (!publishedDbCache) {
+    setPublished(toPublishSnapshot(db))
+  }
+  queuePersist({ persistDraft: true, persistPublished: !hadPublished })
 }
 
 export function ensurePublishedDb(): void {
-  ensureDataDir()
-  if (fs.existsSync(PUBLISHED_DB_FILE)) return
-  if (!fs.existsSync(DB_FILE)) {
+  assertInitialized()
+  if (publishedDbCache) return
+  if (!draftDbCache) {
     throw new Error('DB_NOT_INITIALIZED')
   }
-  const draft = readDb()
-  writeDbToFile(PUBLISHED_DB_FILE, toPublishSnapshot(draft))
+  setPublished(toPublishSnapshot(draftDbCache))
+  queuePersist({ persistDraft: false, persistPublished: true })
 }
 
 export function readPublishedDb(): DbShape {
   ensurePublishedDb()
-  return readDbFromFile(PUBLISHED_DB_FILE)
+  if (!publishedDbCache) {
+    throw new Error('DB_NOT_INITIALIZED')
+  }
+  return deepClone(publishedDbCache)
 }
 
 export function writePublishedDb(db: DbShape): void {
-  writeDbToFile(PUBLISHED_DB_FILE, toPublishSnapshot(db))
+  assertInitialized()
+  const hadDraft = Boolean(draftDbCache)
+  setPublished(toPublishSnapshot(db))
+  if (!draftDbCache) {
+    setDraft(db)
+  }
+  queuePersist({ persistDraft: !hadDraft, persistPublished: true })
 }
 
 export function publishDraft(): { published_at?: string } {
-  const draft = readDb()
-  writePublishedDb(draft)
-  return { published_at: getFileMtimeIso(PUBLISHED_DB_FILE) }
+  assertInitialized()
+  if (!draftDbCache) {
+    throw new Error('DB_NOT_INITIALIZED')
+  }
+  setPublished(toPublishSnapshot(draftDbCache))
+  queuePersist({ persistDraft: false, persistPublished: true })
+  return { published_at: publishedAt }
 }
 
 export function hasPendingPublishedChanges(): boolean {
-  const draft = toPublishSnapshot(readDb())
-  const published = toPublishSnapshot(readPublishedDb())
+  if (!draftDbCache) return false
+  const draft = toPublishSnapshot(draftDbCache)
+  const published = publishedDbCache ? toPublishSnapshot(publishedDbCache) : null
+  if (!published) return true
   return JSON.stringify(draft) !== JSON.stringify(published)
 }
 
@@ -114,19 +232,34 @@ export function getPublishStatus(): {
 } {
   return {
     has_pending_changes: hasPendingPublishedChanges(),
-    draft_updated_at: getFileMtimeIso(DB_FILE),
-    published_at: getFileMtimeIso(PUBLISHED_DB_FILE),
+    draft_updated_at: draftUpdatedAt,
+    published_at: publishedAt,
   }
 }
 
 export function withDb<T>(fn: (db: DbShape) => T): T {
-  const db = readDb()
-  const result = fn(db)
-  writeDb(db)
+  assertInitialized()
+  if (!draftDbCache) {
+    throw new Error('DB_NOT_INITIALIZED')
+  }
+
+  const result = fn(draftDbCache)
+  draftUpdatedAt = new Date().toISOString()
+  const hadPublished = Boolean(publishedDbCache)
+
+  if (!publishedDbCache) {
+    setPublished(toPublishSnapshot(draftDbCache))
+  }
+
+  queuePersist({ persistDraft: true, persistPublished: !hadPublished })
   return result
 }
 
 export function withPublishedDb<T>(fn: (db: DbShape) => T): T {
-  const db = readPublishedDb()
-  return fn(db)
+  ensurePublishedDb()
+  if (!publishedDbCache) {
+    throw new Error('DB_NOT_INITIALIZED')
+  }
+  const snapshot = deepClone(publishedDbCache)
+  return fn(snapshot)
 }

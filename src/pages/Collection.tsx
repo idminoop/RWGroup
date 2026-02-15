@@ -4,6 +4,8 @@ import SiteLayout from '@/components/layout/SiteLayout'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Heading, Text } from '@/components/ui/Typography'
 import { Badge } from '@/components/ui/Badge'
+import JsonLd from '@/components/seo/JsonLd'
+import { setPageMeta } from '@/lib/meta'
 import { apiGet } from '@/lib/api'
 import type { Collection as CollectionType, Complex, Property } from '../../shared/types'
 import PropertyCard from '@/components/catalog/PropertyCard'
@@ -23,8 +25,34 @@ export default function CollectionPage() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Ошибка'))
   }, [id])
 
+  useEffect(() => {
+    if (!data) return
+    setPageMeta({
+      title: `${data.collection.title} — подборка недвижимости`,
+      description: data.collection.description?.slice(0, 160) || `Подборка: ${data.collection.title}`,
+      ogImage: data.collection.cover_image || undefined,
+    })
+  }, [data])
+
+  const collectionLd = data ? {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: data.collection.title,
+    description: data.collection.description || '',
+    numberOfItems: data.items.length,
+    itemListElement: data.items.map((it, idx) => ({
+      '@type': 'ListItem',
+      position: idx + 1,
+      name: it.ref.title,
+      url: typeof window !== 'undefined'
+        ? `${window.location.origin}/${it.type === 'property' ? 'property' : 'complex'}/${it.ref.slug || it.ref.id}`
+        : '',
+    })),
+  } : null
+
   return (
     <SiteLayout>
+      {collectionLd && <JsonLd data={collectionLd} />}
       <div className="mx-auto w-full max-w-6xl px-4 py-8 md:py-10">
         {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : null}
         {!data ? (
@@ -63,4 +91,3 @@ export default function CollectionPage() {
     </SiteLayout>
   )
 }
-

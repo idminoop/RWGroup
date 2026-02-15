@@ -1,7 +1,6 @@
 import { withDb } from './storage.js'
 import { newId } from './ids.js'
 import {
-  upsertComplexes,
   upsertProperties,
   upsertComplexesFromProperties,
   normalizeYandexRealty,
@@ -12,6 +11,7 @@ import * as XLSX from 'xlsx'
 import type { FeedSource } from '../../shared/types.js'
 
 const CHECK_INTERVAL_MS = 60_000 // Check every minute
+const inFlightFeedIds = new Set<string>()
 
 function guessExt(name: string): 'csv' | 'xlsx' | 'xml' | 'json' {
   const lc = name.toLowerCase()
@@ -56,6 +56,11 @@ function parseRows(buffer: Buffer, ext: 'csv' | 'xlsx' | 'xml' | 'json'): Record
 
 async function refreshFeed(feed: FeedSource): Promise<void> {
   if (!feed.url) return
+  if (inFlightFeedIds.has(feed.id)) {
+    console.log(`[feed-scheduler] Skip "${feed.name}": previous run still in progress`)
+    return
+  }
+  inFlightFeedIds.add(feed.id)
 
   console.log(`[feed-scheduler] Auto-refreshing feed "${feed.name}" from ${feed.url}`)
 
@@ -108,21 +113,25 @@ async function refreshFeed(feed: FeedSource): Promise<void> {
     errorLog = e instanceof Error ? e.message : 'Unknown error'
     console.error(`[feed-scheduler] Feed "${feed.name}" failed:`, errorLog)
   } finally {
-    withDb((db) => {
-      db.import_runs.unshift({
-        id: runId,
-        source_id: feed.id,
-        entity: 'property',
-        started_at: startedAt,
-        finished_at: new Date().toISOString(),
-        status,
-        stats,
-        error_log: errorLog || undefined,
-        feed_name: feed.name,
-        feed_url: feed.url,
-        action: 'import',
+    try {
+      withDb((db) => {
+        db.import_runs.unshift({
+          id: runId,
+          source_id: feed.id,
+          entity: 'property',
+          started_at: startedAt,
+          finished_at: new Date().toISOString(),
+          status,
+          stats,
+          error_log: errorLog || undefined,
+          feed_name: feed.name,
+          feed_url: feed.url,
+          action: 'import',
+        })
       })
-    })
+    } finally {
+      inFlightFeedIds.delete(feed.id)
+    }
   }
 }
 
@@ -144,16 +153,24 @@ function checkFeeds(): void {
 }
 
 let intervalId: ReturnType<typeof setInterval> | null = null
+let startupTimeoutId: ReturnType<typeof setTimeout> | null = null
 
 export function startFeedScheduler(): void {
   if (intervalId) return
   console.log('[feed-scheduler] Started (checking every 60s)')
   intervalId = setInterval(checkFeeds, CHECK_INTERVAL_MS)
   // Run first check after 10s delay to let server fully start
-  setTimeout(checkFeeds, 10_000)
+  startupTimeoutId = setTimeout(() => {
+    startupTimeoutId = null
+    checkFeeds()
+  }, 10_000)
 }
 
 export function stopFeedScheduler(): void {
+  if (startupTimeoutId) {
+    clearTimeout(startupTimeoutId)
+    startupTimeoutId = null
+  }
   if (intervalId) {
     clearInterval(intervalId)
     intervalId = null

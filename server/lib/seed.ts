@@ -6,6 +6,14 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
+function parseBooleanEnv(value: string | undefined): boolean | undefined {
+  if (value === undefined) return undefined
+  const normalized = value.trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false
+  return undefined
+}
+
 // Helper to generate random numbers in range
 const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1) + min)
 
@@ -39,8 +47,12 @@ const IMAGES_INTERIOR = [
 ]
 
 export function ensureSeed(): void {
+  const seedEnabled = parseBooleanEnv(process.env.RW_SEED_ENABLED)
+  const shouldSeed = seedEnabled !== undefined ? seedEnabled : process.env.NODE_ENV !== 'production'
+  if (!shouldSeed) return
+
   ensureDataDir()
-  if (dbExists()) return // Force re-seed for this task to populate data
+  if (dbExists()) return
 
   const sourceId = newId()
   

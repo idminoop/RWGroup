@@ -24,9 +24,15 @@ import {
 } from '../lib/admin-users.js'
 import { generateNearbyPlacesForComplex, searchNearbyPhotoVariants } from '../lib/nearby.js'
 import { addAuditLog } from '../lib/audit.js'
-import { UPLOADS_DIR } from '../lib/paths.js'
-import fs from 'fs'
-import path from 'path'
+import { uploadImage } from '../lib/media-storage.js'
+import {
+  createManualBackup,
+  deleteBackupById,
+  listBackups,
+  listLeadProcessingBackups,
+  restoreBackupById,
+  restoreLeadProcessingByBackupId,
+} from '../lib/backups.js'
 import { 
   upsertComplexes, 
   upsertProperties, 
@@ -51,10 +57,85 @@ import * as XLSX from 'xlsx'
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } })
 const importLocks = new Map<string, number>()
+const DEFAULT_FEED_REFRESH_INTERVAL_HOURS = 24
 
 function toNumber(v: unknown): number | undefined {
   const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : typeof v === 'number' ? v : NaN
   return Number.isFinite(n) ? n : undefined
+}
+
+type FeedRefreshInput = {
+  mode: 'upload' | 'url'
+  url?: string
+  auto_refresh?: boolean
+  refresh_interval_hours?: number
+}
+
+type FeedRefreshResult =
+  | {
+      ok: true
+      value: {
+        url?: string
+        auto_refresh: boolean
+        refresh_interval_hours?: number
+      }
+    }
+  | { ok: false; error: string }
+
+function normalizeFeedUrl(url?: string): string | undefined {
+  const trimmed = typeof url === 'string' ? url.trim() : ''
+  return trimmed || undefined
+}
+
+function resolveFeedRefreshSettings(input: FeedRefreshInput): FeedRefreshResult {
+  if (input.mode === 'upload') {
+    return {
+      ok: true,
+      value: {
+        url: undefined,
+        auto_refresh: false,
+        refresh_interval_hours: undefined,
+      },
+    }
+  }
+
+  const url = normalizeFeedUrl(input.url)
+  const autoRefresh = Boolean(input.auto_refresh)
+
+  if (!autoRefresh) {
+    return {
+      ok: true,
+      value: {
+        url,
+        auto_refresh: false,
+        refresh_interval_hours: undefined,
+      },
+    }
+  }
+
+  if (!url) {
+    return { ok: false, error: 'Для автообновления укажите URL фида' }
+  }
+
+  try {
+    new URL(url)
+  } catch {
+    return { ok: false, error: 'Некорректный URL фида' }
+  }
+
+  const interval =
+    typeof input.refresh_interval_hours === 'number'
+      ? Math.max(1, Math.min(168, Math.floor(input.refresh_interval_hours)))
+      : DEFAULT_FEED_REFRESH_INTERVAL_HOURS
+
+  return {
+    ok: true,
+    value: {
+      url,
+      auto_refresh: true,
+      refresh_interval_hours: interval,
+    },
+  }
 }
 
 function ensureCustomLandingFeaturePresets(db: DbShape): LandingFeaturePreset[] {
@@ -297,6 +378,7 @@ router.use('/upload', requireAdminPermission('upload.write'))
 router.use('/home', requireAdminAnyPermission('home.read', 'home.write'))
 router.use('/publish/status', requireAdminPermission('publish.read'))
 router.use('/publish/apply', requireAdminPermission('publish.apply'))
+router.use('/backups', requireAdminAnyPermission('publish.read', 'publish.apply'))
 router.use('/leads', requireAdminAnyPermission('leads.read', 'leads.write'))
 router.use('/feeds', requireAdminAnyPermission('feeds.read', 'feeds.write'))
 router.use('/landing-feature-presets', requireAdminAnyPermission('landing_presets.read', 'landing_presets.write'))
@@ -329,28 +411,32 @@ router.post('/upload', upload.single('file'), (req: Request, res: Response) => {
     return
   }
 
-  try {
-    const ext = path.extname(req.file.originalname).toLowerCase()
-    const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.gif']
-    if (!allowed.includes(ext)) {
-      res.status(400).json({ success: false, error: 'Invalid file type' })
-      return
-    }
-
-    const filename = `${newId()}${ext}`
-    const uploadsDir = UPLOADS_DIR
-    
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true })
-    }
-
-    const filePath = path.join(uploadsDir, filename)
-    fs.writeFileSync(filePath, req.file.buffer)
-
-    res.json({ success: true, data: { url: `/uploads/${filename}` } })
-  } catch (e) {
-    res.status(500).json({ success: false, error: e instanceof Error ? e.message : 'Upload failed' })
+  const ext = req.file.originalname.includes('.')
+    ? req.file.originalname.slice(req.file.originalname.lastIndexOf('.')).toLowerCase()
+    : ''
+  const allowedExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.avif']
+  const allowedMime = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml', 'image/avif']
+  const hasAllowedExt = ext ? allowedExt.includes(ext) : false
+  const hasAllowedMime = allowedMime.includes((req.file.mimetype || '').toLowerCase())
+  if (!hasAllowedExt && !hasAllowedMime) {
+    res.status(400).json({ success: false, error: 'Invalid file type' })
+    return
   }
+
+  uploadImage({
+    buffer: req.file.buffer,
+    originalName: req.file.originalname,
+    mimeType: req.file.mimetype,
+  })
+    .then((result) => {
+      res.json({ success: true, data: { url: result.url } })
+    })
+    .catch((error) => {
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Upload failed',
+      })
+    })
 })
 
 router.get('/home', (req: Request, res: Response) => {
@@ -384,6 +470,84 @@ router.post('/publish/apply', (req: Request, res: Response) => {
   res.json({ success: true, data: status })
 })
 
+router.get('/backups', async (req: Request, res: Response) => {
+  try {
+    const backups = await listBackups()
+    res.json({ success: true, data: backups })
+  } catch {
+    res.status(500).json({ success: false, error: 'Не удалось загрузить список бекапов' })
+  }
+})
+
+router.post('/backups', requireAdminPermission('publish.apply'), async (req: Request, res: Response) => {
+  const schema = z.object({
+    label: z.string().max(120).optional(),
+  })
+  const parsed = schema.safeParse(req.body ?? {})
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+
+  try {
+    const created = await createManualBackup({
+      label: parsed.data.label,
+      adminId: req.admin?.id,
+      adminLogin: req.admin?.login,
+    })
+    addAuditLog(
+      req.admin!.id,
+      req.admin!.login,
+      'create',
+      'settings',
+      created.id,
+      `Создан бекап: ${created.id}`,
+      created.label ? `label=${created.label}` : undefined,
+    )
+    res.json({ success: true, data: created })
+  } catch {
+    res.status(500).json({ success: false, error: 'Не удалось создать бекап' })
+  }
+})
+
+router.post('/backups/:id/restore', requireAdminPermission('publish.apply'), async (req: Request, res: Response) => {
+  const id = req.params.id
+  try {
+    const restored = await restoreBackupById(id)
+    if (!restored) {
+      res.status(404).json({ success: false, error: 'Not found' })
+      return
+    }
+    addAuditLog(
+      req.admin!.id,
+      req.admin!.login,
+      'update',
+      'settings',
+      restored.id,
+      `Восстановлен бекап: ${restored.id}`,
+      restored.label ? `label=${restored.label}` : undefined,
+    )
+    res.json({ success: true, data: restored })
+  } catch {
+    res.status(500).json({ success: false, error: 'Не удалось восстановить бекап' })
+  }
+})
+
+router.delete('/backups/:id', requireAdminPermission('publish.apply'), async (req: Request, res: Response) => {
+  const id = req.params.id
+  try {
+    const deleted = await deleteBackupById(id)
+    if (!deleted) {
+      res.status(404).json({ success: false, error: 'Not found' })
+      return
+    }
+    addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'settings', id, `Удален бекап: ${id}`)
+    res.json({ success: true, data: { id } })
+  } catch {
+    res.status(500).json({ success: false, error: 'Не удалось удалить бекап' })
+  }
+})
+
 router.get('/leads', (req: Request, res: Response) => {
   const data = withDb((db) =>
     [...db.leads]
@@ -396,6 +560,47 @@ router.get('/leads', (req: Request, res: Response) => {
       .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
   )
   res.json({ success: true, data })
+})
+
+router.get('/leads/processing-backups', requireAdminAnyPermission('leads.read', 'leads.write'), async (req: Request, res: Response) => {
+  try {
+    const backups = await listLeadProcessingBackups()
+    res.json({ success: true, data: backups })
+  } catch {
+    res.status(500).json({ success: false, error: 'Не удалось загрузить бекапы для лидов' })
+  }
+})
+
+router.post('/leads/restore-processing', requireAdminPermission('leads.write'), async (req: Request, res: Response) => {
+  const schema = z.object({
+    backup_id: z.string().min(1),
+  })
+  const parsed = schema.safeParse(req.body ?? {})
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+
+  try {
+    const result = await restoreLeadProcessingByBackupId(parsed.data.backup_id)
+    if (!result) {
+      res.status(404).json({ success: false, error: 'Backup not found' })
+      return
+    }
+
+    addAuditLog(
+      req.admin!.id,
+      req.admin!.login,
+      'update',
+      'lead',
+      result.backup_id,
+      `Восстановлена обработка лидов из бекапа: ${result.backup_id}`,
+      `applied=${result.applied}; unchanged=${result.unchanged}; missing=${result.missing}; snapshot=${result.total_snapshot}`,
+    )
+    res.json({ success: true, data: result })
+  } catch {
+    res.status(500).json({ success: false, error: 'Не удалось восстановить обработку лидов' })
+  }
 })
 
 router.put('/leads/:id', requireAdminPermission('leads.write'), (req: Request, res: Response) => {
@@ -536,8 +741,12 @@ router.delete('/landing-feature-presets/:key', requireAdminPermission('landing_p
 
 router.get('/feeds/diagnostics', (req: Request, res: Response) => {
   const data = withDb((db) => {
+    const activeSourceIds = new Set(db.feed_sources.map((feed) => feed.id))
     const lastRunBySource: Record<string, any> = {}
     for (const r of db.import_runs) {
+      if (r.action === 'delete' && activeSourceIds.has(r.source_id)) {
+        continue
+      }
       const current = lastRunBySource[r.source_id]
       if (!current || (r.started_at || '') > (current.started_at || '')) {
         lastRunBySource[r.source_id] = r
@@ -601,16 +810,30 @@ router.post('/feeds', requireAdminPermission('feeds.write'), (req: Request, res:
     mode: z.enum(['upload', 'url']), 
     url: z.string().optional(), 
     format: z.enum(['xlsx', 'csv', 'xml', 'json']),
-    mapping: z.record(z.string()).optional()
+    mapping: z.record(z.string()).optional(),
+    auto_refresh: z.boolean().optional(),
+    refresh_interval_hours: z.number().min(1).max(168).optional(),
   })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ success: false, error: 'Invalid payload' })
     return
   }
+  const normalizedRefresh = resolveFeedRefreshSettings({
+    mode: parsed.data.mode,
+    url: parsed.data.url,
+    auto_refresh: parsed.data.auto_refresh,
+    refresh_interval_hours: parsed.data.refresh_interval_hours,
+  })
+  if (!normalizedRefresh.ok) {
+    const errorMessage = 'error' in normalizedRefresh ? normalizedRefresh.error : 'Invalid payload'
+    res.status(400).json({ success: false, error: errorMessage })
+    return
+  }
+
   const duplicate = withDb((db) => {
     const name = parsed.data.name.trim().toLowerCase()
-    const url = parsed.data.url?.trim()
+    const url = normalizedRefresh.value.url
     return db.feed_sources.find((f) => {
       if (parsed.data.mode === 'url' && url && f.mode === 'url' && f.url === url) return true
       if (name && f.name.trim().toLowerCase() === name) return true
@@ -627,10 +850,12 @@ router.post('/feeds', requireAdminPermission('feeds.write'), (req: Request, res:
       id,
       name: parsed.data.name,
       mode: parsed.data.mode,
-      url: parsed.data.url,
+      url: normalizedRefresh.value.url,
       format: parsed.data.format,
       is_active: true,
       mapping: parsed.data.mapping,
+      auto_refresh: normalizedRefresh.value.auto_refresh,
+      refresh_interval_hours: normalizedRefresh.value.refresh_interval_hours,
       created_at: new Date().toISOString(),
     })
   })
@@ -655,27 +880,59 @@ router.put('/feeds/:id', requireAdminPermission('feeds.write'), (req: Request, r
     res.status(400).json({ success: false, error: 'Invalid payload' })
     return
   }
-  const conflict = withDb((db) => {
+
+  const normalizedCheck = withDb((db) => {
     const current = db.feed_sources.find((x) => x.id === id)
-    if (!current) return null
-    const nextName = (parsed.data.name ?? current.name).trim().toLowerCase()
+    if (!current) return { ok: false as const, code: 404 as const, error: 'Not found' }
+
     const nextMode = parsed.data.mode ?? current.mode
-    const nextUrl = (parsed.data.url ?? current.url)?.trim()
-    return db.feed_sources.find((f) => {
+    const nextUrl = parsed.data.url ?? current.url
+    const nextAutoRefresh = parsed.data.auto_refresh ?? current.auto_refresh
+    const nextRefreshInterval = parsed.data.refresh_interval_hours ?? current.refresh_interval_hours
+    const normalizedRefresh = resolveFeedRefreshSettings({
+      mode: nextMode,
+      url: nextUrl,
+      auto_refresh: nextAutoRefresh,
+      refresh_interval_hours: nextRefreshInterval,
+    })
+    if (!normalizedRefresh.ok) {
+      const errorMessage = 'error' in normalizedRefresh ? normalizedRefresh.error : 'Invalid payload'
+      return { ok: false as const, code: 400 as const, error: errorMessage }
+    }
+
+    const nextName = (parsed.data.name ?? current.name).trim().toLowerCase()
+    const conflict = db.feed_sources.find((f) => {
       if (f.id === id) return false
-      if (nextMode === 'url' && nextUrl && f.mode === 'url' && f.url === nextUrl) return true
+      if (
+        nextMode === 'url' &&
+        normalizedRefresh.value.url &&
+        f.mode === 'url' &&
+        f.url === normalizedRefresh.value.url
+      ) return true
       if (nextName && f.name.trim().toLowerCase() === nextName) return true
       return false
     })
+    if (conflict) {
+      return { ok: false as const, code: 409 as const, error: 'Такой фид уже существует' }
+    }
+
+    return {
+      ok: true as const,
+      normalizedRefresh: normalizedRefresh.value,
+    }
   })
-  if (conflict) {
-    res.status(409).json({ success: false, error: 'Такой фид уже существует' })
+  if (!normalizedCheck.ok) {
+    res.status(normalizedCheck.code).json({ success: false, error: normalizedCheck.error })
     return
   }
+
   const ok = withDb((db) => {
     const fs = db.feed_sources.find((x) => x.id === id)
     if (!fs) return false
     Object.assign(fs, parsed.data)
+    fs.url = normalizedCheck.normalizedRefresh.url
+    fs.auto_refresh = normalizedCheck.normalizedRefresh.auto_refresh
+    fs.refresh_interval_hours = normalizedCheck.normalizedRefresh.refresh_interval_hours
     return true
   })
   if (!ok) {

@@ -7,6 +7,8 @@ import { Card } from '@/components/ui/Card'
 import { Heading, Text } from '@/components/ui/Typography'
 import ImageGallery from '@/components/ui/ImageGallery'
 import ComplexMap from '@/components/complex/ComplexMap'
+import JsonLd from '@/components/seo/JsonLd'
+import { setPageMeta } from '@/lib/meta'
 import { apiGet } from '@/lib/api'
 import { formatArea, formatPriceRub } from '@/lib/format'
 import { selectCoverImage, getPresentableImages, getLayoutImages } from '@/lib/images'
@@ -39,8 +41,47 @@ export default function PropertyPage() {
   const layoutImages = data ? getLayoutImages(data.property.images) : []
   const coverImage = data ? selectCoverImage(data.property.images) : undefined
 
+  useEffect(() => {
+    if (!data) return
+    const p = data.property
+    const bedroomsLabel = p.bedrooms === 0 ? 'Студия' : `${p.bedrooms}-комн.`
+    const complexLabel = data.complex ? ` — ${data.complex.title}` : ''
+    setPageMeta({
+      title: `${bedroomsLabel} ${formatArea(p.area_total)}${complexLabel}`,
+      description: p.description?.slice(0, 160) || `${p.title}, ${p.district}. Цена: ${formatPriceRub(p.price)}`,
+      ogImage: coverImage,
+      ogType: 'product',
+    })
+  }, [data, coverImage])
+
+  const propertyLd = data ? {
+    '@context': 'https://schema.org',
+    '@type': 'RealEstateListing',
+    name: data.property.title,
+    description: data.property.description || '',
+    url: typeof window !== 'undefined' ? window.location.href : '',
+    image: coverImage || '',
+    offers: {
+      '@type': 'Offer',
+      price: data.property.price,
+      priceCurrency: 'RUB',
+    },
+    address: {
+      '@type': 'PostalAddress',
+      addressLocality: 'Москва',
+      addressRegion: data.property.district,
+    },
+    floorSize: {
+      '@type': 'QuantitativeValue',
+      value: data.property.area_total,
+      unitCode: 'MTK',
+    },
+    numberOfRooms: data.property.bedrooms || undefined,
+  } : null
+
   return (
     <SiteLayout>
+      {propertyLd && <JsonLd data={propertyLd} />}
       <div className="mx-auto w-full max-w-6xl px-4 py-8 md:py-10">
         {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : null}
         {!data ? (
@@ -93,7 +134,7 @@ export default function PropertyPage() {
               {data.complex ? (
                 <div className="mt-2 text-sm">
                   ЖК:{' '}
-                  <Link className="text-sky-600 hover:underline" to={`/complex/${data.complex.id}`}>
+                  <Link className="text-sky-600 hover:underline" to={`/complex/${data.complex.slug || data.complex.id}`}>
                     {data.complex.title}
                   </Link>
                 </div>

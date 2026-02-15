@@ -15,6 +15,7 @@ const UI = {
   sale: '\u041f\u0440\u043e\u0434\u0430\u0436\u0430',
   month: ' / \u043c\u0435\u0441',
   hidden: '\u0421\u043a\u0440\u044b\u0442\u043e (\u043d\u0435 \u0432 \u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0435)',
+  archived: '\u0412 \u0430\u0440\u0445\u0438\u0432\u0435',
   euro: '\u0415\u0432\u0440\u043e',
   details: '\u041f\u043e\u0434\u0440\u043e\u0431\u043d\u0435\u0435',
   signup: '\u0417\u0430\u043f\u0438\u0441\u0430\u0442\u044c\u0441\u044f',
@@ -49,6 +50,11 @@ export default function PropertyCard({
   const discount = hasDiscount ? Math.round((1 - item.price / item.old_price!) * 100) : 0
   const hasArea = typeof item.area_total === 'number' && Number.isFinite(item.area_total) && item.area_total > 0
   const pricePerM2 = hasArea ? item.price / item.area_total : undefined
+  const statusLabel = item.status === 'archived' ? UI.archived : UI.hidden
+  const statusClass =
+    item.status === 'archived'
+      ? 'bg-slate-700/90 text-white shadow-sm backdrop-blur-sm'
+      : 'bg-amber-600/90 text-white shadow-sm backdrop-blur-sm'
 
   return (
     <Card
@@ -58,7 +64,7 @@ export default function PropertyCard({
       )}
     >
       <Link
-        to={`/property/${item.id}`}
+        to={`/property/${item.slug || item.id}`}
         className={cn('relative block bg-slate-100', variant === 'list' ? 'h-full w-44 shrink-0' : 'aspect-[4/3] w-full')}
       >
         {img ? (
@@ -69,8 +75,8 @@ export default function PropertyCard({
             {dealTypeLabel}
           </Badge>
           {showStatusBadge && item.status !== 'active' && (
-            <Badge variant="warning" className="bg-amber-600/90 text-white shadow-sm backdrop-blur-sm">
-              {UI.hidden}
+            <Badge variant="warning" className={statusClass}>
+              {statusLabel}
             </Badge>
           )}
           {hasDiscount && (
@@ -89,7 +95,7 @@ export default function PropertyCard({
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-3">
             <Link
-              to={`/property/${item.id}`}
+              to={`/property/${item.slug || item.id}`}
               onClick={() => trackEvent('open_card', { type: 'property', id: item.id })}
               className="text-base font-semibold leading-snug text-slate-900 transition-colors hover:text-sky-600 hover:underline"
             >
@@ -126,7 +132,7 @@ export default function PropertyCard({
           </div>
         </CardContent>
         <CardFooter className="mt-auto flex items-center justify-between p-4 pt-0">
-          <Link to={`/property/${item.id}`} className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
+          <Link to={`/property/${item.slug || item.id}`} className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
             {UI.details}
           </Link>
           <Button

@@ -53,6 +53,8 @@ const normalizeFileName = (value: string) => {
   return base.replace(/\.[a-z0-9]+$/i, '')
 }
 
+const DEFAULT_AUTO_REFRESH_INTERVAL_HOURS = 24
+
 export default function AdminImportPage() {
   const navigate = useNavigate()
   const token = useUiStore((s) => s.adminToken)
@@ -83,12 +85,16 @@ export default function AdminImportPage() {
     format: 'xlsx' | 'csv' | 'xml' | 'json'
     mode: 'upload' | 'url'
     url: string
+    auto_refresh: boolean
+    refresh_interval_hours: number
     mapping: Record<string, string>
   }>({
     name: '',
     format: 'xml',
     mode: 'url',
     url: '',
+    auto_refresh: false,
+    refresh_interval_hours: DEFAULT_AUTO_REFRESH_INTERVAL_HOURS,
     mapping: {}
   })
   const [feedFile, setFeedFile] = useState<File | null>(null)
@@ -176,15 +182,16 @@ export default function AdminImportPage() {
   }, [load])
 
   const runsBySource = useMemo(() => {
+    const activeSourceIds = new Set(feeds.map((feed) => feed.id))
+    const sortedRuns = [...runs].sort((a, b) => (b.started_at || '').localeCompare(a.started_at || ''))
     const map = new Map<string, ImportRun>()
-    for (const r of runs) {
-      const current = map.get(r.source_id)
-      if (!current || (r.started_at || '') > (current.started_at || '')) {
-        map.set(r.source_id, r)
-      }
+    for (const run of sortedRuns) {
+      if (map.has(run.source_id)) continue
+      if (run.action === 'delete' && activeSourceIds.has(run.source_id)) continue
+      map.set(run.source_id, run)
     }
     return map
-  }, [runs])
+  }, [feeds, runs])
 
   const runsPerPage = 10
   const runsTotalPages = Math.max(1, Math.ceil(runs.length / runsPerPage))
@@ -299,7 +306,15 @@ export default function AdminImportPage() {
     setFeedNameTouched(false)
     setIsMappingExpanded(false)
     setFeedFile(null)
-    setFeedForm({ name: '', format: 'xml', mode: 'url', url: '', mapping: {} })
+    setFeedForm({
+      name: '',
+      format: 'xml',
+      mode: 'url',
+      url: '',
+      auto_refresh: false,
+      refresh_interval_hours: DEFAULT_AUTO_REFRESH_INTERVAL_HOURS,
+      mapping: {},
+    })
     setIsFeedModalOpen(true)
   }
 
@@ -313,6 +328,8 @@ export default function AdminImportPage() {
       format: feed.format,
       mode: feed.mode,
       url: feed.url || '',
+      auto_refresh: feed.auto_refresh ?? false,
+      refresh_interval_hours: feed.refresh_interval_hours ?? DEFAULT_AUTO_REFRESH_INTERVAL_HOURS,
       mapping: feed.mapping || {}
     })
     setIsFeedModalOpen(true)
@@ -326,9 +343,18 @@ export default function AdminImportPage() {
   const handleSaveFeed = async () => {
     setError(null)
     try {
+      const refreshInterval = Math.max(
+        1,
+        Math.min(168, Math.floor(feedForm.refresh_interval_hours || DEFAULT_AUTO_REFRESH_INTERVAL_HOURS)),
+      )
       const payload = {
         ...feedForm,
         url: feedForm.mode === 'url' ? feedForm.url : undefined,
+        auto_refresh: feedForm.mode === 'url' ? feedForm.auto_refresh : false,
+        refresh_interval_hours:
+          feedForm.mode === 'url' && feedForm.auto_refresh
+            ? refreshInterval
+            : undefined,
         mapping: Object.keys(feedForm.mapping).length > 0 ? feedForm.mapping : undefined
       }
 
@@ -352,6 +378,11 @@ export default function AdminImportPage() {
           url: feedForm.mode === 'url' ? feedForm.url : undefined,
           format: feedForm.format,
           is_active: true,
+          auto_refresh: feedForm.mode === 'url' ? feedForm.auto_refresh : false,
+          refresh_interval_hours:
+            feedForm.mode === 'url' && feedForm.auto_refresh
+              ? refreshInterval
+              : undefined,
           mapping: feedForm.mapping,
           created_at: new Date().toISOString()
         }
@@ -632,7 +663,7 @@ export default function AdminImportPage() {
       {/* Main View: Feed List */}
       <div className="space-y-6">
           <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full min-w-[720px] md:min-w-full text-left text-sm">
+            <table className="w-full min-w-[860px] md:min-w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs text-slate-600">
                 <tr>
                   <th className="px-3 py-2">№</th>
@@ -640,6 +671,7 @@ export default function AdminImportPage() {
                   <th className="px-3 py-2">Статус</th>
                   <th className="px-3 py-2">Формат</th>
                   <th className="px-3 py-2">Источник</th>
+                  <th className="px-3 py-2">Автообновление</th>
                   <th className="px-3 py-2">Маппинг</th>
                   <th className="px-3 py-2 text-right sticky right-0 bg-slate-50 shadow-[-1px_0_0_#e2e8f0]">Действия</th>
                 </tr>
@@ -702,6 +734,30 @@ export default function AdminImportPage() {
                         </div>
                       )}
                     </td>
+                    <td className="px-3 py-2 text-slate-700">
+                      {f.mode === 'url' ? (
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge variant={f.auto_refresh ? 'default' : 'secondary'}>
+                            {f.auto_refresh ? 'Вкл' : 'Выкл'}
+                          </Badge>
+                          {f.auto_refresh ? (
+                            <span className="text-[10px] text-slate-500">
+                              Каждые {f.refresh_interval_hours ?? DEFAULT_AUTO_REFRESH_INTERVAL_HOURS} ч
+                            </span>
+                          ) : null}
+                          <span className="text-[10px] text-slate-500">
+                            {f.last_auto_refresh
+                              ? `Последний: ${new Date(f.last_auto_refresh).toLocaleString('ru-RU')}`
+                              : 'Еще не запускалось'}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge variant="secondary">Недоступно</Badge>
+                          <span className="text-[10px] text-slate-500">Только для URL-фидов</span>
+                        </div>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-slate-500 text-xs">
                       {f.mapping ? Object.keys(f.mapping).length + ' полей' : 'Авто'}
                     </td>
@@ -746,7 +802,7 @@ export default function AdminImportPage() {
                 )})}
                 {feeds.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-slate-500">
+                    <td colSpan={8} className="px-3 py-8 text-center text-slate-500">
                       Нет источников. Добавьте первый фид для начала работы.
                     </td>
                   </tr>
@@ -1131,7 +1187,17 @@ export default function AdminImportPage() {
             </div>
             <div>
               <label className="text-xs font-medium text-slate-700">Режим</label>
-              <Select value={feedForm.mode} onChange={(e) => setFeedForm({...feedForm, mode: e.target.value as any})}>
+              <Select
+                value={feedForm.mode}
+                onChange={(e) => {
+                  const nextMode = e.target.value as 'upload' | 'url'
+                  setFeedForm({
+                    ...feedForm,
+                    mode: nextMode,
+                    auto_refresh: nextMode === 'url' ? feedForm.auto_refresh : false,
+                  })
+                }}
+              >
                 <option value="upload">Загрузка файла</option>
                 <option value="url">По URL</option>
               </Select>
@@ -1139,13 +1205,51 @@ export default function AdminImportPage() {
           </div>
 
           {feedForm.mode === 'url' && (
-            <div>
-              <label className="text-xs font-medium text-slate-700">URL фида</label>
-              <Input
-                value={feedForm.url}
-                onChange={(e) => setFeedForm({ ...feedForm, url: e.target.value })}
-                placeholder="https://example.com/feed.xml"
-              />
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-slate-700">URL фида</label>
+                <Input
+                  value={feedForm.url}
+                  onChange={(e) => setFeedForm({ ...feedForm, url: e.target.value })}
+                  placeholder="https://example.com/feed.xml"
+                />
+              </div>
+              <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={feedForm.auto_refresh}
+                  onChange={(e) =>
+                    setFeedForm({
+                      ...feedForm,
+                      auto_refresh: e.target.checked,
+                      refresh_interval_hours: e.target.checked
+                        ? feedForm.refresh_interval_hours || DEFAULT_AUTO_REFRESH_INTERVAL_HOURS
+                        : feedForm.refresh_interval_hours,
+                    })
+                  }
+                />
+                Автообновление по расписанию
+              </label>
+              {feedForm.auto_refresh ? (
+                <div>
+                  <label className="text-xs font-medium text-slate-700">Интервал (часы)</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={String(feedForm.refresh_interval_hours)}
+                    onChange={(e) => {
+                      const parsed = Number(e.target.value)
+                      if (!Number.isFinite(parsed)) return
+                      setFeedForm({
+                        ...feedForm,
+                        refresh_interval_hours: Math.max(1, Math.min(168, Math.floor(parsed))),
+                      })
+                    }}
+                  />
+                  <div className="mt-1 text-[10px] text-slate-500">Допустимый диапазон: 1-168 часов</div>
+                </div>
+              ) : null}
             </div>
           )}
           {feedForm.mode === 'upload' && (
@@ -1170,6 +1274,9 @@ export default function AdminImportPage() {
               {feedFile && (
                 <div className="mt-1 text-[10px] text-slate-500">Выбран файл: {feedFile.name}</div>
               )}
+              <div className="mt-1 text-[10px] text-slate-500">
+                Автообновление недоступно для режима загрузки файла.
+              </div>
             </div>
           )}
 

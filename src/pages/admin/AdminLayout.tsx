@@ -11,6 +11,7 @@ import AdminCatalogPage from './pages/AdminCatalog'
 import AdminComplexSettingsPage from './pages/AdminComplexSettings'
 import AdminUsersPage from './pages/AdminUsers'
 import AdminLogsPage from './pages/AdminLogs'
+import AdminBackupsPage from './pages/AdminBackups'
 import type { AdminPermission, AdminRole } from '../../../shared/types'
 
 type PublishStatus = {
@@ -58,6 +59,7 @@ export default function AdminLayout() {
   const canAccessLeads = hasAnyPermission('leads.write')
   const canAccessUsers = hasAnyPermission('admin_users.read', 'admin_users.write')
   const canAccessLogs = hasAnyPermission('logs.read')
+  const canAccessBackups = hasAnyPermission('publish.read', 'publish.apply')
   const canReadPublishStatus = hasAnyPermission('publish.read')
   const canApplyPublish = hasAnyPermission('publish.apply')
 
@@ -67,11 +69,12 @@ export default function AdminLayout() {
     if (canAccessComplexSettings) return '/admin/complex-settings'
     if (canAccessCollections) return '/admin/collections'
     if (canAccessImport) return '/admin/import'
+    if (canAccessBackups) return '/admin/backups'
     if (canAccessLeads) return '/admin/leads'
     if (canAccessUsers) return '/admin/users'
     if (canAccessLogs) return '/admin/logs'
     return null
-  }, [canAccessCatalog, canAccessCollections, canAccessComplexSettings, canAccessHome, canAccessImport, canAccessLeads, canAccessLogs, canAccessUsers])
+  }, [canAccessBackups, canAccessCatalog, canAccessCollections, canAccessComplexSettings, canAccessHome, canAccessImport, canAccessLeads, canAccessLogs, canAccessUsers])
 
   useEffect(() => {
     if (!token) return
@@ -210,6 +213,7 @@ export default function AdminLayout() {
               {canAccessComplexSettings && <NavLink to="/admin/complex-settings" current={loc.pathname.startsWith('/admin/complex-settings')} title="Настройка ЖК" />}
               {canAccessCollections && <NavLink to="/admin/collections" current={loc.pathname.startsWith('/admin/collections')} title="Подборки" />}
               {canAccessImport && <NavLink to="/admin/import" current={loc.pathname.startsWith('/admin/import')} title="Импорт" />}
+              {canAccessBackups && <NavLink to="/admin/backups" current={loc.pathname.startsWith('/admin/backups')} title="Бекапы" />}
               {canAccessLeads && <NavLink to="/admin/leads" current={loc.pathname.startsWith('/admin/leads')} title="Лиды" />}
               {canAccessUsers && <NavLink to="/admin/users" current={loc.pathname.startsWith('/admin/users')} title="Пользователи" />}
               {canAccessLogs && <NavLink to="/admin/logs" current={loc.pathname.startsWith('/admin/logs')} title="Логи" />}
@@ -222,6 +226,7 @@ export default function AdminLayout() {
               <Route path="/complex-settings" element={canAccessComplexSettings ? <AdminComplexSettingsPage /> : <Navigate to={defaultAdminPath} replace />} />
               <Route path="/collections" element={canAccessCollections ? <AdminCollectionsPage /> : <Navigate to={defaultAdminPath} replace />} />
               <Route path="/import" element={canAccessImport ? <AdminImportPage /> : <Navigate to={defaultAdminPath} replace />} />
+              <Route path="/backups" element={canAccessBackups ? <AdminBackupsPage /> : <Navigate to={defaultAdminPath} replace />} />
               <Route path="/leads" element={canAccessLeads ? <AdminLeadsPage /> : <Navigate to={defaultAdminPath} replace />} />
               <Route path="/users" element={canAccessUsers ? <AdminUsersPage /> : <Navigate to={defaultAdminPath} replace />} />
               <Route path="/logs" element={canAccessLogs ? <AdminLogsPage /> : <Navigate to={defaultAdminPath} replace />} />

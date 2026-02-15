@@ -14,6 +14,8 @@ import { apiGet } from '@/lib/api'
 import { formatPriceRub } from '@/lib/format'
 import { getPresentableImages, selectCoverImage } from '@/lib/images'
 import { normalizeLandingConfig } from '@/lib/complexLanding'
+import JsonLd from '@/components/seo/JsonLd'
+import { setPageMeta } from '@/lib/meta'
 import type { Complex, ComplexLandingConfig, ComplexLandingPlanItem, ComplexNearbyPlace, Property } from '../../shared/types'
 import { useUiStore } from '@/store/useUiStore'
 
@@ -144,6 +146,45 @@ export default function ComplexPage() {
   const presentableImages = c ? getPresentableImages(c.images) : []
   const coverImage = c ? selectCoverImage(c.images) : undefined
   const heroCover = presentableImages[0] || coverImage
+
+  useEffect(() => {
+    if (!c) return
+    const priceLabel = typeof c.price_from === 'number' ? ` — от ${formatPriceRub(c.price_from)}` : ''
+    setPageMeta({
+      title: `ЖК ${c.title}${priceLabel}`,
+      description: c.description?.slice(0, 160) || `Жилой комплекс ${c.title}, ${c.district}`,
+      ogImage: heroCover,
+      ogType: 'product',
+    })
+  }, [c, heroCover])
+
+  const complexLd = c ? {
+    '@context': 'https://schema.org',
+    '@type': 'ApartmentComplex',
+    name: c.title,
+    description: c.description || '',
+    url: typeof window !== 'undefined' ? window.location.href : '',
+    image: heroCover || '',
+    address: {
+      '@type': 'PostalAddress',
+      addressLocality: 'Москва',
+      addressRegion: c.district,
+    },
+    ...(c.geo_lat && c.geo_lon ? {
+      geo: {
+        '@type': 'GeoCoordinates',
+        latitude: c.geo_lat,
+        longitude: c.geo_lon,
+      },
+    } : {}),
+    ...(typeof c.price_from === 'number' ? {
+      offers: {
+        '@type': 'AggregateOffer',
+        lowPrice: c.price_from,
+        priceCurrency: 'RUB',
+      },
+    } : {}),
+  } : null
 
   const landing = useMemo(() => {
     if (!c) return null
@@ -368,6 +409,7 @@ export default function ComplexPage() {
 
   return (
     <SiteLayout>
+      {complexLd && <JsonLd data={complexLd} />}
       <div className="overflow-x-hidden bg-[radial-gradient(circle_at_20%_0%,#0a2231_0%,#06141f_40%,#041019_100%)] text-white">
         {error && (
           <div className="mx-auto max-w-6xl px-4 pt-10">

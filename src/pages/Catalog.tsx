@@ -9,6 +9,7 @@ import { Heading, Text } from '@/components/ui/Typography'
 import Button from '@/components/ui/Button'
 import { apiGet } from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
+import { setPageMeta } from '@/lib/meta'
 import { useUiStore } from '@/store/useUiStore'
 import { useCatalogCache } from '@/store/useCatalogCache'
 import type { Complex, Property } from '../../shared/types'
@@ -53,6 +54,19 @@ export default function CatalogPage() {
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [limit] = useState(12)
+
+  const TAB_TITLES: Record<string, string> = {
+    newbuild: 'Новостройки Москвы',
+    secondary: 'Вторичное жильё в Москве',
+    rent: 'Аренда недвижимости в Москве',
+  }
+
+  useEffect(() => {
+    setPageMeta({
+      title: TAB_TITLES[tab] || 'Каталог недвижимости',
+      description: `Каталог недвижимости: ${TAB_TITLES[tab] || 'все объекты'}. Фильтры по спальням, цене, району и метро.`,
+    })
+  }, [tab])
 
   const query = useMemo(() => {
     const sp = new URLSearchParams({ tab, page: String(page), limit: String(limit) })

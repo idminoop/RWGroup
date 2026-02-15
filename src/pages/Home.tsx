@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, LayoutGrid, Users, Award, ShieldCheck, Lock, MapPin, Star, ExternalLink } from 'lucide-react'
 import SiteLayout from '@/components/layout/SiteLayout'
+import JsonLd from '@/components/seo/JsonLd'
+import { resetPageMeta } from '@/lib/meta'
 import Button from '@/components/ui/Button'
 import { Heading, Text } from '@/components/ui/Typography'
 import PropertyCard from '@/components/catalog/PropertyCard'
@@ -54,14 +56,35 @@ export default function Home() {
   const [home, setHome] = useState<HomeApi | null>(null)
 
   useEffect(() => {
+    resetPageMeta()
+  }, [])
+
+  useEffect(() => {
     apiGet<HomeApi>('/api/home').then(setHome).catch(() => setHome(null))
   }, [])
 
   const teamMembers = (home?.home?.team?.founders?.length ? home.home.team.founders : FALLBACK_TEAM).slice(0, 2)
 
+  const organizationLd = {
+    '@context': 'https://schema.org',
+    '@type': ['RealEstateAgent', 'Organization'],
+    name: 'RWgroup',
+    url: typeof window !== 'undefined' ? window.location.origin : 'https://rwgroup.ru',
+    logo: typeof window !== 'undefined' ? `${window.location.origin}/logo.svg` : 'https://rwgroup.ru/logo.svg',
+    telephone: '+7 (495) 410-15-68',
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: 'Кутузовский пр-т 36 А',
+      addressLocality: 'Москва',
+      addressCountry: 'RU',
+    },
+    description: 'Эксперты по недвижимости. Новостройки, вторичное жильё, аренда. Подбор, сопровождение сделки, юридическая проверка.',
+    sameAs: [],
+  }
 
   return (
     <SiteLayout>
+      <JsonLd data={organizationLd} />
       {/* 1. Hero Section - Full Screen */}
       <section className="relative h-[calc(100svh-72px)] min-h-[520px] w-full overflow-hidden bg-background md:h-[calc(100vh-80px)] md:min-h-[600px]">
         <div className="absolute inset-0">
@@ -549,7 +572,7 @@ function CollectionCard({ item }: { item: Collection }) {
   const navigate = useNavigate()
   return (
     <div 
-      onClick={() => navigate(`/collection/${item.id}`)}
+      onClick={() => navigate(`/collection/${item.slug || item.id}`)}
       className="group cursor-pointer"
     >
       <div className="relative aspect-[16/10] overflow-hidden rounded-sm bg-gray-800">
