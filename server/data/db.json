@@ -147,7 +147,7 @@
       "created_at": "2026-02-12T11:11:12.827Z",
       "auto_refresh": true,
       "refresh_interval_hours": 24,
-      "last_auto_refresh": "2026-02-15T11:13:04.129Z"
+      "last_auto_refresh": "2026-02-19T11:03:41.470Z"
     },
     {
       "id": "a053ca51-9048-4f9d-b08c-9762f06a8640",
@@ -187,8 +187,8 @@
       "category": "newbuild",
       "district": "Иловайская 3/4а",
       "metro": [],
-      "price_from": 13690000,
-      "area_from": 23.9,
+      "price_from": 11690000,
+      "area_from": 21.1,
       "images": [
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66f69ea87d58f.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66f69eaea3d5d.jpg",
@@ -208,9 +208,9 @@
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb01ac3e908.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb01cc6fbfe.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb01cdeae3c.jpg",
+        "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb01e6ec1aa.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb0217aab8c.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb028dd66e3.jpg",
-        "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb029d1dae8.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb02c99133b.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb02cd4438f.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb02d11c180.jpg",
@@ -227,6 +227,7 @@
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb0335e2e5a.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb0346f06c6.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb0373125b0.jpg",
+        "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb038180690.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb031282d36.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb0323a38a3.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fb0308aad9a.jpg",
@@ -251,20 +252,19 @@
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fa82c2e6a2b.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fa8323d3b93.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fa835b016c9.jpg",
-        "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbc7ac7e1a0.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbc99831abb.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbc9fc6b1ca.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbca4a20831.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbcafd42ee2.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbcb1ac76ed.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbcb4a91bdf.jpg",
+        "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbcb4e6de3c.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbcbfa40441.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbcc02622df.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbcb64a3369.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbd8949be56.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbd88d91da1.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbd87f7be30.jpg",
-        "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbd91929754.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbd8e469171.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbd8f7b57aa.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbd96dd1a11.jpg",
@@ -282,6 +282,7 @@
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc321a78a7d.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc3476b82e5.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc3483bb5b4.jpg",
+        "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc36658ed59.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc37b313605.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc39c2453af.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc3b2a6bde9.jpg",
@@ -289,7 +290,6 @@
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc3d97de1da.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc3d5790ce7.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc3e368ffe6.jpg",
-        "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc3eadf13b6.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc3ec2d2a92.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc3e4604dc7.jpg",
         "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc3e567cd05.jpg",
@@ -375,8 +375,8 @@
       "status": "active",
       "developer": "«СТРАНА Девелопмент»",
       "handover_date": "1 кв. 2028",
-      "last_seen_at": "2026-02-15T11:13:04.110Z",
-      "updated_at": "2026-02-15T11:13:04.110Z",
+      "last_seen_at": "2026-02-19T11:03:41.382Z",
+      "updated_at": "2026-02-19T11:03:41.382Z",
       "landing": {
         "enabled": true,
         "accent_color": "#C2A87A",
@@ -2667,6 +2667,74 @@
   ],
   "properties": [
     {
+      "id": "26982ca9-6062-4d69-b1b0-75d405b1df99",
+      "source_id": "ab093a95-9ce5-43cd-b83f-00583633d5a1",
+      "external_id": "14892049",
+      "slug": "3-комнатная-в-страназаречная",
+      "lot_number": "",
+      "complex_id": "3177677a-4b82-4528-8da5-a1c9f6f61ee2",
+      "complex_external_id": "Страна.Заречная",
+      "deal_type": "sale",
+      "category": "newbuild",
+      "title": "3-комнатная в Страна.Заречная",
+      "bedrooms": 3,
+      "price": 24490000,
+      "old_price": 34985714,
+      "area_total": 61.9,
+      "area_living": 39.9,
+      "area_kitchen": 3.8,
+      "floor": 7,
+      "floors_total": 38,
+      "district": "Иловайская 3/4а",
+      "metro": [],
+      "images": [
+        "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fc36658ed59.jpg"
+      ],
+      "renovation": "черновая",
+      "is_euroflat": false,
+      "building_section": "9",
+      "building_state": "unfinished",
+      "ready_quarter": 1,
+      "built_year": 2028,
+      "status": "active",
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
+    },
+    {
+      "id": "68cda504-1248-49c4-b2bb-3f42c30df43f",
+      "source_id": "ab093a95-9ce5-43cd-b83f-00583633d5a1",
+      "external_id": "14891491",
+      "slug": "3-комнатная-в-страназаречная",
+      "lot_number": "",
+      "complex_id": "3177677a-4b82-4528-8da5-a1c9f6f61ee2",
+      "complex_external_id": "Страна.Заречная",
+      "deal_type": "sale",
+      "category": "newbuild",
+      "title": "3-комнатная в Страна.Заречная",
+      "bedrooms": 3,
+      "price": 21090000,
+      "old_price": 30128571,
+      "area_total": 50.9,
+      "area_living": 37,
+      "area_kitchen": 3.8,
+      "floor": 23,
+      "floors_total": 38,
+      "district": "Иловайская 3/4а",
+      "metro": [],
+      "images": [
+        "https://pb4988.strana.profitbase.ru/uploads/preset/4988/66fbcb4e6de3c.jpg"
+      ],
+      "renovation": "черновая",
+      "is_euroflat": false,
+      "building_section": "5",
+      "building_state": "unfinished",
+      "ready_quarter": 1,
+      "built_year": 2028,
+      "status": "active",
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
+    },
+    {
       "id": "4e2691e7-7b3c-4bb0-9deb-6ffabe9b9047",
       "source_id": "ab093a95-9ce5-43cd-b83f-00583633d5a1",
       "external_id": "14892946",
@@ -2697,8 +2765,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "cb1bb8bc-4818-4be4-b56c-d55332654022",
@@ -2731,8 +2799,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "5ffd720d-0ea6-43ec-bc4c-b113343383a7",
@@ -2765,8 +2833,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "91482224-eba8-4b04-8aed-8fbf94b9ed1f",
@@ -2799,8 +2867,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "2b0f3711-017e-4663-b9a9-6bcca079c75f",
@@ -2833,8 +2901,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "0f11f129-b1bd-4187-92f4-4f51f1341c2b",
@@ -2867,8 +2935,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "8ab2fa94-a9a4-4d6a-b0e5-55e568717b89",
@@ -2901,8 +2969,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "a888e626-dfa7-44ad-b358-9721c6813246",
@@ -2935,8 +3003,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "814c7df0-160e-4f90-80c9-9a0a29f2520f",
@@ -2969,8 +3037,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "ac2d002a-d8a3-4f5f-a2a1-cc7567089ff0",
@@ -3003,8 +3071,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "38c78713-d8f1-402c-b390-a50bba3520ed",
@@ -3037,8 +3105,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "0583e7b7-dacc-49de-a0b1-c30ebb5b4337",
@@ -3071,8 +3139,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "f5ece80c-80f7-4bfe-adc2-91dd3aa48c1d",
@@ -3105,8 +3173,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "c1b30dba-1039-4abb-b9be-eb898ab06dba",
@@ -3139,8 +3207,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "c949e9de-75c9-4529-9fa6-9f58954f6284",
@@ -3173,8 +3241,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "3ac34e1f-9c82-4595-80e7-194dd3e3c231",
@@ -3207,8 +3275,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "44846590-a9ea-4cf0-b3aa-43b641d68a64",
@@ -3241,8 +3309,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "b0846839-7497-48a4-9a92-753d56f62cff",
@@ -3275,8 +3343,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "03911223-1e62-4099-bd24-d42013a22eba",
@@ -3309,8 +3377,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "0271afe3-9ea1-4ed6-b276-255d8fee90d6",
@@ -3343,8 +3411,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "bd622f72-b5da-448e-9409-5a013abeeb28",
@@ -3377,8 +3445,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "198ebcaf-7789-4055-a3da-8f297ab24291",
@@ -3411,8 +3479,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "1e5bc675-7e00-4ea8-a168-634ee20bce81",
@@ -3445,8 +3513,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "94d55817-a936-42ff-bfaf-bf92bd333af1",
@@ -3479,8 +3547,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "5444634a-60fe-4bb7-899e-dda321bb11cc",
@@ -3513,8 +3581,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "5a5fa76d-a03d-41bb-8ed7-aad843ef1814",
@@ -3547,8 +3615,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "969e34ed-1567-4994-b8cb-24b2e37aa1ea",
@@ -3581,8 +3649,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "a91bf972-3eb9-4d1b-af09-99f4240d6f2e",
@@ -3615,8 +3683,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "f0af3f48-8a06-48b1-b3f4-5f86d556b1b5",
@@ -3649,8 +3717,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "daaa8094-7bd1-493e-989f-c87448ce7d50",
@@ -3683,8 +3751,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "fc50abf0-5f00-4ddf-bf5f-e56463acbfa0",
@@ -3717,8 +3785,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "2a4af466-ce05-4883-899f-30d67df20682",
@@ -3751,8 +3819,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "bfab54ea-4c85-4755-80ec-dd962f9f8abf",
@@ -3785,8 +3853,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "a81324e1-d6b2-40db-936b-dd46351f8aba",
@@ -3819,8 +3887,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "41d8e64d-1117-407f-b57b-90d44b0c37be",
@@ -3853,8 +3921,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "04fbc32d-4455-4b61-9ac7-414b0982be8d",
@@ -3887,8 +3955,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "ba25b501-d0d7-424f-91c9-8e24befd7329",
@@ -3921,8 +3989,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "79f2cbfe-169d-48de-9f92-f667e7ce7ba5",
@@ -3955,8 +4023,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "c959f280-fa5a-4558-9c85-74342668f47d",
@@ -3989,8 +4057,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "042d8c08-781a-41da-b9c0-a21890250536",
@@ -4023,8 +4091,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "6d9319a6-65dd-434c-b17d-428063236225",
@@ -4057,8 +4125,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "dd023961-848f-4289-8c74-8917d70075a9",
@@ -4091,8 +4159,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "78513745-23ac-413d-812e-423b3816b12a",
@@ -4125,8 +4193,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "fbdac3d8-b0c8-4261-a1d5-484e54397f95",
@@ -4159,8 +4227,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "deb07307-a0ac-43c0-b079-0fbc264cea51",
@@ -4193,8 +4261,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "3dc5f226-2cda-4e23-b77f-cbd2e86ec0f1",
@@ -4227,8 +4295,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "e4b41fe0-0433-44ee-b4bc-7ca99f0a695e",
@@ -4261,8 +4329,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "50f7b144-d90a-4de0-b567-dee2a623a2df",
@@ -4295,8 +4363,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "42c94766-765e-4373-8079-8058e325780b",
@@ -4329,8 +4397,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "413dccb8-2b5c-4596-a2b3-07b7588f1b67",
@@ -4363,8 +4431,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "ca435da6-5175-477c-b30a-513d1c642de5",
@@ -4397,8 +4465,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "00db3be1-6269-46cc-b37f-156a5f4a5909",
@@ -4431,8 +4499,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "f8718b6f-d44a-412f-bb03-95bf420aa480",
@@ -4465,8 +4533,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "b6e14ee8-1b31-46ba-88e5-4d9215f35f69",
@@ -4499,8 +4567,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "acf5ea81-1c59-46c0-9bfd-2b2ab409e1c3",
@@ -4533,8 +4601,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "ef17710f-84bc-4ace-9ab4-06cde8c29111",
@@ -4567,8 +4635,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "dc0d869d-d91d-440a-ae51-35401d2f7157",
@@ -4601,8 +4669,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "d815e468-d50c-4aaf-9da9-ad004f199c44",
@@ -4635,8 +4703,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "b8283f06-80db-45f4-87ea-eb3b2d306471",
@@ -4669,8 +4737,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "76c42982-ddc5-4ded-91f3-65fc866004fd",
@@ -4703,8 +4771,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "8603ee4a-429d-4e8c-9f0c-00fb4cf1d588",
@@ -4737,8 +4805,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "b37ffb0c-fdf4-44f4-b13b-a186ad78506b",
@@ -4771,8 +4839,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "aba8ed53-bdf8-4ea5-8c78-6503cded3ebd",
@@ -4805,8 +4873,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "ec82654d-c9d2-4a87-84d8-d6b58f4aae17",
@@ -4839,8 +4907,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "d4bdf0dd-555b-45e1-b6c1-08d1af128c90",
@@ -4873,8 +4941,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "2c8cd6bb-e934-4bd4-9f59-f211ab1f6f25",
@@ -4907,8 +4975,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "5a7e8c9f-8ae5-48f3-bed3-b209c6873209",
@@ -4941,8 +5009,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "1c552815-d644-4c83-977f-4a355312997d",
@@ -4975,8 +5043,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "da79a148-42a8-4c75-aafc-18e59956fa08",
@@ -5009,8 +5077,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "dd2cebf0-4d93-4c3f-a16b-df6f44a97710",
@@ -5043,8 +5111,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "182663d5-105d-4275-a79b-b628ea3592a5",
@@ -5077,8 +5145,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "4377c822-6cc7-4a1d-b7ed-b35954979570",
@@ -5111,8 +5179,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "1ca3e319-bb14-4ce3-83d8-aa4afbe4851d",
@@ -5145,8 +5213,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "c0556605-9001-4e66-b0d2-3ced7e5eef99",
@@ -5179,8 +5247,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "c3d8bc06-1db6-485c-88d0-635d68565190",
@@ -5213,8 +5281,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "4495de0f-f0d6-4fa9-9093-8418537d2703",
@@ -5246,9 +5314,9 @@
       "building_state": "unfinished",
       "ready_quarter": 1,
       "built_year": 2028,
-      "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "status": "hidden",
+      "last_seen_at": "2026-02-18T07:27:45.021Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "3ce665f3-8f2d-49b4-8446-921faab500c6",
@@ -5281,8 +5349,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "177f669e-2871-489f-b227-b159150432c3",
@@ -5315,8 +5383,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "b956cad0-1361-4386-8ed8-a6e78fa72812",
@@ -5349,8 +5417,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "28954bdd-461c-482a-9322-82b0dee869fc",
@@ -5383,8 +5451,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "ca5f5ff8-b4f2-4133-b369-7e2665c3df81",
@@ -5417,8 +5485,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "e6f2dd53-5acf-4561-99d2-e6f6ebc4963d",
@@ -5451,8 +5519,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "e80f55cb-9900-430b-ac63-8716ad761e65",
@@ -5485,8 +5553,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "b8aa97ac-5d75-43c4-ab01-22059bc3e855",
@@ -5519,8 +5587,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "a125526e-9ed5-47fb-b621-165459765c08",
@@ -5553,8 +5621,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "d34cc952-9344-4c53-a0d0-2b3d7f701fa6",
@@ -5587,8 +5655,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "11bb3cc0-d9e5-4fe0-ae64-d47e054db435",
@@ -5621,8 +5689,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "ddd20070-d721-461b-95c3-542ebee72d90",
@@ -5655,8 +5723,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "ddb1d468-aa6b-48ef-b156-bc0bd686735d",
@@ -5689,8 +5757,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "f6a630e2-bcbd-4bd8-9933-a15ec692d975",
@@ -5723,8 +5791,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "43922ab6-aebb-4cf9-a8ff-5fdb3e03c5c9",
@@ -5757,8 +5825,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "3abb239d-713e-44fd-9700-83eb9659829e",
@@ -5791,8 +5859,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "15dfc4c6-2b38-4f52-be55-8b932425805d",
@@ -5825,8 +5893,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "f6eb9571-d27a-44c6-8065-418d4476a954",
@@ -5859,8 +5927,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "f882ee8d-690f-4bbd-8ec4-dfd9264148cf",
@@ -5893,8 +5961,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "ca2f3ab4-9ed5-4794-9f7a-3eacceaed55b",
@@ -5927,8 +5995,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "2c641288-f71b-4457-9418-da4bd4a5451b",
@@ -5961,8 +6029,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "d7f38019-6f98-433a-bb7e-79bd56b61710",
@@ -5995,8 +6063,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "a459d41e-bcb0-4396-9736-e7cee53014f1",
@@ -6029,8 +6097,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "933b36c7-85a0-4c72-892d-afbb130401ac",
@@ -6063,8 +6131,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "8f431b80-9604-46c5-a369-06057b447794",
@@ -6097,8 +6165,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "58d3b096-5763-4a61-bd01-e9981695b821",
@@ -6131,8 +6199,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "49d9e963-71c0-424e-b50e-206c67b82758",
@@ -6165,8 +6233,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "52e9d920-3d08-4dbd-b1af-56fd995d76fd",
@@ -6199,8 +6267,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "1ff86fe9-2092-4e69-98f7-f8f0131d7d92",
@@ -6233,8 +6301,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "829ea249-9e2d-4dda-8956-8630d9c334c9",
@@ -6266,9 +6334,9 @@
       "building_state": "unfinished",
       "ready_quarter": 1,
       "built_year": 2028,
-      "status": "hidden",
+      "status": "archived",
       "last_seen_at": "2026-02-12T11:11:48.414Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "updated_at": "2026-02-16T12:30:07.401Z"
     },
     {
       "id": "e96fc7fd-30dd-42e5-92aa-1c00f3e1ae27",
@@ -6301,8 +6369,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "98a0681f-b56a-4611-b564-49eaa66919c7",
@@ -6335,8 +6403,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "f59495e4-1878-48e4-b99c-16a7153a0e19",
@@ -6369,8 +6437,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "e43f5244-1fab-4c05-9cc3-0a922d0c9aa0",
@@ -6403,8 +6471,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "c61d3203-0202-49f8-905a-3ee1eaf757e7",
@@ -6437,8 +6505,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "e1f3a99b-bbe8-46be-91ae-6f5f33b89202",
@@ -6471,8 +6539,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "11c371dc-4f0e-4b2d-b759-c563ea70daf4",
@@ -6505,8 +6573,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "476440a5-4a02-4b2f-95ea-8172a550405e",
@@ -6539,8 +6607,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "ca8bbf8b-e313-4234-9acb-5bbbbb0e7968",
@@ -6573,8 +6641,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "67086acb-8443-48a4-8825-18f69c23591d",
@@ -6607,8 +6675,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "507d7e5e-c598-4b2f-863a-eec4d991b4de",
@@ -6641,8 +6709,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "a105e03d-c717-48fc-88c1-c70711fc5a14",
@@ -6675,8 +6743,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "988b0fe6-fb4e-4d3b-b965-cf6515b1753a",
@@ -6709,8 +6777,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "b376a9ab-7d0a-4fa1-88bc-09c89c4a055d",
@@ -6743,8 +6811,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "dc07f7f1-070e-4f6d-a6c6-9866cece74e9",
@@ -6777,8 +6845,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "6224f25b-2668-428a-be91-caecce0bb6eb",
@@ -6811,8 +6879,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "aaa9e690-ff44-46db-804d-92caa18b9cf0",
@@ -6844,9 +6912,9 @@
       "building_state": "unfinished",
       "ready_quarter": 1,
       "built_year": 2028,
-      "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "status": "archived",
+      "last_seen_at": "2026-02-16T12:30:07.401Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "35c628a7-22da-4db2-a406-3b0cfc9cc97f",
@@ -6879,8 +6947,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "76bc5f48-5bcb-4b16-98e5-1d0041c22d63",
@@ -6913,8 +6981,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "6eea182d-ef50-4bf3-9275-ddb863543c86",
@@ -6947,8 +7015,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "f3f8f998-1e9b-4536-82ca-5e49c4c17658",
@@ -6981,8 +7049,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "9b73b97a-72e9-4e5f-a270-471d1f72001a",
@@ -7015,8 +7083,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "fb9b6717-4e63-47ec-b391-0ba43e2dccb3",
@@ -7049,8 +7117,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "b8a2c6e7-21ef-4621-8005-0fe78a6bf453",
@@ -7083,8 +7151,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "3f32f9f5-2c90-4cda-a90d-8f32eedba72f",
@@ -7117,8 +7185,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "5b1bd892-58a2-4815-871b-d23e78a52253",
@@ -7151,8 +7219,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "75de6fa7-a43d-4482-b8fe-7f6a244355e8",
@@ -7185,8 +7253,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "f08e4804-3a09-4bef-9b12-1d6d8bc031bc",
@@ -7219,8 +7287,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "403c922b-4544-471d-8d3d-5dcc465c0e55",
@@ -7253,8 +7321,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "42ca6242-fa52-4212-bcb2-f0895d3f3851",
@@ -7286,9 +7354,9 @@
       "building_state": "unfinished",
       "ready_quarter": 1,
       "built_year": 2028,
-      "status": "active",
+      "status": "archived",
       "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "updated_at": "2026-02-18T07:27:45.021Z"
     },
     {
       "id": "366f2120-3e75-4c55-9359-27368ebede54",
@@ -7321,8 +7389,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "65fa1ced-c87b-4f67-be33-3c6d937c28d1",
@@ -7355,8 +7423,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "0bf53240-af3e-4a68-aeb0-6c70442eafae",
@@ -7389,8 +7457,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "fafe1b57-62c2-4bc0-b2a9-45b39c3ec915",
@@ -7423,8 +7491,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "41550140-6d05-44d3-82dd-2319c0902f99",
@@ -7457,8 +7525,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "2fb4e973-0357-4a19-87cb-c47e33b2fc9f",
@@ -7491,8 +7559,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "05f886cb-3703-4d80-baec-2047899274c6",
@@ -7525,8 +7593,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "2a8e5fbe-2cc0-404b-9b20-73e05989e238",
@@ -7559,8 +7627,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "a5ed0e9e-6f68-4bdb-9726-95fc4f6fef21",
@@ -7593,8 +7661,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "d1a743f3-c1ba-405b-b2f7-52e35520640e",
@@ -7627,8 +7695,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "204b1612-8462-4c93-99e8-ba02a73bc716",
@@ -7661,8 +7729,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "e267f5d9-c038-4639-8ba8-cd7a9b9afc9d",
@@ -7695,8 +7763,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "6f78228b-3aea-4757-96ba-e2d92ea2f300",
@@ -7729,8 +7797,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "9351ab01-aba7-456b-8abb-b3a65c76ceae",
@@ -7763,8 +7831,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "8adac093-05e6-48f3-b564-c0df48c0e930",
@@ -7797,8 +7865,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "c3c71fb3-4696-40d4-937b-7bb61474296e",
@@ -7831,8 +7899,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "3f78c136-3d75-4e13-95c9-ade3f248a973",
@@ -7865,8 +7933,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "f541026b-5ffa-4628-b1fc-afc479157e63",
@@ -7899,8 +7967,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "e07e72a1-0e09-487e-bfef-07351e740b8c",
@@ -7933,8 +8001,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "bfccd79e-e790-4c5f-bd9f-840f0eb89226",
@@ -7967,8 +8035,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "fcd29353-1a98-4b59-bd1c-72f926a58317",
@@ -8001,8 +8069,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "09aac71f-70fd-4c4e-9f4e-d9e149915d99",
@@ -8035,8 +8103,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "0f9e4ffa-04f9-4780-9dc1-37f3bba268a0",
@@ -8069,8 +8137,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "7748c2ce-f3f3-4ffd-b142-d867d1b13072",
@@ -8103,8 +8171,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "ecc7da5b-c675-461e-a8ff-f0ad8d57bb0f",
@@ -8137,8 +8205,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "d3a1a15c-e686-4e21-9a24-83891355d41e",
@@ -8170,9 +8238,9 @@
       "building_state": "unfinished",
       "ready_quarter": 1,
       "built_year": 2028,
-      "status": "hidden",
-      "last_seen_at": "2026-02-12T11:11:48.414Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "status": "active",
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "e84a7b12-04b5-4241-bd6f-4e6b84d0aa50",
@@ -8205,8 +8273,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "6c6831e4-168e-46a2-b812-fdaf5ee9eabd",
@@ -8239,8 +8307,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "41158647-384b-4048-977d-bcc9527269be",
@@ -8273,8 +8341,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "38bafd2a-1c99-439e-bdc4-501fab4b5819",
@@ -8307,8 +8375,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "b7607b6d-e9ba-49b9-bc2e-51d9e3f4beb7",
@@ -8341,8 +8409,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "69ca86c6-47f0-4410-a7cf-f7780db7d6fb",
@@ -8375,8 +8443,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "10edc402-266d-4283-b2e2-3bf201473cc2",
@@ -8409,8 +8477,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "e54f45f6-919e-4160-a092-7670fdad1128",
@@ -8443,8 +8511,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "b6f10e41-53b8-4c56-b926-e7b3f7837e84",
@@ -8477,8 +8545,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "9464a9c2-498f-43df-9e77-2cb9d65e5895",
@@ -8511,8 +8579,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "aefbc5db-52a5-484b-920d-ae0da8bbd6ac",
@@ -8545,8 +8613,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "0de568b0-0c33-434b-a0ad-1a1738d44ad6",
@@ -8579,8 +8647,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "cc5e7ffd-fa04-4c07-8b38-46453ef0411b",
@@ -8613,8 +8681,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "1119b368-1b1d-432b-9bdd-9e1a578402d7",
@@ -8647,8 +8715,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "58b7efbe-4a9a-439f-8e8b-c6a148badf7e",
@@ -8680,9 +8748,9 @@
       "building_state": "unfinished",
       "ready_quarter": 1,
       "built_year": 2028,
-      "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "status": "hidden",
+      "last_seen_at": "2026-02-18T07:27:45.021Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "8be58020-e7cc-4c5a-9fa2-92bb1992585e",
@@ -8714,9 +8782,9 @@
       "building_state": "unfinished",
       "ready_quarter": 1,
       "built_year": 2028,
-      "status": "hidden",
-      "last_seen_at": "2026-02-12T11:11:48.414Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "status": "active",
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "a79e58b0-9d7f-4896-b6b4-2df9d8f0201c",
@@ -8749,8 +8817,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "0ceac158-ee7f-4286-9463-9ca581a80fec",
@@ -8783,8 +8851,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "7de17439-bce7-433c-9d2b-85ce817fc3b2",
@@ -8817,8 +8885,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "93ebcd12-9722-4e7e-9fc9-72cf09cf7046",
@@ -8851,8 +8919,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "4de032ba-87de-474b-a31d-c0e039745824",
@@ -8885,8 +8953,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "495fcc5f-a515-415e-ba83-a97e69004c5c",
@@ -8919,8 +8987,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "febcbfda-0e07-49c9-9894-3bbd99fda823",
@@ -8953,8 +9021,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "16d17e62-7ab2-49af-90c3-570db17d1062",
@@ -8987,8 +9055,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "450653e0-4666-4a48-a01c-4d0ef4b22a7b",
@@ -9021,8 +9089,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "5612f8bd-2c21-49bb-b661-2eaddb644167",
@@ -9055,8 +9123,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "541bfa2f-b010-435b-a516-23465cff2569",
@@ -9089,8 +9157,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "5fcf796d-71b8-476c-b44f-aa5673c24ea1",
@@ -9123,8 +9191,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "6758fb3d-03cb-4adc-9a50-023abcc5305a",
@@ -9157,8 +9225,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "3e9094e6-c45f-46f9-b44e-872a883c31f0",
@@ -9191,8 +9259,8 @@
       "ready_quarter": 1,
       "built_year": 2028,
       "status": "active",
-      "last_seen_at": "2026-02-15T11:13:04.111Z",
-      "updated_at": "2026-02-15T11:13:04.111Z"
+      "last_seen_at": "2026-02-19T11:03:41.393Z",
+      "updated_at": "2026-02-19T11:03:41.393Z"
     },
     {
       "id": "11102a8f-3e7a-424d-baee-7d714ea8524e",
@@ -17188,6 +17256,88 @@
   ],
   "import_runs": [
     {
+      "id": "872eb67f-0b37-469c-a6d3-2f57ca71ba0e",
+      "source_id": "ab093a95-9ce5-43cd-b83f-00583633d5a1",
+      "entity": "property",
+      "started_at": "2026-02-19T11:03:39.354Z",
+      "finished_at": "2026-02-19T11:03:41.512Z",
+      "status": "success",
+      "stats": {
+        "inserted": 0,
+        "updated": 189,
+        "hidden": 2
+      },
+      "feed_name": "yandex_zarechnaya_feed",
+      "feed_url": "https://dev.vasnaidut.ru/html/strana/feed/moskva/yandex_zarechnaya_feed.xml",
+      "action": "import"
+    },
+    {
+      "id": "f7431b3a-1af4-42f9-acce-ead33777cd21",
+      "source_id": "ab093a95-9ce5-43cd-b83f-00583633d5a1",
+      "entity": "property",
+      "started_at": "2026-02-18T07:27:44.321Z",
+      "finished_at": "2026-02-18T07:27:45.068Z",
+      "status": "success",
+      "stats": {
+        "inserted": 2,
+        "updated": 189,
+        "hidden": 1
+      },
+      "feed_name": "yandex_zarechnaya_feed",
+      "feed_url": "https://dev.vasnaidut.ru/html/strana/feed/moskva/yandex_zarechnaya_feed.xml",
+      "action": "import"
+    },
+    {
+      "id": "42186c08-0e22-4d4d-a3dc-1b2d0ddc072b",
+      "source_id": "ab093a95-9ce5-43cd-b83f-00583633d5a1",
+      "entity": "property",
+      "started_at": "2026-02-18T07:26:44.381Z",
+      "finished_at": "2026-02-18T07:26:44.695Z",
+      "status": "failed",
+      "stats": {
+        "inserted": 0,
+        "updated": 0,
+        "hidden": 0
+      },
+      "error_log": "fetch failed",
+      "feed_name": "yandex_zarechnaya_feed",
+      "feed_url": "https://dev.vasnaidut.ru/html/strana/feed/moskva/yandex_zarechnaya_feed.xml",
+      "action": "import"
+    },
+    {
+      "id": "3938721d-30da-4ce0-8100-447a14eafccb",
+      "source_id": "ab093a95-9ce5-43cd-b83f-00583633d5a1",
+      "entity": "property",
+      "started_at": "2026-02-16T12:30:06.946Z",
+      "finished_at": "2026-02-16T12:30:07.437Z",
+      "status": "success",
+      "stats": {
+        "inserted": 0,
+        "updated": 188,
+        "hidden": 2
+      },
+      "feed_name": "yandex_zarechnaya_feed",
+      "feed_url": "https://dev.vasnaidut.ru/html/strana/feed/moskva/yandex_zarechnaya_feed.xml",
+      "action": "import"
+    },
+    {
+      "id": "ae4ed2c8-0d60-4b69-8915-a4d886581c83",
+      "source_id": "ab093a95-9ce5-43cd-b83f-00583633d5a1",
+      "entity": "property",
+      "started_at": "2026-02-16T12:29:07.022Z",
+      "finished_at": "2026-02-16T12:29:07.276Z",
+      "status": "failed",
+      "stats": {
+        "inserted": 0,
+        "updated": 0,
+        "hidden": 0
+      },
+      "error_log": "fetch failed",
+      "feed_name": "yandex_zarechnaya_feed",
+      "feed_url": "https://dev.vasnaidut.ru/html/strana/feed/moskva/yandex_zarechnaya_feed.xml",
+      "action": "import"
+    },
+    {
       "id": "21be3018-efc2-446b-8fc6-db080f77a2f2",
       "source_id": "cbda53bc-ef2d-4d78-b35f-708e5c5d0889",
       "entity": "property",
@@ -19092,6 +19242,70 @@
     }
   ],
   "audit_logs": [
+    {
+      "id": "8a59ed14-9176-48cc-8d34-79c2f9ef54ec",
+      "admin_id": "system",
+      "admin_login": "system",
+      "action": "delete",
+      "entity": "settings",
+      "entity_id": "d0c5927a-8c20-4510-8ccc-7a06cd98241c",
+      "description": "Удален автобекап по лимиту хранения: d0c5927a-8c20-4510-8ccc-7a06cd98241c",
+      "timestamp": "2026-02-19T11:03:41.951Z"
+    },
+    {
+      "id": "7ce3da80-6529-40d1-ba17-d814d225a6c2",
+      "admin_id": "system",
+      "admin_login": "system",
+      "action": "create",
+      "entity": "settings",
+      "entity_id": "e08b8a99-dce2-463c-92f2-311b21a90bfb",
+      "description": "Создан автобекап: e08b8a99-dce2-463c-92f2-311b21a90bfb",
+      "timestamp": "2026-02-19T11:03:40.886Z",
+      "details": "label=Daily 2026-02-19"
+    },
+    {
+      "id": "b7140328-1348-47d0-a6e2-d5c400aff335",
+      "admin_id": "system",
+      "admin_login": "system",
+      "action": "delete",
+      "entity": "settings",
+      "entity_id": "31572ee5-e68e-49a1-841f-c3eb2fffafcd",
+      "description": "Удален автобекап по лимиту хранения: 31572ee5-e68e-49a1-841f-c3eb2fffafcd",
+      "timestamp": "2026-02-18T07:26:48.168Z"
+    },
+    {
+      "id": "722fcbe9-0336-4fd9-b0dd-d9c4d9786f77",
+      "admin_id": "system",
+      "admin_login": "system",
+      "action": "create",
+      "entity": "settings",
+      "entity_id": "b87c7319-ee25-4451-97cf-4bce51ae2185",
+      "description": "Создан автобекап: b87c7319-ee25-4451-97cf-4bce51ae2185",
+      "timestamp": "2026-02-18T07:26:47.614Z",
+      "details": "label=Daily 2026-02-18"
+    },
+    {
+      "id": "ee72bf6b-6212-42ca-97f1-f4bdfe2d370e",
+      "admin_id": "system",
+      "admin_login": "system",
+      "action": "create",
+      "entity": "settings",
+      "entity_id": "4cd24eaa-8cb5-4ca8-8e27-f8d8d3c0c9f0",
+      "description": "Создан автобекап: 4cd24eaa-8cb5-4ca8-8e27-f8d8d3c0c9f0",
+      "timestamp": "2026-02-17T06:19:15.957Z",
+      "details": "label=Daily 2026-02-17"
+    },
+    {
+      "id": "6e02d17a-373d-422e-9b1a-24679b86f11b",
+      "admin_id": "system",
+      "admin_login": "system",
+      "action": "create",
+      "entity": "settings",
+      "entity_id": "d0c5927a-8c20-4510-8ccc-7a06cd98241c",
+      "description": "Создан автобекап: d0c5927a-8c20-4510-8ccc-7a06cd98241c",
+      "timestamp": "2026-02-16T07:29:11.755Z",
+      "details": "label=Daily 2026-02-16"
+    },
     {
       "id": "80e19aee-e8f6-4306-bcc3-45c53741aeb6",
       "admin_id": "92a96c36-de66-4fcc-9b04-81d158833def",

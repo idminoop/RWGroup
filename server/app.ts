@@ -15,14 +15,14 @@ import leadsRoutes from './routes/leads.js'
 import adminRoutes from './routes/admin.js'
 import { ensureSeed } from './lib/seed.js'
 import analyticsRoutes from './routes/analytics.js'
-import { flushStorage, initializeStorage, withPublishedDb } from './lib/storage.js'
+import { flushStorage, getStorageDriver, initializeStorage, withPublishedDb } from './lib/storage.js'
 import { botPrerender } from './lib/bot-renderer.js'
 import { startFeedScheduler } from './lib/feed-scheduler.js'
 import { startBackupScheduler } from './lib/backups.js'
 import { getMediaStorageDriver } from './lib/media-storage.js'
 import path from 'path'
 import fs from 'fs'
-import { UPLOADS_DIR } from './lib/paths.js'
+import { DATA_DIR, UPLOADS_DIR } from './lib/paths.js'
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
   if (value === undefined) return undefined
@@ -60,6 +60,19 @@ if (backupSchedulerEnabled) {
 console.log(`[runtime] Feed scheduler: ${schedulerEnabled ? 'enabled' : 'disabled'}`)
 console.log(`[runtime] Backup scheduler: ${backupSchedulerEnabled ? 'enabled' : 'disabled'}`)
 console.log(`[runtime] Media storage driver: ${getMediaStorageDriver()}`)
+const storageDriver = getStorageDriver()
+console.log(`[runtime] Storage driver: ${storageDriver}`)
+console.log(`[runtime] Data dir: ${DATA_DIR}`)
+console.log(`[runtime] RW_PG_BOOTSTRAP_FROM_LOCAL: ${process.env.RW_PG_BOOTSTRAP_FROM_LOCAL ?? 'unset'}`)
+console.log(`[runtime] RW_SEED_ENABLED: ${process.env.RW_SEED_ENABLED ?? 'unset'}`)
+
+const allowFileStorageInProd = parseBooleanEnv(process.env.RW_ALLOW_FILE_STORAGE_IN_PROD) === true
+if (process.env.NODE_ENV === 'production' && storageDriver === 'file' && !allowFileStorageInProd) {
+  console.error(
+    '[runtime] Refusing to start in production with file storage. Set RW_STORAGE_DRIVER=postgres (recommended) or RW_ALLOW_FILE_STORAGE_IN_PROD=true if you intentionally use a mounted volume.',
+  )
+  process.exit(1)
+}
 
 const app: express.Application = express()
 
@@ -181,6 +194,10 @@ app.use(
     res.status(200).json({
       success: true,
       message: 'ok',
+      data: {
+        storage_driver: getStorageDriver(),
+        data_dir: DATA_DIR,
+      },
     })
   },
 )

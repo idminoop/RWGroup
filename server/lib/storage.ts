@@ -6,6 +6,7 @@ import {
   createStateRepository,
   readLocalStateFiles,
   type StateRepository,
+  type StorageDriver,
 } from './state-repository.js'
 
 const DB_FILE = path.join(DATA_DIR, 'db.json')
@@ -32,8 +33,61 @@ function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
+function nowIso(): string {
+  return new Date().toISOString()
+}
+
+function createEmptyDbState(): DbShape {
+  const now = nowIso()
+  return {
+    home: {
+      hero: {
+        title: '',
+        subtitle: '',
+        address: '',
+        phone: '',
+        slogan_options: [],
+      },
+      advantages: [],
+      pricing: [],
+      steps: [],
+      mission: {
+        title: '',
+        text: '',
+      },
+      team: {
+        title: '',
+        founders: [],
+        links: [],
+      },
+      reviews: [],
+      partner: {
+        title: '',
+        text: '',
+      },
+      featured: {
+        complexes: [],
+        properties: [],
+        collections: [],
+      },
+      updated_at: now,
+    },
+    feed_sources: [],
+    complexes: [],
+    properties: [],
+    collections: [],
+    admin_users: [],
+    leads: [],
+    import_runs: [],
+    landing_feature_presets: [],
+    hidden_landing_feature_preset_keys: [],
+    audit_logs: [],
+  }
+}
+
 let repository: StateRepository | null = null
 let initialized = false
+let activeStorageDriver: StorageDriver | 'unknown' = 'unknown'
 
 let draftDbCache: DbShape | null = null
 let publishedDbCache: DbShape | null = null
@@ -95,6 +149,7 @@ export async function initializeStorage(): Promise<void> {
 
   const repo = createStateRepository()
   await repo.initialize()
+  activeStorageDriver = repo.driver
 
   const loaded = await repo.loadState()
   repository = repo
@@ -122,6 +177,24 @@ export async function initializeStorage(): Promise<void> {
     )
   }
 
+  if (!draftDbCache) {
+    const empty = createEmptyDbState()
+    draftDbCache = empty
+    publishedDbCache = toPublishSnapshot(empty)
+    const meta = await repo.saveState(draftDbCache, publishedDbCache)
+    draftUpdatedAt = meta.draftUpdatedAt || nowIso()
+    publishedAt = meta.publishedAt || nowIso()
+    console.log('[storage] Initialized empty storage state')
+  } else if (!publishedDbCache) {
+    publishedDbCache = toPublishSnapshot(draftDbCache)
+    const meta = await repo.saveState(draftDbCache, publishedDbCache, {
+      persistDraft: false,
+      persistPublished: true,
+    })
+    publishedAt = meta.publishedAt || publishedAt || nowIso()
+    console.log('[storage] Created missing published snapshot from draft state')
+  }
+
   initialized = true
 }
 
@@ -136,7 +209,12 @@ export async function closeStorage(): Promise<void> {
     await repository.close()
   }
   repository = null
+  activeStorageDriver = 'unknown'
   initialized = false
+}
+
+export function getStorageDriver(): StorageDriver | 'unknown' {
+  return activeStorageDriver
 }
 
 export function getDbFilePath(): string {

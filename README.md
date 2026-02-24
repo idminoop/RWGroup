@@ -47,7 +47,9 @@ Environment variables:
 - `RW_BACKUP_SCHEDULER_ENABLED=true|false` (optional)
 - `RW_PG_BOOTSTRAP_FROM_LOCAL=true|false` (optional, default: `false`)
 - `RW_SEED_ENABLED=true|false` (optional, default: `true` outside production, `false` in production)
+- `RW_ALLOW_FILE_STORAGE_IN_PROD=true|false` (optional, default: `false`; safety override)
 - `RW_MEDIA_STORAGE_DRIVER=auto|local|s3` (default: `auto`)
+- `RW_RUN_DB_MIGRATIONS_ON_START=true|false` (optional, default: `true` in Docker entrypoint)
 
 Media storage (`/api/admin/upload`):
 
@@ -86,9 +88,11 @@ Backup scheduler behavior:
 Safe deployment notes:
 
 - For production, set `RW_STORAGE_DRIVER=postgres` explicitly (avoid silent fallback to file mode).
+- In production, startup is blocked when storage driver is `file` unless `RW_ALLOW_FILE_STORAGE_IN_PROD=true` is explicitly set.
 - Keep a stable external `DATABASE_URL` between deploys.
 - Local JSON -> PostgreSQL bootstrap is disabled by default and runs only when `RW_PG_BOOTSTRAP_FROM_LOCAL=true`.
 - Demo seed is disabled in production by default (`RW_SEED_ENABLED` can override).
+- Docker container startup runs `npm run db:migrate` before app start (disable only with `RW_RUN_DB_MIGRATIONS_ON_START=false`).
 
 Run migrations:
 

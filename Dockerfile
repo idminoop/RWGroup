@@ -23,9 +23,11 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/shared ./shared
+COPY --from=builder /app/docker-entrypoint.sh ./docker-entrypoint.sh
 
 RUN mkdir -p /app/server/data /app/server/uploads
+RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 3000
 
-CMD ["node", "--import", "tsx", "server/server.ts"]
+CMD ["./docker-entrypoint.sh"]

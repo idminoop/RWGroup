@@ -1,0 +1,50 @@
+name: rwgroup
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rwgroup-app:local
+    container_name: rwgroup-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      RW_STORAGE_DRIVER: ${RW_STORAGE_DRIVER:-postgres}
+      RW_ALLOW_FILE_STORAGE_IN_PROD: ${RW_ALLOW_FILE_STORAGE_IN_PROD:-false}
+      RW_DATA_DIR: /app/server/data
+      RW_UPLOADS_DIR: /app/server/uploads
+      DATABASE_URL: ${DATABASE_URL:-postgres://rwgroup:rwgroup@postgres:5432/rwgroup}
+      RW_RUN_DB_MIGRATIONS_ON_START: ${RW_RUN_DB_MIGRATIONS_ON_START:-true}
+    volumes:
+      - rw_data:/app/server/data
+      - rw_uploads:/app/server/uploads
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rwgroup-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rwgroup}
+      POSTGRES_USER: ${POSTGRES_USER:-rwgroup}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rwgroup}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - rw_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rwgroup} -d ${POSTGRES_DB:-rwgroup}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  rw_data:
+  rw_uploads:
+  rw_postgres:
