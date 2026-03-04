@@ -7,6 +7,7 @@ import Select from '@/components/ui/Select'
 import CatalogFilters, { type FiltersState } from '@/components/catalog/CatalogFilters'
 import PropertyCard from '@/components/catalog/PropertyCard'
 import ComplexCard from '@/components/catalog/ComplexCard'
+import { promoteImageToFront } from '@/lib/images'
 import { apiDelete, apiGet, apiPut } from '@/lib/api'
 import { useUiStore } from '@/store/useUiStore'
 import type { Complex, Property } from '../../../../shared/types'
@@ -100,7 +101,16 @@ export default function AdminCatalogPage() {
       })
       const json = await resp.json()
       if (!json.success) throw new Error(json.error || 'Upload error')
-      setEditForm((prev) => ({ ...prev, images: [...((prev.images as string[]) || []), json.data.url] }))
+      setEditForm((prev) => {
+        const currentImages = Array.isArray(prev.images) ? (prev.images as string[]) : []
+        if (tab === 'complex') {
+          return { ...prev, images: promoteImageToFront(currentImages, json.data.url) }
+        }
+        if (currentImages.includes(json.data.url)) {
+          return prev
+        }
+        return { ...prev, images: [...currentImages, json.data.url] }
+      })
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Upload error')
     }
@@ -109,6 +119,14 @@ export default function AdminCatalogPage() {
   const removeImage = (index: number) => {
     const next = [...((editForm.images as string[]) || [])]
     next.splice(index, 1)
+    setEditForm((prev) => ({ ...prev, images: next }))
+  }
+
+  const setAsCover = (index: number) => {
+    if (index === 0) return
+    const next = [...((editForm.images as string[]) || [])]
+    const [item] = next.splice(index, 1)
+    next.unshift(item)
     setEditForm((prev) => ({ ...prev, images: next }))
   }
 
@@ -335,13 +353,29 @@ export default function AdminCatalogPage() {
                 {((editForm.images as string[]) || []).map((img, idx) => (
                   <div key={`${img}-${idx}`} className="group relative aspect-square overflow-hidden rounded-md border border-slate-200">
                     <img src={img} alt="" className="h-full w-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(idx)}
-                      className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition group-hover:opacity-100"
-                    >
-                      x
-                    </button>
+                    {idx === 0 && (
+                      <div className="absolute left-1 top-1 rounded bg-sky-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                        Обложка
+                      </div>
+                    )}
+                    <div className="absolute inset-x-1 bottom-1 flex gap-1 opacity-0 transition group-hover:opacity-100">
+                      {idx !== 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setAsCover(idx)}
+                          className="flex-1 rounded bg-sky-600/90 px-1 py-0.5 text-[10px] text-white"
+                        >
+                          Обложка
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeImage(idx)}
+                        className="rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -368,4 +402,3 @@ export default function AdminCatalogPage() {
     </div>
   )
 }
-

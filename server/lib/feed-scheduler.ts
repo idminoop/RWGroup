@@ -1,10 +1,11 @@
-import { withDb } from './storage.js'
+import { withDb, withDbRead } from './storage.js'
 import { newId } from './ids.js'
 import {
   upsertProperties,
   upsertComplexesFromProperties,
   normalizeYandexRealty,
 } from './import-logic.js'
+import { assertFeedRowLimit, fetchFeedBuffer } from './feed-fetch.js'
 import { XMLParser } from 'fast-xml-parser'
 import { parse as parseCsv } from 'csv-parse/sync'
 import * as XLSX from 'xlsx'
@@ -14,7 +15,12 @@ const CHECK_INTERVAL_MS = 60_000 // Check every minute
 const inFlightFeedIds = new Set<string>()
 
 function guessExt(name: string): 'csv' | 'xlsx' | 'xml' | 'json' {
-  const lc = name.toLowerCase()
+  let lc = name.toLowerCase()
+  try {
+    lc = new URL(name).pathname.toLowerCase()
+  } catch {
+    // Keep original string for local names.
+  }
   if (lc.endsWith('.csv')) return 'csv'
   if (lc.endsWith('.xlsx') || lc.endsWith('.xls')) return 'xlsx'
   if (lc.endsWith('.xml')) return 'xml'
@@ -34,24 +40,35 @@ function findFirstArray(obj: unknown): unknown[] | null {
 function parseRows(buffer: Buffer, ext: 'csv' | 'xlsx' | 'xml' | 'json'): Record<string, unknown>[] {
   if (ext === 'csv') {
     const raw = buffer.toString('utf-8')
-    return parseCsv(raw, { columns: true, skip_empty_lines: true }) as Record<string, unknown>[]
+    const rows = parseCsv(raw, { columns: true, skip_empty_lines: true }) as Record<string, unknown>[]
+    assertFeedRowLimit(rows.length)
+    return rows
   }
   if (ext === 'xlsx') {
     const wb = XLSX.read(buffer, { type: 'buffer' })
     const sheetName = wb.SheetNames[0]
     const sheet = wb.Sheets[sheetName]
-    return XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, unknown>[]
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, unknown>[]
+    assertFeedRowLimit(rows.length)
+    return rows
   }
   if (ext === 'xml') {
     const parser = new XMLParser({ ignoreAttributes: false })
     const obj = parser.parse(buffer.toString('utf-8'))
     const arr = findFirstArray(obj)
-    return ((arr || []) as Record<string, unknown>[]).map(row => normalizeYandexRealty(row))
+    const rows = (arr || []) as Record<string, unknown>[]
+    assertFeedRowLimit(rows.length)
+    return rows.map((row) => normalizeYandexRealty(row))
   }
   const obj = JSON.parse(buffer.toString('utf-8'))
-  if (Array.isArray(obj)) return obj as Record<string, unknown>[]
+  if (Array.isArray(obj)) {
+    assertFeedRowLimit(obj.length)
+    return obj as Record<string, unknown>[]
+  }
   const arr = findFirstArray(obj)
-  return (arr || []) as Record<string, unknown>[]
+  const rows = (arr || []) as Record<string, unknown>[]
+  assertFeedRowLimit(rows.length)
+  return rows
 }
 
 async function refreshFeed(feed: FeedSource): Promise<void> {
@@ -66,61 +83,52 @@ async function refreshFeed(feed: FeedSource): Promise<void> {
 
   const runId = newId()
   const startedAt = new Date().toISOString()
+  let finishedAt = startedAt
   let status: 'success' | 'failed' | 'partial' = 'success'
   let stats = { inserted: 0, updated: 0, hidden: 0 }
   let errorLog = ''
+  let rows: Record<string, unknown>[] = []
+  let shouldApply = false
 
   try {
-    try {
-      new URL(feed.url)
-    } catch {
-      throw new Error('Некорректный URL')
-    }
-    const r = await fetch(feed.url)
-    if (!r.ok) throw new Error(`Fetch failed: ${r.status}`)
-    const ab = await r.arrayBuffer()
-    const buffer = Buffer.from(ab)
-
+    const buffer = await fetchFeedBuffer(feed.url)
     const ext = guessExt(feed.url)
-    const rows = parseRows(buffer, ext)
-
-    const result = withDb((db) => {
-      const mapping = feed.mapping
-      // Auto-upsert complexes from properties
-      upsertComplexesFromProperties(db, feed.id, rows, mapping)
-      return upsertProperties(db, feed.id, rows, mapping)
-    })
-
-    stats = { inserted: result.inserted, updated: result.updated, hidden: result.hidden }
-
-    if (result.errors.length > 0) {
-      status = result.errors.length === rows.length ? 'failed' : 'partial'
-      errorLog = `${result.errors.length} строк с ошибками:\n` +
-        result.errors.slice(0, 50).map(e =>
-          `Строка ${e.rowIndex}${e.externalId ? ` (${e.externalId})` : ''}: ${e.error}`
-        ).join('\n')
-    }
-
-    // Update last_auto_refresh timestamp
-    withDb((db) => {
-      const fs = db.feed_sources.find(s => s.id === feed.id)
-      if (fs) fs.last_auto_refresh = new Date().toISOString()
-    })
-
-    console.log(`[feed-scheduler] Feed "${feed.name}": +${stats.inserted} / upd ${stats.updated} / hidden ${stats.hidden}`)
+    rows = parseRows(buffer, ext)
+    shouldApply = true
   } catch (e) {
     status = 'failed'
     errorLog = e instanceof Error ? e.message : 'Unknown error'
     console.error(`[feed-scheduler] Feed "${feed.name}" failed:`, errorLog)
   } finally {
     try {
+      finishedAt = new Date().toISOString()
       withDb((db) => {
+        if (shouldApply) {
+          const mapping = feed.mapping
+          upsertComplexesFromProperties(db, feed.id, rows, mapping)
+          const result = upsertProperties(db, feed.id, rows, mapping)
+          stats = { inserted: result.inserted, updated: result.updated, hidden: result.hidden }
+
+          if (result.errors.length > 0) {
+            status = result.errors.length === rows.length ? 'failed' : 'partial'
+            errorLog = `${result.errors.length} строк с ошибками:\n` +
+              result.errors.slice(0, 50).map((entry) =>
+                `Строка ${entry.rowIndex}${entry.externalId ? ` (${entry.externalId})` : ''}: ${entry.error}`,
+              ).join('\n')
+          }
+
+          const currentFeed = db.feed_sources.find((source) => source.id === feed.id)
+          if (currentFeed) {
+            currentFeed.last_auto_refresh = finishedAt
+          }
+        }
+
         db.import_runs.unshift({
           id: runId,
           source_id: feed.id,
           entity: 'property',
           started_at: startedAt,
-          finished_at: new Date().toISOString(),
+          finished_at: finishedAt,
           status,
           stats,
           error_log: errorLog || undefined,
@@ -129,6 +137,10 @@ async function refreshFeed(feed: FeedSource): Promise<void> {
           action: 'import',
         })
       })
+
+      if (shouldApply && status !== 'failed') {
+        console.log(`[feed-scheduler] Feed "${feed.name}": +${stats.inserted} / upd ${stats.updated} / hidden ${stats.hidden}`)
+      }
     } finally {
       inFlightFeedIds.delete(feed.id)
     }
@@ -138,8 +150,8 @@ async function refreshFeed(feed: FeedSource): Promise<void> {
 function checkFeeds(): void {
   const now = Date.now()
 
-  const feeds = withDb((db) => db.feed_sources.filter(
-    (f) => f.is_active && f.mode === 'url' && f.url && f.auto_refresh
+  const feeds = withDbRead((db) => db.feed_sources.filter(
+    (f) => f.is_active && f.mode === 'url' && f.url && f.auto_refresh,
   ))
 
   for (const feed of feeds) {

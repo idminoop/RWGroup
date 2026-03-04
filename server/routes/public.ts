@@ -25,9 +25,12 @@ const MOSCOW_BOUNDS = {
 
 const MOSCOW_VIEWBOX = `${MOSCOW_BOUNDS.minLon},${MOSCOW_BOUNDS.maxLat},${MOSCOW_BOUNDS.maxLon},${MOSCOW_BOUNDS.minLat}`
 const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search'
-const NOMINATIM_TIMEOUT_MS = 3200
+const NOMINATIM_TIMEOUT_MS = 7000
+const NOMINATIM_RETRY_ATTEMPTS = 2
+const NOMINATIM_RETRY_DELAY_MS = 300
 const STRONG_GEOCODE_SCORE = 175
 const GEOCODE_CACHE_TTL_MS = 15 * 60 * 1000
+const GEOCODE_NEGATIVE_CACHE_TTL_MS = 45 * 1000
 
 const GEOCODE_STOPWORDS = new Set([
   'москва',
@@ -40,6 +43,18 @@ const GEOCODE_STOPWORDS = new Set([
   'проспект',
   'пр',
   'дом',
+])
+
+const EXTRA_GEOCODE_STOPWORDS = new Set([
+  '\u043c\u043e\u0441\u043a\u0432\u0430',
+  '\u0436\u043a',
+  '\u0436\u0438\u043b\u043e\u0439',
+  '\u043a\u043e\u043c\u043f\u043b\u0435\u043a\u0441',
+  '\u0443\u043b',
+  '\u0443\u043b\u0438\u0446\u0430',
+  '\u043f\u0440',
+  '\u043f\u0440\u043e\u0441\u043f\u0435\u043a\u0442',
+  '\u0434\u043e\u043c',
 ])
 
 function isWithinMoscowBounds(lat: number, lon: number): boolean {
@@ -57,6 +72,11 @@ type NominatimCandidate = {
   type?: string
   importance?: number
   address?: Record<string, string>
+}
+
+type NominatimFetchResult = {
+  candidates: NominatimCandidate[]
+  transientError: boolean
 }
 
 type RankedCandidate = {
@@ -80,13 +100,81 @@ type GeocodeCacheEntry = {
 
 const geocodeResultCache = new Map<string, GeocodeCacheEntry>()
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function uniqStrings(values: string[]): string[] {
+  const seen = new Set<string>()
+  const output: string[] = []
+
+  for (const raw of values) {
+    const value = raw.trim()
+    if (!value) continue
+    const key = value.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    output.push(value)
+  }
+
+  return output
+}
+
+function hasAddressHint(value: string): boolean {
+  if (!value.trim()) return false
+  const hasHouseNumber = /\b\d+[\p{L}]?\b/u.test(value)
+  const hasStreetKeyword = /\b(?:\u0443\u043b(?:\.|\u0438\u0446\u0430)?|\u043f\u0440(?:-|\.)?|\u043f\u0440\u043e\u0441\u043f(?:\.|\u0435\u043a\u0442)?|\u043f\u0435\u0440(?:\.|\u0435\u0443\u043b\u043e\u043a)?|\u043d\u0430\u0431(?:\.|\u0435\u0440\u0435\u0436\u043d\u0430\u044f)?|\u0448\u043e\u0441\u0441\u0435|\u0431\u0443\u043b(?:\.|\u044c\u0432\u0430\u0440)?|street|st\.?|road|rd\.?|avenue|ave\.?|lane|ln\.?|drive|dr\.?)\b/iu.test(value)
+  return hasHouseNumber || hasStreetKeyword
+}
+
+function buildGeocodeQueryVariants(query: string, city: string): string[] {
+  const compactQuery = query.replace(/\s+/g, ' ').trim()
+  const cityValue = city.trim()
+  const cityLc = cityValue.toLowerCase()
+
+  const withoutComplexPrefix = compactQuery
+    .replace(/^\s*(?:\u0436\u043a|\u0436\u0438\u043b\u043e\u0439\s+\u043a\u043e\u043c\u043f\u043b\u0435\u043a\u0441)\s+/iu, '')
+    .trim()
+
+  const withoutComplexWord = withoutComplexPrefix
+    .replace(/\b\u0436\u043a\b/giu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const parts = withoutComplexWord.split(',').map((item) => item.trim()).filter(Boolean)
+  const reordered = parts.length > 1
+    ? `${parts.slice(1).join(', ')}, ${parts[0]}`
+    : ''
+  const addressOnly = parts.length > 1 && !hasAddressHint(parts[0])
+    ? parts.slice(1).join(', ')
+    : ''
+
+  const withCity = cityValue && !compactQuery.toLowerCase().includes(cityLc)
+    ? `${compactQuery}, ${cityValue}`
+    : ''
+
+  const withCityNoComplex = cityValue && withoutComplexWord && !withoutComplexWord.toLowerCase().includes(cityLc)
+    ? `${withoutComplexWord}, ${cityValue}`
+    : ''
+
+  return uniqStrings([
+    compactQuery,
+    withoutComplexPrefix,
+    withoutComplexWord,
+    addressOnly,
+    reordered,
+    withCity,
+    withCityNoComplex,
+  ])
+}
+
 function tokenize(value: string): string[] {
   return value
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
     .split(/\s+/)
     .map((item) => item.trim())
-    .filter((item) => item.length >= 2 && !GEOCODE_STOPWORDS.has(item))
+    .filter((item) => item.length >= 2 && !GEOCODE_STOPWORDS.has(item) && !EXTRA_GEOCODE_STOPWORDS.has(item))
 }
 
 function roadLikePenalty(className?: string, type?: string): number {
@@ -100,7 +188,7 @@ function roadLikePenalty(className?: string, type?: string): number {
 function localityPenalty(displayName?: string): number {
   const text = (displayName || '').toLowerCase()
   if (!text) return 0
-  if (/\b(деревн|село|пос[её]лок|village|hamlet)\b/i.test(text)) return -70
+  if (/\b(?:\u0434\u0435\u0440\u0435\u0432\u043d|\u0441\u0435\u043b\u043e|\u043f\u043e\u0441[\u0435\u0451]\u043b\u043e\u043a|village|hamlet)\b/i.test(text)) return -70
   return 0
 }
 
@@ -126,7 +214,7 @@ function buildCandidateScore(candidate: NominatimCandidate, query: string, mosco
 
   const queryTokens = tokenize(query)
   const tokenHits = queryTokens.reduce((acc, token) => (candidateText.includes(token) ? acc + 1 : acc), 0)
-  const hasHouseInQuery = /\b\d+[a-zа-я]?\b/ui.test(query)
+  const hasHouseInQuery = /\b\d+[\p{L}]?\b/u.test(query)
   const candidateHouse = candidate.address?.house_number || ''
   const houseMatched = hasHouseInQuery && candidateHouse ? query.toLowerCase().includes(candidateHouse.toLowerCase()) : false
 
@@ -149,26 +237,50 @@ function buildCandidateScore(candidate: NominatimCandidate, query: string, mosco
   return { lat, lon, score, displayName }
 }
 
-async function fetchNominatimCandidates(params: URLSearchParams): Promise<NominatimCandidate[]> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), NOMINATIM_TIMEOUT_MS)
+async function fetchNominatimCandidates(params: URLSearchParams): Promise<NominatimFetchResult> {
+  let transientError = false
 
-  try {
-    const response = await fetch(`${NOMINATIM_SEARCH_URL}?${params}`, {
-      headers: {
-        'Accept-Language': 'ru',
-        'User-Agent': 'RWGroupWebsite/1.0',
-      },
-      signal: controller.signal,
-    })
-    if (!response.ok) return []
-    const json = await response.json() as NominatimCandidate[]
-    return Array.isArray(json) ? json : []
-  } catch {
-    return []
-  } finally {
-    clearTimeout(timer)
+  for (let attempt = 0; attempt <= NOMINATIM_RETRY_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), NOMINATIM_TIMEOUT_MS)
+
+    try {
+      const response = await fetch(`${NOMINATIM_SEARCH_URL}?${params}`, {
+        headers: {
+          'Accept-Language': 'ru',
+          'User-Agent': 'RWGroupWebsite/1.0',
+        },
+        signal: controller.signal,
+      })
+
+      if (!response.ok) {
+        const retryable = response.status === 429 || response.status >= 500
+        if (retryable) {
+          transientError = true
+          if (attempt < NOMINATIM_RETRY_ATTEMPTS) {
+            await sleep(NOMINATIM_RETRY_DELAY_MS * (attempt + 1))
+            continue
+          }
+        }
+
+        return { candidates: [], transientError }
+      }
+
+      const json = await response.json() as NominatimCandidate[]
+      return { candidates: Array.isArray(json) ? json : [], transientError }
+    } catch {
+      transientError = true
+      if (attempt < NOMINATIM_RETRY_ATTEMPTS) {
+        await sleep(NOMINATIM_RETRY_DELAY_MS * (attempt + 1))
+        continue
+      }
+      return { candidates: [], transientError }
+    } finally {
+      clearTimeout(timer)
+    }
   }
+
+  return { candidates: [], transientError }
 }
 
 function tabToCategory(tab: CatalogTab): Category {
@@ -360,22 +472,10 @@ router.get('/geocode', async (req: Request, res: Response) => {
       return res.json({ success: true, data: cached.data })
     }
 
-    const qLc = q.toLowerCase()
-    const cityLc = city.toLowerCase()
-    const candidateQueries = Array.from(
-      new Set(
-        [
-          q,
-          city && !qLc.includes(cityLc) ? `${q}, ${city}` : '',
-        ]
-          .map((item) => item.trim())
-          .filter(Boolean)
-      )
-    )
+    const candidateQueries = buildGeocodeQueryVariants(q, city).slice(0, 4)
 
     const paramsQueue: Array<{ params: URLSearchParams; query: string }> = []
-    const prioritizedCandidates = candidateQueries.slice(0, 2)
-    prioritizedCandidates.forEach((candidate, index) => {
+    candidateQueries.forEach((candidate) => {
       if (moscowFirst) {
         paramsQueue.push({
           query: candidate,
@@ -391,27 +491,27 @@ router.get('/geocode', async (req: Request, res: Response) => {
         })
       }
 
-      // Keep global fallback only for the first query to avoid long chains.
-      if (index === 0) {
-        paramsQueue.push({
-          query: candidate,
-          params: new URLSearchParams({
-            q: candidate,
-            format: 'json',
-            limit: '5',
-            addressdetails: '1',
-            countrycodes: 'ru',
-          }),
-        })
-      }
+      paramsQueue.push({
+        query: candidate,
+        params: new URLSearchParams({
+          q: candidate,
+          format: 'json',
+          limit: '5',
+          addressdetails: '1',
+          countrycodes: 'ru',
+        }),
+      })
     })
 
     let best: RankedCandidate | null = null
     const seen = new Set<string>()
+    let hadTransientError = false
 
     for (const attempt of paramsQueue) {
-      const candidates = await fetchNominatimCandidates(attempt.params)
-      for (const candidate of candidates) {
+      const fetched = await fetchNominatimCandidates(attempt.params)
+      if (fetched.transientError) hadTransientError = true
+
+      for (const candidate of fetched.candidates) {
         const rankedCandidate = buildCandidateScore(candidate, attempt.query, moscowFirst)
         if (!rankedCandidate) continue
 
@@ -444,10 +544,12 @@ router.get('/geocode', async (req: Request, res: Response) => {
     }
 
     if (!best) {
-      geocodeResultCache.set(cacheKey, {
-        data: null,
-        expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
-      })
+      if (!hadTransientError) {
+        geocodeResultCache.set(cacheKey, {
+          data: null,
+          expiresAt: Date.now() + GEOCODE_NEGATIVE_CACHE_TTL_MS,
+        })
+      }
       return res.json({ success: true, data: null })
     }
 

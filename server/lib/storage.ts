@@ -95,6 +95,12 @@ let draftUpdatedAt: string | undefined
 let publishedAt: string | undefined
 
 let persistQueue: Promise<void> = Promise.resolve()
+let persistPending: {
+  request: PersistRequest
+  draft: DbShape
+  published: DbShape
+} | null = null
+let persistWorkerRunning = false
 
 type PersistRequest = {
   persistDraft: boolean
@@ -115,23 +121,51 @@ function assertInitialized(): void {
   }
 }
 
+function startPersistWorker(): void {
+  if (persistWorkerRunning) return
+
+  persistWorkerRunning = true
+  persistQueue = (async () => {
+    while (persistPending) {
+      const task = persistPending
+      persistPending = null
+
+      if (!repository) continue
+
+      try {
+        const meta = await repository.saveState(task.draft, task.published, task.request)
+        if (meta.draftUpdatedAt) draftUpdatedAt = meta.draftUpdatedAt
+        if (meta.publishedAt) publishedAt = meta.publishedAt
+      } catch (error) {
+        console.error('[storage] Persist error:', error)
+      }
+    }
+  })().finally(() => {
+    persistWorkerRunning = false
+    if (persistPending) {
+      startPersistWorker()
+    }
+  })
+}
+
 function queuePersist(request: PersistRequest): void {
   if (!repository || !draftDbCache || !publishedDbCache) return
   if (!request.persistDraft && !request.persistPublished) return
 
-  const draftSnapshot = deepClone(draftDbCache)
-  const publishedSnapshot = deepClone(publishedDbCache)
+  const nextRequest = persistPending
+    ? {
+        persistDraft: persistPending.request.persistDraft || request.persistDraft,
+        persistPublished: persistPending.request.persistPublished || request.persistPublished,
+      }
+    : request
 
-  persistQueue = persistQueue
-    .then(async () => {
-      if (!repository) return
-      const meta = await repository.saveState(draftSnapshot, publishedSnapshot, request)
-      if (meta.draftUpdatedAt) draftUpdatedAt = meta.draftUpdatedAt
-      if (meta.publishedAt) publishedAt = meta.publishedAt
-    })
-    .catch((error) => {
-      console.error('[storage] Persist error:', error)
-    })
+  persistPending = {
+    request: nextRequest,
+    draft: deepClone(draftDbCache),
+    published: deepClone(publishedDbCache),
+  }
+
+  startPersistWorker()
 }
 
 function setDraft(db: DbShape): void {
@@ -331,6 +365,14 @@ export function withDb<T>(fn: (db: DbShape) => T): T {
 
   queuePersist({ persistDraft: true, persistPublished: !hadPublished })
   return result
+}
+
+export function withDbRead<T>(fn: (db: DbShape) => T): T {
+  assertInitialized()
+  if (!draftDbCache) {
+    throw new Error('DB_NOT_INITIALIZED')
+  }
+  return fn(deepClone(draftDbCache))
 }
 
 export function withPublishedDb<T>(fn: (db: DbShape) => T): T {

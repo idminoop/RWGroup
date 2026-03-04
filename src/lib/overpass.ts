@@ -11,6 +11,8 @@ const FAILURE_COOLDOWN_MS = 90 * 1000
 const RETRY_DELAY_MS = 300
 const OVERPASS_RESULT_LIMIT = 90
 const RETRYABLE_HTTP_STATUSES = new Set([408, 429, 500, 502, 503, 504])
+const GEOCODE_CLIENT_CACHE_TTL_MS = 10 * 60 * 1000
+const GEOCODE_CLIENT_NEGATIVE_CACHE_TTL_MS = 30 * 1000
 const ROAD_NAME_RX = /(?:\u0443\u043b(?:\u0438\u0446\u0430)?|\u043f\u0440\u043e\u0441\u043f\u0435\u043a\u0442|\u043f\u0440-\u0442|\u0448\u043e\u0441\u0441\u0435|\u0434\u043e\u0440\u043e\u0433\u0430|\u043f\u0440\u043e\u0435\u0437\u0434|\u0431\u0443\u043b\u044c\u0432\u0430\u0440|\u043d\u0430\u0431\u0435\u0440\u0435\u0436\u043d\u0430\u044f|street|road|avenue|highway)/i
 
 export type PoiResult = { name: string; lat: number; lon: number; tags?: Record<string, string> }
@@ -251,7 +253,12 @@ export async function fetchPOIs(
   return request
 }
 
-const geocodeCache = new Map<string, GeoCoords | null>()
+type GeocodeCacheEntry = {
+  data: GeoCoords | null
+  expiresAt: number
+}
+
+const geocodeCache = new Map<string, GeocodeCacheEntry>()
 
 type GeocodeAddressOptions = {
   city?: string
@@ -421,7 +428,8 @@ export async function geocodeAddress(
 
   const key = `${address}|${cityLabel}|${shouldInjectComplexName ? complexName : ''}|${addressLooksExplicit ? 'addr' : 'name'}`
   const cached = geocodeCache.get(key)
-  if (cached !== undefined) return cached
+  if (cached && cached.expiresAt > Date.now()) return cached.data
+  if (cached) geocodeCache.delete(key)
 
   const addressVariants = uniqStrings([
     ...normalizeAddress(strippedAddress || rawAddress),
@@ -435,7 +443,10 @@ export async function geocodeAddress(
   const secondaryAddress = addressVariants[1] || ''
   const addressWithoutHouse = addressVariants[2] || ''
   if (!topAddress && !nameVariants[0]) {
-    geocodeCache.set(key, null)
+    geocodeCache.set(key, {
+      data: null,
+      expiresAt: Date.now() + GEOCODE_CLIENT_NEGATIVE_CACHE_TTL_MS,
+    })
     return null
   }
 
@@ -498,6 +509,9 @@ export async function geocodeAddress(
     best = await findBestGeocodeCandidate(nameFirstQueries, searchOptions, 1)
   }
 
-  geocodeCache.set(key, best)
+  geocodeCache.set(key, {
+    data: best,
+    expiresAt: Date.now() + (best ? GEOCODE_CLIENT_CACHE_TTL_MS : GEOCODE_CLIENT_NEGATIVE_CACHE_TTL_MS),
+  })
   return best
 }

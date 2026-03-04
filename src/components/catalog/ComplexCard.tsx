@@ -1,7 +1,7 @@
 ﻿import { Link } from 'react-router-dom'
 import { MapPin } from 'lucide-react'
 import { formatArea, formatPriceRub } from '@/lib/format'
-import { selectComplexCoverImage } from '@/lib/images'
+import { isLayoutImage, selectComplexCoverImage } from '@/lib/images'
 import Button from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardContent, CardFooter } from '@/components/ui/Card'
@@ -38,6 +38,7 @@ export default function ComplexCard({
 }) {
   const openLeadModal = useUiStore((s) => s.openLeadModal)
   const img = selectComplexCoverImage(item)
+  const imgIsLayout = img ? isLayoutImage(img) : false
   const priceFrom = toFiniteNumber(item.price_from)
   const areaFrom = toFiniteNumber(item.area_from)
   const pricePerM2 = typeof priceFrom === 'number' && typeof areaFrom === 'number' && areaFrom > 0 ? priceFrom / areaFrom : undefined
@@ -48,13 +49,20 @@ export default function ComplexCard({
       : 'bg-amber-600/90 text-white shadow-sm backdrop-blur-sm'
 
   return (
-    <Card className="flex flex-col overflow-hidden border-slate-200 bg-white transition-shadow hover:shadow-md">
+    <Card className="flex h-full flex-col overflow-hidden border-slate-200 bg-white transition-shadow hover:shadow-md">
       <Link
         to={`/complex/${item.slug || item.id}`}
         onClick={() => trackEvent('open_card', { type: 'complex', id: item.id })}
-        className="relative block aspect-[4/3] w-full shrink-0 bg-slate-100"
+        className="relative block h-56 w-full shrink-0 bg-slate-100 sm:h-60"
       >
-        {img ? <img src={img} alt={item.title} className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" loading="lazy" /> : null}
+        {img ? (
+          <img
+            src={img}
+            alt={item.title}
+            className={`h-full w-full ${imgIsLayout ? 'object-contain bg-white p-2' : 'object-cover transition-transform duration-500 hover:scale-105'}`}
+            loading="lazy"
+          />
+        ) : null}
         <div className="absolute left-3 top-3 flex flex-wrap gap-2">
           <Badge variant="secondary" className="bg-white/90 text-slate-900 shadow-sm backdrop-blur-sm">
             {UI.complex}
@@ -71,7 +79,7 @@ export default function ComplexCard({
           <Link
             to={`/complex/${item.slug || item.id}`}
             onClick={() => trackEvent('open_card', { type: 'complex', id: item.id })}
-            className="text-base font-semibold leading-snug text-slate-900 transition-colors hover:text-primary hover:underline"
+            className="block h-11 overflow-hidden text-base font-semibold leading-snug text-slate-900 transition-colors hover:text-primary hover:underline"
           >
             {item.title}
           </Link>

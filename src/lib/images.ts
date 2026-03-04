@@ -2,6 +2,17 @@
  * Utility functions for working with property/complex images
  */
 
+type ComplexCoverSource = {
+  images?: string[]
+  landing?: {
+    hero_image?: string
+  }
+}
+
+function normalizeImageUrl(url: string | undefined): string {
+  return typeof url === 'string' ? url.trim() : ''
+}
+
 /**
  * Check if image URL is a floor plan/layout (not presentable for cover)
  */
@@ -61,12 +72,56 @@ export function getLayoutImages(images: string[] | undefined): string[] {
 }
 
 /**
- * Select cover image for a Complex, preferring landing.hero_image over images array
+ * Select cover image for a Property catalog card.
+ * Prefers floor plan/layout images - they are shown as the main photo.
+ * Falls back to building/facade photos if no layout found.
  */
-export function selectComplexCoverImage(
-  complex: { images?: string[]; landing?: { hero_image?: string } }
-): string | undefined {
-  const heroImage = complex.landing?.hero_image
+export function selectPropertyCoverImage(images: string[] | undefined): string | undefined {
+  if (!images || images.length === 0) return undefined
+  const firstLayout = images.find((url) => isLayoutImage(url))
+  if (firstLayout) return firstLayout
+  return selectCoverImage(images)
+}
+
+/**
+ * Put an image URL at the beginning of the list and remove duplicates.
+ * Preserves the relative order of the remaining URLs.
+ */
+export function promoteImageToFront(images: string[] | undefined, imageUrl: string | undefined): string[] {
+  const preferred = normalizeImageUrl(imageUrl)
+  const result: string[] = []
+  const seen = new Set<string>()
+
+  if (preferred) {
+    seen.add(preferred)
+    result.push(preferred)
+  }
+
+  for (const raw of images || []) {
+    const value = normalizeImageUrl(raw)
+    if (!value || seen.has(value)) continue
+    seen.add(value)
+    result.push(value)
+  }
+
+  return result
+}
+
+/**
+ * Select cover image for a Complex catalog card.
+ * Returns the first non-layout image (respects admin-defined array order).
+ * Falls back to priority scoring if all images are floor plans.
+ * Falls back to landing.hero_image when image array has only layout images.
+ */
+export function selectComplexCoverImage(complex: ComplexCoverSource): string | undefined {
+  const images = complex.images
+  if (images && images.length > 0) {
+    const firstPresentation = images.find((url) => !isLayoutImage(url))
+    if (firstPresentation) return firstPresentation
+  }
+
+  const heroImage = normalizeImageUrl(complex.landing?.hero_image)
   if (heroImage) return heroImage
-  return selectCoverImage(complex.images)
+
+  return selectCoverImage(images)
 }

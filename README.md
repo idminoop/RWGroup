@@ -45,6 +45,12 @@ Environment variables:
 - `RW_MIGRATIONS_DIR=server/migrations` (optional)
 - `RW_FEED_SCHEDULER_ENABLED=true|false` (optional)
 - `RW_BACKUP_SCHEDULER_ENABLED=true|false` (optional)
+- `RW_FEED_FETCH_TIMEOUT_MS` (optional, default: `20000`)
+- `RW_FEED_FETCH_MAX_BYTES` (optional, default: `20971520`)
+- `RW_FEED_FETCH_MAX_REDIRECTS` (optional, default: `5`)
+- `RW_FEED_MAX_ROWS` (optional, default: `50000`)
+- `RW_FEED_FETCH_ALLOW_PRIVATE_HOSTS=true|false` (optional, default: `false`; keep `false` in production)
+- `RW_FEED_FETCH_ALLOWED_HOSTS=host1,host2` (optional host allowlist for URL imports)
 - `RW_PG_BOOTSTRAP_FROM_LOCAL=true|false` (optional, default: `false`)
 - `RW_SEED_ENABLED=true|false` (optional, default: `true` outside production, `false` in production)
 - `RW_ALLOW_FILE_STORAGE_IN_PROD=true|false` (optional, default: `false`; safety override)
@@ -75,6 +81,7 @@ Feed scheduler behavior:
 - If not set, scheduler defaults to `true` in long-running Node runtime and `false` in serverless runtime.
 - Auto-refresh updates only `draft`; publish to `published` remains manual via admin publish action.
 - Missing feed records now follow lifecycle `active -> hidden -> archived` on consecutive imports.
+- URL import/fetch path is guarded by timeout, max-bytes, max-redirects, max-rows, and host policy (private/local hosts blocked by default).
 
 Backup scheduler behavior:
 
@@ -107,6 +114,12 @@ $env:RW_STORAGE_DRIVER = 'postgres'
 $env:DATABASE_URL = 'postgres://user:password@127.0.0.1:5432/dbname'
 npm run db:migrate
 npm run smoke:postgres:e2e
+```
+
+Feed import path smoke (PostgreSQL):
+
+```bash
+DATABASE_URL=postgres://user:password@127.0.0.1:5432/dbname npm run smoke:feed-import:e2e
 ```
 
 Backup system end-to-end smoke:

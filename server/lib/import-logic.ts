@@ -90,6 +90,53 @@ export function normalizeDealType(v: unknown): 'sale' | 'rent' {
   return s === 'rent' ? 'rent' : 'sale'
 }
 
+function normalizeKey(value: unknown): string {
+  return asString(value).trim().toLowerCase()
+}
+
+function canMergeComplexAcrossSources(
+  existing: Complex,
+  incoming: Omit<Complex, 'id'>,
+): boolean {
+  const existingDistrict = normalizeKey(existing.district)
+  const incomingDistrict = normalizeKey(incoming.district)
+  if (existingDistrict && incomingDistrict && existingDistrict !== incomingDistrict) {
+    return false
+  }
+
+  const existingDeveloper = normalizeKey(existing.developer)
+  const incomingDeveloper = normalizeKey(incoming.developer)
+  if (existingDeveloper && incomingDeveloper && existingDeveloper !== incomingDeveloper) {
+    return false
+  }
+
+  return true
+}
+
+function canMergePropertyAcrossSources(
+  existing: Property,
+  incoming: Omit<Property, 'id'>,
+): boolean {
+  if (existing.deal_type !== incoming.deal_type) return false
+  if (existing.category !== incoming.category) return false
+
+  const existingComplexExternal = normalizeKey(existing.complex_external_id)
+  const incomingComplexExternal = normalizeKey(incoming.complex_external_id)
+  const sameComplexExternal =
+    Boolean(existingComplexExternal) &&
+    Boolean(incomingComplexExternal) &&
+    existingComplexExternal === incomingComplexExternal
+
+  const existingTitle = normalizeKey(existing.title)
+  const incomingTitle = normalizeKey(incoming.title)
+  const sameTitle = Boolean(existingTitle) && existingTitle === incomingTitle
+
+  if (!sameComplexExternal && !sameTitle) return false
+
+  if (existing.bedrooms !== incoming.bedrooms) return false
+  return true
+}
+
 export function normalizeYandexRealty(row: Record<string, unknown>): Record<string, unknown> {
   // Yandex Realty XML format normalization
   const normalized: Record<string, unknown> = {}
@@ -406,13 +453,31 @@ export function aggregateComplexesFromRows(rows: Record<string, unknown>[], sour
   return result
 }
 
-export function upsertComplexes(db: DbShape, sourceId: string, rows: Record<string, unknown>[], mapping?: Record<string, string>) {
+type UpsertBehaviorOptions = {
+  restoreArchived?: boolean
+}
+
+export function upsertComplexes(
+  db: DbShape,
+  sourceId: string,
+  rows: Record<string, unknown>[],
+  mapping?: Record<string, string>,
+  options?: UpsertBehaviorOptions,
+) {
   const now = new Date().toISOString()
+  const allowRestoreArchived = options?.restoreArchived === true
   const seen = new Set<string>()
   const index = new Map(db.complexes.filter((c) => c.source_id === sourceId).map((c) => [c.external_id, c]))
-  
+  // Global slug index for cross-source deduplication (same ЖК in multiple feeds)
+  const slugIndex = new Map<string, Complex[]>()
+  for (const complex of db.complexes) {
+    const bucket = slugIndex.get(complex.slug)
+    if (bucket) bucket.push(complex)
+    else slugIndex.set(complex.slug, [complex])
+  }
+
   const aggregated = aggregateComplexesFromRows(rows, sourceId, mapping)
-  
+
   let inserted = 0
   let updated = 0
   let hidden = 0
@@ -423,16 +488,36 @@ export function upsertComplexes(db: DbShape, sourceId: string, rows: Record<stri
     seen.add(next.external_id)
     const existing = index.get(next.external_id)
     if (existing) {
+      if (existing.status === 'archived' && !allowRestoreArchived) continue
       const preservedLanding = existing.landing
       Object.assign(existing, next)
       if (preservedLanding) existing.landing = preservedLanding
       if (!targetComplexId) targetComplexId = existing.id
       updated += 1
     } else {
-      const createdId = newId()
-      db.complexes.unshift({ id: createdId, ...next })
-      if (!targetComplexId) targetComplexId = createdId
-      inserted += 1
+      // Cross-source dedup: if a complex with the same slug already exists, update it
+      const slugCandidates = slugIndex.get(next.slug) || []
+      const slugMatch = slugCandidates.find((candidate) => canMergeComplexAcrossSources(candidate, next))
+      if (slugMatch) {
+        if (slugMatch.status === 'archived' && !allowRestoreArchived) continue
+        const preservedLanding = slugMatch.landing
+        Object.assign(slugMatch, next)
+        // Ownership is moved to the latest source that has this slug.
+        // This prevents lifecycle transitions from a stale source from hiding the shared record.
+        index.set(next.external_id, slugMatch)
+        if (preservedLanding) slugMatch.landing = preservedLanding
+        if (!targetComplexId) targetComplexId = slugMatch.id
+        updated += 1
+      } else {
+        const createdId = newId()
+        const newRecord = { id: createdId, ...next }
+        db.complexes.unshift(newRecord)
+        const bucket = slugIndex.get(next.slug)
+        if (bucket) bucket.push(newRecord)
+        else slugIndex.set(next.slug, [newRecord])
+        if (!targetComplexId) targetComplexId = createdId
+        inserted += 1
+      }
     }
   }
 
@@ -450,9 +535,15 @@ export function upsertComplexes(db: DbShape, sourceId: string, rows: Record<stri
   return { inserted, updated, hidden, errors, targetComplexId }
 }
 
-export function upsertComplexesFromProperties(db: DbShape, sourceId: string, rows: Record<string, unknown>[], mapping?: Record<string, string>) {
+export function upsertComplexesFromProperties(
+  db: DbShape,
+  sourceId: string,
+  rows: Record<string, unknown>[],
+  mapping?: Record<string, string>,
+  options?: UpsertBehaviorOptions,
+) {
   // Now just an alias for upsertComplexes, as it handles aggregation automatically
-  const res = upsertComplexes(db, sourceId, rows, mapping)
+  const res = upsertComplexes(db, sourceId, rows, mapping, options)
   return { inserted: res.inserted, updated: res.updated, targetComplexId: res.targetComplexId }
 }
 
@@ -461,16 +552,35 @@ export function upsertProperties(
   sourceId: string,
   rows: Record<string, unknown>[],
   mapping?: Record<string, string>,
-  options?: { hideInvalid?: boolean }
+  options?: { hideInvalid?: boolean; restoreArchived?: boolean },
 ) {
   const now = new Date().toISOString()
+  const allowRestoreArchived = options?.restoreArchived === true
   const seen = new Set<string>()
-  const index = new Map(db.properties.filter((p) => p.source_id === sourceId).map((p) => [p.external_id, p]))
-  const complexByExternal = new Map(db.complexes.filter((c) => c.source_id === sourceId).map((c) => [c.external_id, c]))
+  // Global index by external_id with collision buckets.
+  const index = new Map<string, Property[]>()
+  for (const property of db.properties) {
+    const bucket = index.get(property.external_id)
+    if (bucket) bucket.push(property)
+    else index.set(property.external_id, [property])
+  }
+  const complexByExternal = new Map(db.complexes.map((c) => [c.external_id, c]))
   let inserted = 0
   let updated = 0
   let hidden = 0
   const errors: Array<{ rowIndex: number; externalId?: string; error: string }> = []
+  const resolveCandidate = (
+    externalId: string,
+    incoming: Omit<Property, 'id'>,
+  ): Property | undefined => {
+    const bucket = index.get(externalId)
+    if (!bucket || bucket.length === 0) return undefined
+
+    const sameSource = bucket.find((item) => item.source_id === sourceId)
+    if (sameSource) return sameSource
+
+    return bucket.find((item) => canMergePropertyAcrossSources(item, incoming))
+  }
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
@@ -532,13 +642,20 @@ export function upsertProperties(
             last_seen_at: now,
             updated_at: now,
           }
-          const existingInvalid = index.get(externalId)
+          const existingInvalid = resolveCandidate(externalId, invalidNext)
           if (existingInvalid) {
+            if (existingInvalid.status === 'archived' && !allowRestoreArchived) {
+              continue
+            }
             if (existingInvalid.status !== 'hidden') hidden += 1
             Object.assign(existingInvalid, invalidNext)
             updated += 1
           } else {
-            db.properties.unshift({ id: newId(), ...invalidNext })
+            const created = { id: newId(), ...invalidNext }
+            db.properties.unshift(created)
+            const bucket = index.get(externalId)
+            if (bucket) bucket.push(created)
+            else index.set(externalId, [created])
             inserted += 1
             hidden += 1
           }
@@ -580,12 +697,17 @@ export function upsertProperties(
         updated_at: now,
       }
 
-      const existing = index.get(externalId)
+      const existing = resolveCandidate(externalId, next)
       if (existing) {
+        if (existing.status === 'archived' && !allowRestoreArchived) continue
         Object.assign(existing, next)
         updated += 1
       } else {
-        db.properties.unshift({ id: newId(), ...next })
+        const created = { id: newId(), ...next }
+        db.properties.unshift(created)
+        const bucket = index.get(externalId)
+        if (bucket) bucket.push(created)
+        else index.set(externalId, [created])
         inserted += 1
       }
     } catch (e) {

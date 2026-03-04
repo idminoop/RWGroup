@@ -7,7 +7,7 @@ import {
   requireAdminAnyPermission,
   requireAdminPermission,
 } from '../middleware/adminAuth.js'
-import { getPublishStatus, publishDraft, withDb } from '../lib/storage.js'
+import { getPublishStatus, publishDraft, withDb, withDbRead } from '../lib/storage.js'
 import { newId, slugify } from '../lib/ids.js'
 import { resolveCollectionItems } from '../lib/collections.js'
 import {
@@ -16,6 +16,7 @@ import {
   findAdminUserByLogin,
   hasAdminRole,
   hashAdminPassword,
+  readAdminUsers,
   normalizeAdminLogin,
   normalizeAdminRoles,
   toAdminIdentity,
@@ -23,7 +24,7 @@ import {
   verifyAdminPassword,
 } from '../lib/admin-users.js'
 import { generateNearbyPlacesForComplex, searchNearbyPhotoVariants } from '../lib/nearby.js'
-import { addAuditLog } from '../lib/audit.js'
+import { addAuditLog, appendAuditLog } from '../lib/audit.js'
 import { uploadImage } from '../lib/media-storage.js'
 import {
   createManualBackup,
@@ -33,7 +34,7 @@ import {
   restoreBackupById,
   restoreLeadProcessingByBackupId,
 } from '../lib/backups.js'
-import { 
+import {
   upsertComplexes, 
   upsertProperties, 
   upsertComplexesFromProperties,
@@ -49,6 +50,7 @@ import {
   normalizeCategory,
   normalizeDealType
 } from '../lib/import-logic.js'
+import { assertFeedRowLimit, fetchFeedBuffer } from '../lib/feed-fetch.js'
 import type { AdminRole, AdminUser, Category, Complex, DbShape, LandingFeaturePreset, Lead, LeadStatus, Property } from '../../shared/types.js'
 import { XMLParser } from 'fast-xml-parser'
 import { parse as parseCsv } from 'csv-parse/sync'
@@ -118,7 +120,13 @@ function resolveFeedRefreshSettings(input: FeedRefreshInput): FeedRefreshResult 
   }
 
   try {
-    new URL(url)
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { ok: false, error: 'URL фида должен использовать http/https' }
+    }
+    if (parsed.username || parsed.password) {
+      return { ok: false, error: 'URL фида не должен содержать логин/пароль' }
+    }
   } catch {
     return { ok: false, error: 'Некорректный URL фида' }
   }
@@ -150,6 +158,66 @@ function ensureHiddenPresetKeys(db: DbShape): string[] {
     db.hidden_landing_feature_preset_keys = []
   }
   return db.hidden_landing_feature_preset_keys
+}
+
+type CatalogCleanupStats = {
+  collectionItemsRemoved: number
+  collectionsTouched: number
+  featuredRemoved: number
+}
+
+function cleanupCatalogReferences(
+  db: DbShape,
+  deletedPropertyIds: Set<string>,
+  deletedComplexIds: Set<string>,
+): CatalogCleanupStats {
+  if (deletedPropertyIds.size === 0 && deletedComplexIds.size === 0) {
+    return { collectionItemsRemoved: 0, collectionsTouched: 0, featuredRemoved: 0 }
+  }
+
+  const now = new Date().toISOString()
+  let collectionItemsRemoved = 0
+  let collectionsTouched = 0
+
+  for (const collection of db.collections) {
+    if (!Array.isArray(collection.items) || collection.items.length === 0) continue
+
+    const before = collection.items.length
+    collection.items = collection.items.filter((item) => {
+      if (item.type === 'property') return !deletedPropertyIds.has(item.ref_id)
+      if (item.type === 'complex') return !deletedComplexIds.has(item.ref_id)
+      return true
+    })
+
+    const removed = before - collection.items.length
+    if (removed > 0) {
+      collectionItemsRemoved += removed
+      collectionsTouched += 1
+      collection.updated_at = now
+    }
+  }
+
+  let featuredRemoved = 0
+  const featured = db.home?.featured
+  if (featured && typeof featured === 'object') {
+    if (Array.isArray(featured.properties)) {
+      const before = featured.properties.length
+      featured.properties = featured.properties.filter((item) => !deletedPropertyIds.has(item))
+      featuredRemoved += before - featured.properties.length
+    }
+
+    if (Array.isArray(featured.complexes)) {
+      const before = featured.complexes.length
+      featured.complexes = featured.complexes.filter((item) => !deletedComplexIds.has(item))
+      featuredRemoved += before - featured.complexes.length
+    }
+
+    if (featuredRemoved > 0) {
+      db.home.updated_at = now
+    }
+  }
+
+  return { collectionItemsRemoved, collectionsTouched, featuredRemoved }
 }
 
 function toCustomLandingFeatureKey(value: string): string {
@@ -213,8 +281,8 @@ router.get('/me', (req: Request, res: Response) => {
 })
 
 router.get('/users', requireAdminPermission('admin_users.read'), (req: Request, res: Response) => {
-  const data = withDb((db) => {
-    const users = ensureAdminUsers(db)
+  const data = withDbRead((db) => {
+    const users = readAdminUsers(db)
     return users
       .map(toAdminUserPublic)
       .sort((a, b) => a.login.localeCompare(b.login))
@@ -393,9 +461,9 @@ router.get('/logs', (req: Request, res: Response) => {
   const entityFilter = typeof req.query.entity === 'string' ? req.query.entity : ''
   const actionFilter = typeof req.query.action === 'string' ? req.query.action : ''
 
-  const data = withDb((db) => {
-    if (!Array.isArray(db.audit_logs)) db.audit_logs = []
-    let logs = [...db.audit_logs].sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+  const data = withDbRead((db) => {
+    const logsSource = Array.isArray(db.audit_logs) ? db.audit_logs : []
+    let logs = [...logsSource].sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
     if (entityFilter) logs = logs.filter((l) => l.entity === entityFilter)
     if (actionFilter) logs = logs.filter((l) => l.action === actionFilter)
     const total = logs.length
@@ -440,7 +508,7 @@ router.post('/upload', upload.single('file'), (req: Request, res: Response) => {
 })
 
 router.get('/home', (req: Request, res: Response) => {
-  const data = withDb((db) => db.home)
+  const data = withDbRead((db) => db.home)
   res.json({ success: true, data })
 })
 
@@ -549,7 +617,7 @@ router.delete('/backups/:id', requireAdminPermission('publish.apply'), async (re
 })
 
 router.get('/leads', (req: Request, res: Response) => {
-  const data = withDb((db) =>
+  const data = withDbRead((db) =>
     [...db.leads]
       .map((lead) => ({
         ...lead,
@@ -652,14 +720,14 @@ router.put('/leads/:id', requireAdminPermission('leads.write'), (req: Request, r
 })
 
 router.get('/feeds', (req: Request, res: Response) => {
-  const data = withDb((db) => db.feed_sources)
+  const data = withDbRead((db) => db.feed_sources)
   res.json({ success: true, data })
 })
 
 router.get('/landing-feature-presets', (req: Request, res: Response) => {
-  const data = withDb((db) => {
-    const presets = ensureCustomLandingFeaturePresets(db)
-    const hiddenKeys = ensureHiddenPresetKeys(db)
+  const data = withDbRead((db) => {
+    const presets = Array.isArray(db.landing_feature_presets) ? db.landing_feature_presets : []
+    const hiddenKeys = Array.isArray(db.hidden_landing_feature_preset_keys) ? db.hidden_landing_feature_preset_keys : []
     return {
       presets: [...presets].sort((a, b) => a.title.localeCompare(b.title, 'ru')),
       hidden_builtin_keys: [...hiddenKeys],
@@ -740,7 +808,7 @@ router.delete('/landing-feature-presets/:key', requireAdminPermission('landing_p
 })
 
 router.get('/feeds/diagnostics', (req: Request, res: Response) => {
-  const data = withDb((db) => {
+  const data = withDbRead((db) => {
     const activeSourceIds = new Set(db.feed_sources.map((feed) => feed.id))
     const lastRunBySource: Record<string, any> = {}
     for (const r of db.import_runs) {
@@ -831,7 +899,7 @@ router.post('/feeds', requireAdminPermission('feeds.write'), (req: Request, res:
     return
   }
 
-  const duplicate = withDb((db) => {
+  const duplicate = withDbRead((db) => {
     const name = parsed.data.name.trim().toLowerCase()
     const url = normalizedRefresh.value.url
     return db.feed_sources.find((f) => {
@@ -881,7 +949,7 @@ router.put('/feeds/:id', requireAdminPermission('feeds.write'), (req: Request, r
     return
   }
 
-  const normalizedCheck = withDb((db) => {
+  const normalizedCheck = withDbRead((db) => {
     const current = db.feed_sources.find((x) => x.id === id)
     if (!current) return { ok: false as const, code: 404 as const, error: 'Not found' }
 
@@ -945,20 +1013,27 @@ router.put('/feeds/:id', requireAdminPermission('feeds.write'), (req: Request, r
 
 router.delete('/feeds/:id', requireAdminPermission('feeds.write'), (req: Request, res: Response) => {
   const id = req.params.id
-  const snapshot = withDb((db) => db.feed_sources.find((x) => x.id === id))
+  const snapshot = withDbRead((db) => db.feed_sources.find((x) => x.id === id))
   const ok = withDb((db) => {
     const before = db.feed_sources.length
     db.feed_sources = db.feed_sources.filter((x) => x.id !== id)
     
     if (db.feed_sources.length !== before) {
-      // Cascade delete properties and complexes associated with this source
-      const propsBefore = db.properties.length
-      const complexesBefore = db.complexes.length
-      
-      db.properties = db.properties.filter((p) => p.source_id !== id)
-      db.complexes = db.complexes.filter((c) => c.source_id !== id)
-      
-      // console.log(`Deleted feed ${id}: removed ${propsBefore - db.properties.length} properties and ${complexesBefore - db.complexes.length} complexes`)
+      // Cascade hard-delete properties/complexes for this source + clean stale references.
+      const deletedComplexIds = new Set(
+        db.complexes
+          .filter((complex) => complex.source_id === id)
+          .map((complex) => complex.id),
+      )
+      const deletedPropertyIds = new Set(
+        db.properties
+          .filter((property) => property.source_id === id || (property.complex_id && deletedComplexIds.has(property.complex_id)))
+          .map((property) => property.id),
+      )
+
+      db.properties = db.properties.filter((property) => !deletedPropertyIds.has(property.id))
+      db.complexes = db.complexes.filter((complex) => !deletedComplexIds.has(complex.id))
+      cleanupCatalogReferences(db, deletedPropertyIds, deletedComplexIds)
       return true
     }
     return false
@@ -989,7 +1064,7 @@ router.delete('/feeds/:id', requireAdminPermission('feeds.write'), (req: Request
 })
 
 router.get('/collections', (req: Request, res: Response) => {
-  const data = withDb((db) => db.collections.sort((a, b) => b.priority - a.priority))
+  const data = withDbRead((db) => [...db.collections].sort((a, b) => b.priority - a.priority))
   res.json({ success: true, data })
 })
 
@@ -1138,7 +1213,7 @@ router.post('/collections/:id/toggle-status', requireAdminPermission('collection
 
 router.get('/collections/:id/preview', (req: Request, res: Response) => {
   const id = req.params.id
-  const data = withDb((db) => {
+  const data = withDbRead((db) => {
     const collection = db.collections.find((c) => c.id === id)
     if (!collection) return null
 
@@ -1205,7 +1280,7 @@ router.post('/collections/preview-auto', requireAdminPermission('collections.wri
     return
   }
 
-  const data = withDb((db) => {
+  const data = withDbRead((db) => {
     const collection = {
       id: 'preview',
       slug: 'preview',
@@ -1238,7 +1313,7 @@ router.post('/collections/:id/validate-items', requireAdminPermission('collectio
     return
   }
 
-  const result = withDb((db) => {
+  const validateItems = (db: DbShape, cleanInvalid: boolean) => {
     const collection = db.collections.find((c) => c.id === id)
     if (!collection || collection.mode !== 'manual') return null
 
@@ -1254,7 +1329,7 @@ router.post('/collections/:id/validate-items', requireAdminPermission('collectio
       .filter(it => !validItems.some(v => v.ref_id === it.ref_id))
       .map(it => it.ref_id)
 
-    if (parsed.data.cleanInvalid && invalidIds.length > 0) {
+    if (cleanInvalid && invalidIds.length > 0) {
       collection.items = validItems
       collection.updated_at = new Date().toISOString()
     }
@@ -1263,9 +1338,14 @@ router.post('/collections/:id/validate-items', requireAdminPermission('collectio
       totalItems: collection.items.length,
       validItems: validItems.length,
       invalidItems: invalidIds,
-      cleaned: parsed.data.cleanInvalid || false,
+      cleaned: cleanInvalid,
     }
-  })
+  }
+
+  const shouldClean = parsed.data.cleanInvalid === true
+  const result = shouldClean
+    ? withDb((db) => validateItems(db, true))
+    : withDbRead((db) => validateItems(db, false))
 
   if (!result) {
     res.status(404).json({ success: false, error: 'Not found or not in manual mode' })
@@ -1275,7 +1355,7 @@ router.post('/collections/:id/validate-items', requireAdminPermission('collectio
 })
 
 router.get('/catalog/outdated', (req: Request, res: Response) => {
-  const data = withDb((db) => {
+  const data = withDbRead((db) => {
     const isOutdated = (x: { district: string }) => x.district === 'Array'
     const properties = db.properties.filter(isOutdated).length
     const complexes = db.complexes.filter(isOutdated).length
@@ -1305,7 +1385,7 @@ router.get('/catalog/items', (req: Request, res: Response) => {
     return
   }
 
-  const data = withDb((db) => {
+  const data = withDbRead((db) => {
     const items =
       type === 'property'
           ? db.properties
@@ -1343,7 +1423,7 @@ router.get('/catalog/items', (req: Request, res: Response) => {
 
 router.get('/catalog/complex/:id', (req: Request, res: Response) => {
   const id = req.params.id
-  const data = withDb((db) => {
+  const data = withDbRead((db) => {
     const complex = db.complexes.find((item) => item.id === id)
     if (!complex) return null
     const properties = db.properties
@@ -1377,7 +1457,7 @@ router.post('/catalog/complex/:id/nearby/generate', requireAdminPermission('cata
     return
   }
 
-  const complex = withDb((db) => db.complexes.find((item) => item.id === id) || null)
+  const complex = withDbRead((db) => db.complexes.find((item) => item.id === id) || null)
 
   if (!complex) {
     res.status(404).json({ success: false, error: 'Not found' })
@@ -1431,7 +1511,7 @@ router.post('/catalog/complex/:id/nearby/photo-variants', requireAdminPermission
     return
   }
 
-  const complex = withDb((db) => db.complexes.find((item) => item.id === id) || null)
+  const complex = withDbRead((db) => db.complexes.find((item) => item.id === id) || null)
   if (!complex) {
     res.status(404).json({ success: false, error: 'Not found' })
     return
@@ -1608,48 +1688,94 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
 
 router.delete('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), (req: Request, res: Response) => {
   const { type, id } = req.params
-  
-  const ok = withDb((db) => {
+
+  const result = withDb((db) => {
     if (type === 'property') {
-      const initial = db.properties.length
-      db.properties = db.properties.filter(p => p.id !== id)
-      return db.properties.length !== initial
-    } else if (type === 'complex') {
-      const initial = db.complexes.length
-      db.complexes = db.complexes.filter(c => c.id !== id)
-      if (db.complexes.length !== initial) {
-        // Cascade delete properties
-        const propsBefore = db.properties.length
-        db.properties = db.properties.filter(p => p.complex_id !== id)
-        // console.log(`Cascaded delete: removed ${propsBefore - db.properties.length} properties for complex ${id}`)
+      const existing = db.properties.find((property) => property.id === id)
+      if (!existing) return { ok: false as const }
+
+      const deletedPropertyIds = new Set([id])
+      db.properties = db.properties.filter((property) => property.id !== id)
+      const cleanup = cleanupCatalogReferences(db, deletedPropertyIds, new Set())
+
+      return {
+        ok: true as const,
+        deletedProperties: 1,
+        deletedComplexes: 0,
+        cleanup,
       }
-      return db.complexes.length !== initial
     }
-    return false
+
+    if (type === 'complex') {
+      const complex = db.complexes.find((item) => item.id === id)
+      if (!complex) return { ok: false as const }
+
+      const deletedComplexIds = new Set([id])
+      const deletedPropertyIds = new Set(
+        db.properties
+          .filter((property) => property.complex_id === id || (complex.external_id && property.complex_external_id === complex.external_id))
+          .map((property) => property.id),
+      )
+
+      db.complexes = db.complexes.filter((item) => item.id !== id)
+      db.properties = db.properties.filter((property) => !deletedPropertyIds.has(property.id))
+      const cleanup = cleanupCatalogReferences(db, deletedPropertyIds, deletedComplexIds)
+
+      return {
+        ok: true as const,
+        deletedProperties: deletedPropertyIds.size,
+        deletedComplexes: 1,
+        cleanup,
+      }
+    }
+
+    return { ok: false as const }
   })
 
-  if (!ok) {
+  if (!result.ok) {
     res.status(404).json({ success: false, error: 'Not found' })
     return
   }
-  const entityType2 = type === 'property' ? 'property' : 'complex' as const
-  addAuditLog(req.admin!.id, req.admin!.login, 'delete', entityType2, id, `Удалён ${type === 'property' ? 'лот' : 'ЖК'} (id: ${id})`)
+
+  const entityType = type === 'property' ? 'property' : 'complex' as const
+  addAuditLog(
+    req.admin!.id,
+    req.admin!.login,
+    'delete',
+    entityType,
+    id,
+    `Catalog delete ${type} id=${id}: removed properties=${result.deletedProperties}, complexes=${result.deletedComplexes}, cleaned collection links=${result.cleanup.collectionItemsRemoved}, cleaned featured links=${result.cleanup.featuredRemoved}`,
+  )
   res.json({ success: true })
 })
 
 router.delete('/catalog/reset', requireAdminPermission('catalog.write'), (req: Request, res: Response) => {
-  withDb((db) => {
+  const summary = withDb((db) => {
+    const deletedPropertyIds = new Set(db.properties.map((property) => property.id))
+    const deletedComplexIds = new Set(db.complexes.map((complex) => complex.id))
     db.properties = []
     db.complexes = []
-    // Optional: also clear feed sources if requested, but for now just catalog
-    // db.feed_sources = []
+    const cleanup = cleanupCatalogReferences(db, deletedPropertyIds, deletedComplexIds)
+    return {
+      deletedProperties: deletedPropertyIds.size,
+      deletedComplexes: deletedComplexIds.size,
+      cleanup,
+    }
   })
-  addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'property', undefined, 'Сброс каталога: удалены все лоты и ЖК')
+
+  addAuditLog(
+    req.admin!.id,
+    req.admin!.login,
+    'delete',
+    'property',
+    undefined,
+    `Catalog reset: removed properties=${summary.deletedProperties}, complexes=${summary.deletedComplexes}, cleaned collection links=${summary.cleanup.collectionItemsRemoved}, cleaned featured links=${summary.cleanup.featuredRemoved}`,
+  )
   res.json({ success: true })
 })
 
 router.get('/import/runs', (req: Request, res: Response) => {
-  const data = withDb((db) => db.import_runs.sort((a, b) => (b.started_at || '').localeCompare(a.started_at || '')))
+  const data = withDbRead((db) => [...db.import_runs].sort((a, b) => (b.started_at || '').localeCompare(a.started_at || '')))
   res.json({ success: true, data })
 })
 
@@ -1659,7 +1785,8 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
     entity: z.enum(['property', 'complex']),
     url: z.string().optional(),
     rows: z.string().optional(),
-    hide_invalid: z.coerce.boolean().optional()
+    hide_invalid: z.coerce.boolean().optional(),
+    restore_archived: z.coerce.boolean().optional(),
   })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) {
@@ -1697,7 +1824,7 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
   }
 
   let errorLog = ''
-  const sourceSnapshot = withDb((db) => db.feed_sources.find(s => s.id === parsed.data.source_id))
+  const sourceSnapshot = withDbRead((db) => db.feed_sources.find(s => s.id === parsed.data.source_id))
   if (sourceSnapshot) {
     run.feed_name = sourceSnapshot.name
     run.feed_url = sourceSnapshot.url
@@ -1713,7 +1840,11 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
       try {
         rows = JSON.parse(parsed.data.rows)
         if (!Array.isArray(rows)) throw new Error('Rows must be an array')
+        assertFeedRowLimit(rows.length)
       } catch (e) {
+        if (e instanceof Error && e.message.startsWith('Feed has too many rows')) {
+          throw e
+        }
         throw new Error('Invalid rows JSON')
       }
     } else {
@@ -1723,17 +1854,22 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
       rows = parseRows(buffer, ext)
     }
 
+    const restoreArchived = parsed.data.restore_archived !== false
+
     const stats = withDb((db) => {
       const source = db.feed_sources.find(s => s.id === parsed.data.source_id)
       const mapping = source?.mapping
 
       if (parsed.data.entity === 'complex') {
-        return upsertComplexes(db, parsed.data.source_id, rows, mapping)
+        return upsertComplexes(db, parsed.data.source_id, rows, mapping, { restoreArchived })
       }
       
       // Auto-upsert complexes from properties to ensure linking works
-      const complexStats = upsertComplexesFromProperties(db, parsed.data.source_id, rows, mapping)
-      const propertyStats = upsertProperties(db, parsed.data.source_id, rows, mapping, { hideInvalid: parsed.data.hide_invalid })
+      const complexStats = upsertComplexesFromProperties(db, parsed.data.source_id, rows, mapping, { restoreArchived })
+      const propertyStats = upsertProperties(db, parsed.data.source_id, rows, mapping, {
+        hideInvalid: parsed.data.hide_invalid,
+        restoreArchived,
+      })
       return { ...propertyStats, targetComplexId: complexStats.targetComplexId }
     })
 
@@ -1761,16 +1897,19 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
         finished_at: new Date().toISOString(),
         error_log: errorLog || undefined,
       })
+
+      appendAuditLog(
+        db,
+        req.admin!.id,
+        req.admin!.login,
+        'import',
+        'property',
+        run.source_id,
+        `Import (${run.entity}): ${run.status} +${run.stats.inserted}/${run.stats.updated}/${run.stats.hidden}`,
+        run.feed_name || undefined,
+      )
     })
   }
-
-  addAuditLog(
-    req.admin!.id, req.admin!.login, 'import', 'property',
-    run.source_id,
-    `Импорт (${run.entity}): ${run.status} — +${run.stats.inserted}/${run.stats.updated}/${run.stats.hidden}`,
-    run.feed_name || undefined,
-  )
-
   if (run.status === 'failed') {
     res.status(500).json({ success: false, error: 'Import failed', details: errorLog })
     return
@@ -2002,14 +2141,14 @@ router.post('/import/preview', requireAdminPermission('import.write'), upload.si
     return
   }
 
-  const sourceSnapshot = withDb((db) => db.feed_sources.find(s => s.id === parsed.data.source_id))
+  const sourceSnapshot = withDbRead((db) => db.feed_sources.find(s => s.id === parsed.data.source_id))
   try {
     const buffer = await getBuffer(req, parsed.data.url)
     const fileName = req.file?.originalname || parsed.data.url || 'feed'
     const ext = guessExt(fileName)
     const rows = parseRows(buffer, ext)
 
-    const source = withDb((db) => db.feed_sources.find(s => s.id === parsed.data.source_id))
+    const source = withDbRead((db) => db.feed_sources.find(s => s.id === parsed.data.source_id))
     const mapping = source?.mapping
 
     const preview = parsed.data.entity === 'complex'
@@ -2044,7 +2183,12 @@ router.post('/import/preview', requireAdminPermission('import.write'), upload.si
 })
 
 function guessExt(name: string): 'csv' | 'xlsx' | 'xml' | 'json' {
-  const lc = name.toLowerCase()
+  let lc = name.toLowerCase()
+  try {
+    lc = new URL(name).pathname.toLowerCase()
+  } catch {
+    // Keep original string for local filenames.
+  }
   if (lc.endsWith('.csv')) return 'csv'
   if (lc.endsWith('.xlsx') || lc.endsWith('.xls')) return 'xlsx'
   if (lc.endsWith('.xml')) return 'xml'
@@ -2054,16 +2198,7 @@ function guessExt(name: string): 'csv' | 'xlsx' | 'xml' | 'json' {
 async function getBuffer(req: Request, url?: string): Promise<Buffer> {
   if (req.file?.buffer) return req.file.buffer
   if (url) {
-    try {
-      // Validate URL early for clearer errors
-      new URL(url)
-    } catch {
-      throw new Error('Некорректный URL')
-    }
-    const r = await fetch(url)
-    if (!r.ok) throw new Error(`Fetch failed: ${r.status}`)
-    const ab = await r.arrayBuffer()
-    return Buffer.from(ab)
+    return fetchFeedBuffer(url)
   }
   throw new Error('No file provided')
 }
@@ -2071,28 +2206,38 @@ async function getBuffer(req: Request, url?: string): Promise<Buffer> {
 function parseRows(buffer: Buffer, ext: 'csv' | 'xlsx' | 'xml' | 'json'): Record<string, unknown>[] {
   if (ext === 'csv') {
     const raw = buffer.toString('utf-8')
-    return parseCsv(raw, { columns: true, skip_empty_lines: true }) as Record<string, unknown>[]
+    const rows = parseCsv(raw, { columns: true, skip_empty_lines: true }) as Record<string, unknown>[]
+    assertFeedRowLimit(rows.length)
+    return rows
   }
   if (ext === 'xlsx') {
     const wb = XLSX.read(buffer, { type: 'buffer' })
     const sheetName = wb.SheetNames[0]
     const sheet = wb.Sheets[sheetName]
     const json = XLSX.utils.sheet_to_json(sheet, { defval: '' })
-    return json as Record<string, unknown>[]
+    const rows = json as Record<string, unknown>[]
+    assertFeedRowLimit(rows.length)
+    return rows
   }
   if (ext === 'xml') {
     const parser = new XMLParser({ ignoreAttributes: false })
     const obj = parser.parse(buffer.toString('utf-8'))
     const arr = findFirstArray(obj)
     const rows = (arr || []) as Record<string, unknown>[]
+    assertFeedRowLimit(rows.length)
     // Normalize Yandex Realty XML format
     return rows.map(row => normalizeYandexRealty(row))
   }
 
   const obj = JSON.parse(buffer.toString('utf-8'))
-  if (Array.isArray(obj)) return obj as Record<string, unknown>[]
+  if (Array.isArray(obj)) {
+    assertFeedRowLimit(obj.length)
+    return obj as Record<string, unknown>[]
+  }
   const arr = findFirstArray(obj)
-  return (arr || []) as Record<string, unknown>[]
+  const rows = (arr || []) as Record<string, unknown>[]
+  assertFeedRowLimit(rows.length)
+  return rows
 }
 
 function findFirstArray(obj: unknown): unknown[] | null {

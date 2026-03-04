@@ -83,6 +83,7 @@ async function main(): Promise<void> {
 
     // 1) content fidelity: catalog + complex settings + cards + home + presets must be restored exactly
     storage.withDb((db) => {
+      const now = new Date().toISOString()
       if (!db.collections.length) {
         db.collections.push({
           id: 'smoke-collection',
@@ -93,6 +94,45 @@ async function main(): Promise<void> {
           mode: 'manual',
           items: [],
           updated_at: new Date().toISOString(),
+        })
+      }
+      if (!db.complexes.length) {
+        db.complexes.push({
+          id: 'smoke-complex-base',
+          source_id: 'smoke-source',
+          external_id: 'smoke-complex-external',
+          slug: 'smoke-complex-base',
+          title: 'Smoke Complex Base',
+          category: 'newbuild',
+          district: 'Smoke District',
+          metro: ['Smoke Metro'],
+          price_from: 1000000,
+          area_from: 40,
+          images: ['/uploads/smoke-complex.jpg'],
+          status: 'active',
+          updated_at: now,
+        })
+      }
+      if (!db.properties.length) {
+        const complex = db.complexes[0]
+        db.properties.push({
+          id: 'smoke-property-base',
+          source_id: 'smoke-source',
+          external_id: 'smoke-property-external',
+          slug: 'smoke-property-base',
+          complex_id: complex?.id,
+          complex_external_id: complex?.external_id,
+          deal_type: 'sale',
+          category: 'newbuild',
+          title: 'Smoke Property Base',
+          bedrooms: 2,
+          price: 5000000,
+          area_total: 55,
+          district: complex?.district || 'Smoke District',
+          metro: complex?.metro || ['Smoke Metro'],
+          images: ['/uploads/smoke-property.jpg'],
+          status: 'active',
+          updated_at: now,
         })
       }
       if (!db.landing_feature_presets.length) {

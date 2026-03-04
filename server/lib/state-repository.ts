@@ -172,6 +172,11 @@ export class PostgresStateRepository implements StateRepository {
 
   constructor(config: PostgresConfig) {
     this.pool = new Pool({ connectionString: config.connectionString })
+    // Without an error handler the pool emits an unhandled 'error' event
+    // (e.g. idle-client timeout) which crashes the entire Node.js process.
+    this.pool.on('error', (err) => {
+      console.error('[postgres] Unexpected pool client error:', err)
+    })
     this.migrationsDir = config.migrationsDir
     this.homeRepository = new HomeRepository()
     this.feedRepository = new FeedRepository()

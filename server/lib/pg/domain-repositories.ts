@@ -394,111 +394,82 @@ export class CatalogRepository {
     await client.query(`DELETE FROM rw_complexes WHERE scope = $1`, [scope])
     await client.query(`DELETE FROM rw_collections WHERE scope = $1`, [scope])
 
-    for (const complex of data.complexes) {
-      await client.query(
-        `INSERT INTO rw_complexes (
-           scope, id, source_id, external_id, slug, title, category, district, metro, price_from, area_from, images, status, developer, class,
-           finish_type, handover_date, description, geo_lat, geo_lon, landing, last_seen_at, updated_at
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6, $7, $8, $9::text[], $10, $11, $12::text[], $13, $14, $15, $16, $17, $18, $19, $20, $21::jsonb, $22, $23
-         )`,
-        [
-          scope,
-          complex.id,
-          complex.source_id,
-          complex.external_id,
-          complex.slug,
-          complex.title,
-          complex.category,
-          complex.district,
-          complex.metro || [],
-          complex.price_from ?? null,
-          complex.area_from ?? null,
-          complex.images || [],
-          complex.status,
-          complex.developer || null,
-          complex.class || null,
-          complex.finish_type || null,
-          complex.handover_date || null,
-          complex.description || null,
-          complex.geo_lat ?? null,
-          complex.geo_lon ?? null,
+    // Batch insert helpers — reduces N round-trips to ceil(N/50)
+    const CHUNK = 50
+
+    for (let i = 0; i < data.complexes.length; i += CHUNK) {
+      const chunk = data.complexes.slice(i, i + CHUNK)
+      const params: unknown[] = []
+      const rows: string[] = []
+      for (const complex of chunk) {
+        const o = params.length
+        params.push(
+          scope, complex.id, complex.source_id, complex.external_id, complex.slug,
+          complex.title, complex.category, complex.district, complex.metro || [],
+          complex.price_from ?? null, complex.area_from ?? null, complex.images || [],
+          complex.status, complex.developer || null, complex.class || null,
+          complex.finish_type || null, complex.handover_date || null, complex.description || null,
+          complex.geo_lat ?? null, complex.geo_lon ?? null,
           complex.landing ? JSON.stringify(complex.landing) : null,
-          complex.last_seen_at || null,
-          complex.updated_at,
-        ]
+          complex.last_seen_at || null, complex.updated_at,
+        )
+        rows.push(
+          `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9}::text[],$${o+10},$${o+11},$${o+12}::text[],$${o+13},$${o+14},$${o+15},$${o+16},$${o+17},$${o+18},$${o+19},$${o+20},$${o+21}::jsonb,$${o+22},$${o+23})`
+        )
+      }
+      await client.query(
+        `INSERT INTO rw_complexes (scope,id,source_id,external_id,slug,title,category,district,metro,price_from,area_from,images,status,developer,class,finish_type,handover_date,description,geo_lat,geo_lon,landing,last_seen_at,updated_at) VALUES ${rows.join(',')}`,
+        params
       )
     }
 
-    for (const property of data.properties) {
+    for (let i = 0; i < data.properties.length; i += CHUNK) {
+      const chunk = data.properties.slice(i, i + CHUNK)
+      const params: unknown[] = []
+      const rows: string[] = []
+      for (const property of chunk) {
+        const o = params.length
+        params.push(
+          scope, property.id, property.source_id, property.external_id, property.slug,
+          property.lot_number || null, property.complex_id || null, property.complex_external_id || null,
+          property.deal_type, property.category, property.title, property.bedrooms, property.price,
+          property.price_period || null, property.old_price ?? null, property.area_total,
+          property.area_living ?? null, property.area_kitchen ?? null, property.district,
+          property.metro || [], property.images || [], property.status,
+          property.floor ?? null, property.floors_total ?? null, property.renovation || null,
+          property.is_euroflat ?? null, property.building_section || null, property.building_state || null,
+          property.ready_quarter ?? null, property.built_year ?? null, property.description || null,
+          property.last_seen_at || null, property.updated_at,
+        )
+        rows.push(
+          `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9},$${o+10},$${o+11},$${o+12},$${o+13},$${o+14},$${o+15},$${o+16},$${o+17},$${o+18},$${o+19},$${o+20}::text[],$${o+21}::text[],$${o+22},$${o+23},$${o+24},$${o+25},$${o+26},$${o+27},$${o+28},$${o+29},$${o+30},$${o+31},$${o+32},$${o+33})`
+        )
+      }
       await client.query(
-        `INSERT INTO rw_properties (
-           scope, id, source_id, external_id, slug, lot_number, complex_id, complex_external_id, deal_type, category, title, bedrooms, price, price_period,
-           old_price, area_total, area_living, area_kitchen, district, metro, images, status, floor, floors_total, renovation, is_euroflat,
-           building_section, building_state, ready_quarter, built_year, description, last_seen_at, updated_at
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20::text[], $21::text[], $22, $23, $24, $25,
-           $26, $27, $28, $29, $30, $31, $32, $33
-         )`,
-        [
-          scope,
-          property.id,
-          property.source_id,
-          property.external_id,
-          property.slug,
-          property.lot_number || null,
-          property.complex_id || null,
-          property.complex_external_id || null,
-          property.deal_type,
-          property.category,
-          property.title,
-          property.bedrooms,
-          property.price,
-          property.price_period || null,
-          property.old_price ?? null,
-          property.area_total,
-          property.area_living ?? null,
-          property.area_kitchen ?? null,
-          property.district,
-          property.metro || [],
-          property.images || [],
-          property.status,
-          property.floor ?? null,
-          property.floors_total ?? null,
-          property.renovation || null,
-          property.is_euroflat ?? null,
-          property.building_section || null,
-          property.building_state || null,
-          property.ready_quarter ?? null,
-          property.built_year ?? null,
-          property.description || null,
-          property.last_seen_at || null,
-          property.updated_at,
-        ]
+        `INSERT INTO rw_properties (scope,id,source_id,external_id,slug,lot_number,complex_id,complex_external_id,deal_type,category,title,bedrooms,price,price_period,old_price,area_total,area_living,area_kitchen,district,metro,images,status,floor,floors_total,renovation,is_euroflat,building_section,building_state,ready_quarter,built_year,description,last_seen_at,updated_at) VALUES ${rows.join(',')}`,
+        params
       )
     }
 
-    for (const collection of data.collections) {
-      await client.query(
-        `INSERT INTO rw_collections (
-           scope, id, slug, title, description, cover_image, priority, status, mode, items, auto_rules, updated_at
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12
-         )`,
-        [
-          scope,
-          collection.id,
-          collection.slug,
-          collection.title,
-          collection.description || null,
-          collection.cover_image || null,
-          collection.priority,
-          collection.status,
-          collection.mode,
+    for (let i = 0; i < data.collections.length; i += CHUNK) {
+      const chunk = data.collections.slice(i, i + CHUNK)
+      const params: unknown[] = []
+      const rows: string[] = []
+      for (const collection of chunk) {
+        const o = params.length
+        params.push(
+          scope, collection.id, collection.slug, collection.title,
+          collection.description || null, collection.cover_image || null,
+          collection.priority, collection.status, collection.mode,
           JSON.stringify(collection.items || []),
           collection.auto_rules ? JSON.stringify(collection.auto_rules) : null,
           collection.updated_at,
-        ]
+        )
+        rows.push(`($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9},$${o+10}::jsonb,$${o+11}::jsonb,$${o+12})`)
+      }
+      await client.query(
+        `INSERT INTO rw_collections (scope,id,slug,title,description,cover_image,priority,status,mode,items,auto_rules,updated_at) VALUES ${rows.join(',')}`,
+        params
       )
     }
   }

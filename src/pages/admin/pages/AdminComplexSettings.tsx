@@ -21,6 +21,7 @@ import {
   MAX_LANDING_FACTS,
   normalizeLandingConfig,
 } from '@/lib/complexLanding'
+import { promoteImageToFront } from '@/lib/images'
 import type {
   Complex,
   ComplexLandingConfig,
@@ -166,6 +167,7 @@ export default function AdminComplexSettingsPage() {
   const [detailsError, setDetailsError] = useState<string | null>(null)
   const [draftComplex, setDraftComplex] = useState<Complex | null>(null)
   const [draftLanding, setDraftLanding] = useState<ComplexLandingConfig | null>(null)
+  const [loadedHeroImage, setLoadedHeroImage] = useState('')
   const [linkedProperties, setLinkedProperties] = useState<Property[]>([])
   const [saving, setSaving] = useState(false)
   const [activePlanId, setActivePlanId] = useState('')
@@ -269,7 +271,10 @@ export default function AdminComplexSettingsPage() {
   }, [loadCustomFeaturePresets])
 
   useEffect(() => {
-    if (!selectedId) return
+    if (!selectedId) {
+      setLoadedHeroImage('')
+      return
+    }
     setDetailsLoading(true)
     setDetailsError(null)
     setNearbyError(null)
@@ -286,10 +291,12 @@ export default function AdminComplexSettingsPage() {
           price_from: typeof res.complex.price_from === 'number' ? res.complex.price_from : minPrice,
           area_from: typeof res.complex.area_from === 'number' ? res.complex.area_from : minArea,
         }
+        const normalizedLanding = normalizeLandingConfig(res.complex.landing, normalizedComplex, res.properties)
         setDraftComplex(normalizedComplex)
         setMapSearchQuery(buildMapSearchQuery(normalizedComplex))
         setLinkedProperties(res.properties)
-        setDraftLanding(normalizeLandingConfig(res.complex.landing, normalizedComplex, res.properties))
+        setDraftLanding(normalizedLanding)
+        setLoadedHeroImage((normalizedLanding.hero_image || '').trim())
       })
       .catch((e) => setDetailsError(e instanceof Error ? e.message : 'Ошибка'))
       .finally(() => setDetailsLoading(false))
@@ -599,6 +606,12 @@ export default function AdminComplexSettingsPage() {
   const save = async () => {
     if (!draftComplex || !draftLanding) return
     const point = normalizeGeoPoint(draftComplex.geo_lat, draftComplex.geo_lon)
+    const nextHeroImage = (draftLanding.hero_image || '').trim()
+    const heroChanged = nextHeroImage !== loadedHeroImage
+    const imagesForSave =
+      heroChanged && nextHeroImage
+        ? promoteImageToFront(draftComplex.images, nextHeroImage)
+        : draftComplex.images
     setSaving(true)
     try {
       await apiPut(`/api/admin/catalog/items/complex/${draftComplex.id}`, {
@@ -607,7 +620,7 @@ export default function AdminComplexSettingsPage() {
         metro: draftComplex.metro,
         description: draftComplex.description,
         status: draftComplex.status,
-        images: draftComplex.images,
+        images: imagesForSave,
         price_from: draftComplex.price_from,
         area_from: draftComplex.area_from,
         developer: draftComplex.developer,
@@ -618,6 +631,8 @@ export default function AdminComplexSettingsPage() {
         geo_lon: point?.lon,
         landing: draftLanding,
       }, headers)
+      setDraftComplex((prev) => (prev ? { ...prev, images: imagesForSave } : prev))
+      setLoadedHeroImage(nextHeroImage)
       alert('Настройки ЖК сохранены')
       loadComplexes()
     } catch (e) {

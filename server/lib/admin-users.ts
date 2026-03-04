@@ -210,6 +210,11 @@ export function ensureAdminUsers(db: DbShape): AdminUser[] {
   return users
 }
 
+export function readAdminUsers(db: DbShape): AdminUser[] {
+  const rawUsers = Array.isArray(db.admin_users) ? db.admin_users : []
+  return normalizeExistingUsers(rawUsers)
+}
+
 export function findAdminUserByLogin(users: AdminUser[], login: string): AdminUser | undefined {
   const normalized = normalizeAdminLogin(login)
   return users.find((user) => normalizeAdminLogin(user.login) === normalized)

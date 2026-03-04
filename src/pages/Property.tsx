@@ -11,7 +11,7 @@ import JsonLd from '@/components/seo/JsonLd'
 import { setPageMeta } from '@/lib/meta'
 import { apiGet } from '@/lib/api'
 import { formatArea, formatPriceRub } from '@/lib/format'
-import { selectCoverImage, getPresentableImages, getLayoutImages, isLayoutImage } from '@/lib/images'
+import { selectPropertyCoverImage, getPresentableImages, getLayoutImages, isLayoutImage } from '@/lib/images'
 import { useUiStore } from '@/store/useUiStore'
 import type { Complex, Property } from '../../shared/types'
 
@@ -39,7 +39,11 @@ export default function PropertyPage() {
 
   const presentableImages = data ? getPresentableImages(data.property.images) : []
   const layoutImages = data ? getLayoutImages(data.property.images) : []
-  const coverImage = data ? selectCoverImage(data.property.images) : undefined
+  // Floor plan is the primary hero image; fall back to best presentable photo
+  const coverImage = data ? selectPropertyCoverImage(data.property.images) : undefined
+  const coverIsLayout = coverImage ? isLayoutImage(coverImage) : false
+  const shouldContainCoverImage = coverIsLayout || (presentableImages.length <= 1 && layoutImages.length === 0)
+  const shouldContainPresentableThumbs = presentableImages.length === 1
 
   useEffect(() => {
     if (!data) return
@@ -91,14 +95,14 @@ export default function PropertyPage() {
             <div className="grid gap-5 lg:grid-cols-2 md:gap-6">
               <Card className="overflow-hidden border-slate-200 bg-white">
                 <button
-                  onClick={() => openGallery('presentable', 0)}
+                  onClick={() => openGallery(coverIsLayout ? 'layouts' : 'presentable', 0)}
                   className="relative aspect-[4/3] min-h-52 w-full cursor-pointer transition-opacity hover:opacity-90"
                 >
                   {coverImage ? (
                     <img
                       src={coverImage}
                       alt={data.property.title}
-                      className={`h-full w-full ${isLayoutImage(coverImage) ? 'object-contain bg-white p-4' : 'object-cover'}`}
+                      className={`h-full w-full ${shouldContainCoverImage ? 'object-contain bg-white p-4' : 'object-cover'}`}
                     />
                   ) : (
                     <div className="h-full w-full bg-slate-100" />
@@ -297,6 +301,24 @@ export default function PropertyPage() {
             </Card>
           )}
 
+          {/* Additional Photos Section — below description */}
+          {presentableImages.length > 0 && (
+            <Card className="mt-6 border-slate-200 bg-white p-4 sm:p-6">
+              <Heading size="h3" className="mb-4">Фотографии</Heading>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+                {presentableImages.map((src, idx) => (
+                  <button
+                    key={src}
+                    onClick={() => openGallery('presentable', idx)}
+                    className="aspect-square w-full overflow-hidden rounded-md transition-opacity hover:opacity-75"
+                  >
+                    <img src={src} alt="" className={`h-full w-full ${shouldContainPresentableThumbs ? 'object-contain bg-white p-1' : 'object-cover'}`} />
+                  </button>
+                ))}
+              </div>
+            </Card>
+          )}
+
           {/* Map Section */}
           {data.complex?.geo_lat && data.complex?.geo_lon && (
             <div className="mt-8">
@@ -308,24 +330,6 @@ export default function PropertyPage() {
                 geo_lon={data.complex.geo_lon}
               />
             </div>
-          )}
-
-          {/* Additional Photos Section */}
-          {presentableImages.length > 1 && (
-            <Card className="mt-6 border-slate-200 bg-white p-4 sm:p-6">
-              <Heading size="h3" className="mb-4">Фотографии</Heading>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
-                {presentableImages.map((src, idx) => (
-                  <button
-                    key={src}
-                    onClick={() => openGallery('presentable', idx)}
-                    className="aspect-square w-full overflow-hidden rounded-md transition-opacity hover:opacity-75"
-                  >
-                    <img src={src} alt="" className="h-full w-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            </Card>
           )}
 
           {/* Image Gallery Modal */}

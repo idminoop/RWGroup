@@ -2,7 +2,7 @@
 import { BedDouble, MapPin, Ruler, Tag } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatArea, formatPriceRub } from '@/lib/format'
-import { selectCoverImage, isLayoutImage } from '@/lib/images'
+import { selectPropertyCoverImage, isLayoutImage } from '@/lib/images'
 import Button from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardContent, CardFooter } from '@/components/ui/Card'
@@ -43,7 +43,7 @@ export default function PropertyCard({
   showStatusBadge?: boolean
 }) {
   const openLeadModal = useUiStore((s) => s.openLeadModal)
-  const img = selectCoverImage(item.images)
+  const img = selectPropertyCoverImage(item.images)
   const imgIsLayout = img ? isLayoutImage(img) : false
   const dealTypeLabel = item.deal_type === 'rent' ? UI.rent : UI.sale
   const priceSuffix = item.price_period ? UI.month : ''

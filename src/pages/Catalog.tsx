@@ -166,7 +166,7 @@ export default function CatalogPage() {
                     <Heading size="h4" className="mb-3 text-white">
                       {UI.complexes}
                     </Heading>
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
                       {data.complexes.map((c) => (
                         <ComplexCard key={c.id} item={c} />
                       ))}

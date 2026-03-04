@@ -169,7 +169,13 @@ const DIST_INDEX = path.join(DIST_DIR, 'index.html')
 const HAS_DIST = fs.existsSync(DIST_INDEX)
 
 if (HAS_DIST) {
-  app.use(express.static(DIST_DIR))
+  app.use(express.static(DIST_DIR, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+      }
+    },
+  }))
   app.use(botPrerender())
   app.get('*', (req: Request, res: Response, next: NextFunction) => {
     const isApiOrUpload = req.path.startsWith('/api') || req.path.startsWith('/uploads')
@@ -181,6 +187,7 @@ if (HAS_DIST) {
       return
     }
 
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
     res.sendFile(DIST_INDEX)
   })
 }

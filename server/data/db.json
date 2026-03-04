@@ -17256,6 +17256,23 @@
   ],
   "import_runs": [
     {
+      "id": "9eaa8ff9-456b-496d-a869-76daa1d97a60",
+      "source_id": "ab093a95-9ce5-43cd-b83f-00583633d5a1",
+      "entity": "property",
+      "started_at": "2026-03-04T13:52:12.994Z",
+      "finished_at": "2026-03-04T13:52:13.182Z",
+      "status": "failed",
+      "stats": {
+        "inserted": 0,
+        "updated": 0,
+        "hidden": 0
+      },
+      "error_log": "Fetch failed: 404",
+      "feed_name": "yandex_zarechnaya_feed",
+      "feed_url": "https://dev.vasnaidut.ru/html/strana/feed/moskva/yandex_zarechnaya_feed.xml",
+      "action": "import"
+    },
+    {
       "id": "872eb67f-0b37-469c-a6d3-2f57ca71ba0e",
       "source_id": "ab093a95-9ce5-43cd-b83f-00583633d5a1",
       "entity": "property",
@@ -19242,6 +19259,27 @@
     }
   ],
   "audit_logs": [
+    {
+      "id": "6296a766-4c71-461b-895b-68a5c2611507",
+      "admin_id": "system",
+      "admin_login": "system",
+      "action": "delete",
+      "entity": "settings",
+      "entity_id": "4cd24eaa-8cb5-4ca8-8e27-f8d8d3c0c9f0",
+      "description": "Удален автобекап по лимиту хранения: 4cd24eaa-8cb5-4ca8-8e27-f8d8d3c0c9f0",
+      "timestamp": "2026-03-04T13:52:13.150Z"
+    },
+    {
+      "id": "9e66a9f2-fdec-41bc-bace-47b86275dd02",
+      "admin_id": "system",
+      "admin_login": "system",
+      "action": "create",
+      "entity": "settings",
+      "entity_id": "b91fc40a-e4e7-4cd4-a980-144aacd69e59",
+      "description": "Создан автобекап: b91fc40a-e4e7-4cd4-a980-144aacd69e59",
+      "timestamp": "2026-03-04T13:52:13.067Z",
+      "details": "label=Daily 2026-03-04"
+    },
     {
       "id": "8a59ed14-9176-48cc-8d34-79c2f9ef54ec",
       "admin_id": "system",
