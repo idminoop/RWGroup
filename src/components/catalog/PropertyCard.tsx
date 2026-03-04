@@ -2,7 +2,7 @@
 import { BedDouble, MapPin, Ruler, Tag } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatArea, formatPriceRub } from '@/lib/format'
-import { selectCoverImage } from '@/lib/images'
+import { selectCoverImage, isLayoutImage } from '@/lib/images'
 import Button from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardContent, CardFooter } from '@/components/ui/Card'
@@ -44,6 +44,7 @@ export default function PropertyCard({
 }) {
   const openLeadModal = useUiStore((s) => s.openLeadModal)
   const img = selectCoverImage(item.images)
+  const imgIsLayout = img ? isLayoutImage(img) : false
   const dealTypeLabel = item.deal_type === 'rent' ? UI.rent : UI.sale
   const priceSuffix = item.price_period ? UI.month : ''
   const hasDiscount = item.old_price && item.old_price > item.price
@@ -68,7 +69,12 @@ export default function PropertyCard({
         className={cn('relative block bg-slate-100', variant === 'list' ? 'h-full w-44 shrink-0' : 'aspect-[4/3] w-full')}
       >
         {img ? (
-          <img src={img} alt={item.title} className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" loading="lazy" />
+          <img
+            src={img}
+            alt={item.title}
+            className={`h-full w-full transition-transform duration-500 hover:scale-105 ${imgIsLayout ? 'object-contain bg-white p-2' : 'object-cover'}`}
+            loading="lazy"
+          />
         ) : null}
         <div className="absolute left-3 top-3 flex flex-wrap gap-2">
           <Badge variant="secondary" className="bg-white/90 text-slate-900 shadow-sm backdrop-blur-sm">

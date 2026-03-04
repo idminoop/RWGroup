@@ -11,7 +11,7 @@ import JsonLd from '@/components/seo/JsonLd'
 import { setPageMeta } from '@/lib/meta'
 import { apiGet } from '@/lib/api'
 import { formatArea, formatPriceRub } from '@/lib/format'
-import { selectCoverImage, getPresentableImages, getLayoutImages } from '@/lib/images'
+import { selectCoverImage, getPresentableImages, getLayoutImages, isLayoutImage } from '@/lib/images'
 import { useUiStore } from '@/store/useUiStore'
 import type { Complex, Property } from '../../shared/types'
 
@@ -92,10 +92,14 @@ export default function PropertyPage() {
               <Card className="overflow-hidden border-slate-200 bg-white">
                 <button
                   onClick={() => openGallery('presentable', 0)}
-                  className="relative h-64 w-full cursor-pointer transition-opacity hover:opacity-90 sm:h-72 md:h-80"
+                  className="relative aspect-[4/3] min-h-52 w-full cursor-pointer transition-opacity hover:opacity-90"
                 >
                   {coverImage ? (
-                    <img src={coverImage} alt={data.property.title} className="h-full w-full object-cover" />
+                    <img
+                      src={coverImage}
+                      alt={data.property.title}
+                      className={`h-full w-full ${isLayoutImage(coverImage) ? 'object-contain bg-white p-4' : 'object-cover'}`}
+                    />
                   ) : (
                     <div className="h-full w-full bg-slate-100" />
                   )}
@@ -105,19 +109,6 @@ export default function PropertyPage() {
                     </div>
                   </div>
                 </button>
-                {presentableImages.length > 1 && (
-                  <div className="grid grid-cols-3 gap-2 p-3 sm:grid-cols-4">
-                    {presentableImages.slice(0, 4).map((src, idx) => (
-                      <button
-                        key={src}
-                        onClick={() => openGallery('presentable', idx)}
-                        className="h-16 w-full overflow-hidden rounded-md transition-opacity hover:opacity-75"
-                      >
-                        <img src={src} alt="" className="h-full w-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
-                )}
               </Card>
 
             <Card className="border-slate-200 bg-white p-4 sm:p-6">
@@ -230,14 +221,22 @@ export default function PropertyPage() {
             </Card>
           </div>
 
-          {/* Description Section */}
-          {data.property.description && (
-            <Card className="mt-6 border-slate-200 bg-white p-4 sm:p-6">
-              <Heading size="h3" className="mb-3">Описание</Heading>
-              <Text className="whitespace-pre-line text-slate-700 leading-relaxed">
-                {data.property.description}
-              </Text>
-            </Card>
+          {/* Floor Plans Section */}
+          {layoutImages.length > 0 && (
+            <div className="mt-6">
+              <Heading size="h3" className="mb-4">Планировки</Heading>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                {layoutImages.map((src, idx) => (
+                  <button
+                    key={src}
+                    onClick={() => openGallery('layouts', idx)}
+                    className="overflow-hidden rounded-lg border border-slate-200 transition-shadow hover:shadow-md"
+                  >
+                    <img src={src} alt={`План ${idx + 1}`} className="aspect-square w-full object-contain bg-white p-2" />
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Additional Info Section */}
@@ -288,6 +287,16 @@ export default function PropertyPage() {
             </Card>
           )}
 
+          {/* Description Section */}
+          {data.property.description && (
+            <Card className="mt-6 border-slate-200 bg-white p-4 sm:p-6">
+              <Heading size="h3" className="mb-3">Описание</Heading>
+              <Text className="whitespace-pre-line text-slate-700 leading-relaxed">
+                {data.property.description}
+              </Text>
+            </Card>
+          )}
+
           {/* Map Section */}
           {data.complex?.geo_lat && data.complex?.geo_lon && (
             <div className="mt-8">
@@ -301,22 +310,22 @@ export default function PropertyPage() {
             </div>
           )}
 
-          {/* Floor Plans Section */}
-          {layoutImages.length > 0 && (
-            <div className="mt-8">
-              <Heading size="h3" className="mb-4">Планировки</Heading>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                {layoutImages.map((src, idx) => (
+          {/* Additional Photos Section */}
+          {presentableImages.length > 1 && (
+            <Card className="mt-6 border-slate-200 bg-white p-4 sm:p-6">
+              <Heading size="h3" className="mb-4">Фотографии</Heading>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+                {presentableImages.map((src, idx) => (
                   <button
                     key={src}
-                    onClick={() => openGallery('layouts', idx)}
-                    className="overflow-hidden rounded-lg border border-slate-200 transition-shadow hover:shadow-md"
+                    onClick={() => openGallery('presentable', idx)}
+                    className="aspect-square w-full overflow-hidden rounded-md transition-opacity hover:opacity-75"
                   >
-                    <img src={src} alt={`План ${idx + 1}`} className="aspect-square w-full object-contain bg-white p-2" />
+                    <img src={src} alt="" className="h-full w-full object-cover" />
                   </button>
                 ))}
               </div>
-            </div>
+            </Card>
           )}
 
           {/* Image Gallery Modal */}

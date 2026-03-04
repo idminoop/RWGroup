@@ -1,7 +1,7 @@
 ﻿import { Link } from 'react-router-dom'
 import { MapPin } from 'lucide-react'
 import { formatArea, formatPriceRub } from '@/lib/format'
-import { selectCoverImage } from '@/lib/images'
+import { selectComplexCoverImage } from '@/lib/images'
 import Button from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardContent, CardFooter } from '@/components/ui/Card'
@@ -37,7 +37,7 @@ export default function ComplexCard({
   showStatusBadge?: boolean
 }) {
   const openLeadModal = useUiStore((s) => s.openLeadModal)
-  const img = selectCoverImage(item.images)
+  const img = selectComplexCoverImage(item)
   const priceFrom = toFiniteNumber(item.price_from)
   const areaFrom = toFiniteNumber(item.area_from)
   const pricePerM2 = typeof priceFrom === 'number' && typeof areaFrom === 'number' && areaFrom > 0 ? priceFrom / areaFrom : undefined
@@ -52,7 +52,7 @@ export default function ComplexCard({
       <Link
         to={`/complex/${item.slug || item.id}`}
         onClick={() => trackEvent('open_card', { type: 'complex', id: item.id })}
-        className="relative block aspect-[4/3] w-full bg-slate-100"
+        className="relative block aspect-[4/3] w-full shrink-0 bg-slate-100"
       >
         {img ? <img src={img} alt={item.title} className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" loading="lazy" /> : null}
         <div className="absolute left-3 top-3 flex flex-wrap gap-2">

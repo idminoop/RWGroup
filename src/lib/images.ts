@@ -5,7 +5,7 @@
 /**
  * Check if image URL is a floor plan/layout (not presentable for cover)
  */
-function isLayoutImage(url: string): boolean {
+export function isLayoutImage(url: string): boolean {
   const lower = url.toLowerCase()
   return lower.includes('/preset/') || lower.includes('/layout/')
 }
@@ -58,4 +58,15 @@ export function getPresentableImages(images: string[] | undefined): string[] {
 export function getLayoutImages(images: string[] | undefined): string[] {
   if (!images || images.length === 0) return []
   return images.filter((url) => isLayoutImage(url))
+}
+
+/**
+ * Select cover image for a Complex, preferring landing.hero_image over images array
+ */
+export function selectComplexCoverImage(
+  complex: { images?: string[]; landing?: { hero_image?: string } }
+): string | undefined {
+  const heroImage = complex.landing?.hero_image
+  if (heroImage) return heroImage
+  return selectCoverImage(complex.images)
 }

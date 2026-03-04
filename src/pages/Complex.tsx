@@ -508,7 +508,7 @@ export default function ComplexPage() {
                   </div>
                 </div>
 
-                <div className="grid h-full auto-rows-fr content-stretch gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {photoFacts.map((fact, index) => {
                     const isLast = index === photoFacts.length - 1
                     const isSecondLast = index === photoFacts.length - 2
@@ -522,7 +522,7 @@ export default function ComplexPage() {
                     return (
                     <article
                       key={fact.id}
-                      className={`relative h-full min-h-[170px] overflow-hidden rounded-2xl border border-white/10 bg-[#0d1e2a] ${spanClass}`}
+                      className={`relative h-[200px] overflow-hidden rounded-2xl border border-white/10 bg-[#0d1e2a] ${spanClass}`}
                     >
                       {fact.image ? (
                         <img src={fact.image} alt={fact.title} className="absolute inset-0 h-full w-full object-cover opacity-70" />

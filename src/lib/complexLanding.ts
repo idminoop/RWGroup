@@ -470,7 +470,7 @@ export function buildAutoLandingConfig(complex: Complex, properties: Property[])
     cta_label: 'Старт продаж',
     tags: buildAutoTags(complex),
     facts: buildAutoFacts(complex, properties),
-    feature_ticker: buildAutoFeatures(complex),
+    feature_ticker: [],
     plans: {
       title: `Планировки в ${complex.title}`,
       description: 'Выберите формат квартиры и откройте все доступные предложения в каталоге.',

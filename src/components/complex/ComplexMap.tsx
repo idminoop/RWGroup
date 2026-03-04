@@ -92,7 +92,13 @@ export default function ComplexMap({
   const [geocoded, setGeocoded] = useState<GeoCoords | null>(null)
   const [geocoding, setGeocoding] = useState(false)
 
-  const directCoords = useMemo(() => normalizeDirectCoords(geo_lat, geo_lon), [geo_lat, geo_lon])
+  const directCoords = useMemo(
+    () => normalizeDirectCoords(
+      geo_lat != null ? Number(geo_lat) : undefined,
+      geo_lon != null ? Number(geo_lon) : undefined,
+    ),
+    [geo_lat, geo_lon],
+  )
   const hasDirectCoords = Boolean(directCoords)
 
   useEffect(() => {
