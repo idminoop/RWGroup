@@ -27,3 +27,4 @@ server/data/db.json
 server/data/db.published.json
 server/uploads/*
 nul
+server/data/backups/13dd482f-acc8-46f5-ba9e-5a6a7ae7d3a1.json

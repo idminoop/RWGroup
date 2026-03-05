@@ -48,6 +48,7 @@ export default function CatalogPage() {
     district: searchParams.get('district') || '',
     metro: searchParams.get('metro') || '',
     q: searchParams.get('q') || '',
+    sort: searchParams.get('sort') || '',
   }))
   const catalogCache = useCatalogCache()
   const [loading, setLoading] = useState(false)
@@ -124,6 +125,13 @@ export default function CatalogPage() {
     }
   }, [query])
 
+  const sortedProperties = useMemo(() => {
+    const props = data?.properties ?? []
+    if (filters.sort === 'price_asc') return [...props].sort((a, b) => a.price - b.price)
+    if (filters.sort === 'price_desc') return [...props].sort((a, b) => b.price - a.price)
+    return props
+  }, [data?.properties, filters.sort])
+
   const totalPages = Math.max(1, Math.ceil((data?.total || 0) / limit))
 
   useEffect(() => {
@@ -178,10 +186,10 @@ export default function CatalogPage() {
                   <Heading size="h4" className="mb-3 text-white">
                     {UI.objects}
                   </Heading>
-                  {data?.properties?.length ? (
+                  {sortedProperties.length ? (
                     <div className="space-y-4">
                       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                        {data.properties.map((p) => (
+                        {sortedProperties.map((p) => (
                           <PropertyCard key={p.id} item={p} />
                         ))}
                       </div>

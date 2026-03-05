@@ -31,6 +31,11 @@ function usePermissionSet(permissions: AdminPermission[]) {
   return useMemo(() => new Set(permissions), [permissions])
 }
 
+function isUnauthorizedRequestError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return /\b401\b/i.test(error.message) || /unauthorized/i.test(error.message)
+}
+
 export default function AdminLayout() {
   const token = useUiStore((s) => s.adminToken)
   const adminLogin = useUiStore((s) => s.adminLogin)
@@ -113,9 +118,13 @@ export default function AdminLayout() {
       setPublishStatus(status)
       setPublishError(null)
     } catch (e) {
+      if (isUnauthorizedRequestError(e)) {
+        setAdminSession(null)
+        return
+      }
       setPublishError(e instanceof Error ? e.message : 'Не удалось получить статус публикации')
     }
-  }, [canReadPublishStatus, headers, token])
+  }, [canReadPublishStatus, headers, setAdminSession, token])
 
   useEffect(() => {
     if (!token || !canReadPublishStatus) {

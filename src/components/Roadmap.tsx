@@ -1,5 +1,5 @@
 import { FileText, Search, Eye, Scale, Key } from 'lucide-react'
-import { Heading, Text } from '@/components/ui/Typography'
+import { Heading } from '@/components/ui/Typography'
 import { cn } from '@/lib/utils'
 
 const steps = [
@@ -37,8 +37,9 @@ const steps = [
 
 export default function Roadmap() {
   return (
-    <section className="py-24 bg-background overflow-hidden">
-      <div className="mx-auto max-w-7xl px-4">
+    <section className="relative overflow-hidden bg-background py-24">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,_rgba(243,241,235,0.88)_0%,_rgba(243,241,235,0.34)_46%,_rgba(15,29,40,0)_100%)]" />
+      <div className="mx-auto max-w-7xl px-4 relative z-10">
         <Heading size="h2" className="text-center mb-16 text-white">
           Дорожная карта сделки с недвижимостью
         </Heading>
@@ -48,7 +49,7 @@ export default function Roadmap() {
           <div className="hidden md:block absolute top-6 left-0 w-full h-1 bg-gradient-to-r from-secondary via-primary to-accent opacity-30" />
           
           <div className="grid grid-cols-1 md:grid-cols-5 gap-10 md:gap-4 relative">
-            {steps.map((step, index) => (
+            {steps.map((step) => (
               <div key={step.id} className="flex flex-col items-center text-center group">
                 {/* Number Circle */}
                 <div className={cn(

@@ -21,7 +21,7 @@ import {
   MAX_LANDING_FACTS,
   normalizeLandingConfig,
 } from '@/lib/complexLanding'
-import { promoteImageToFront } from '@/lib/images'
+import { promoteImageToFront, isLayoutImage } from '@/lib/images'
 import type {
   Complex,
   ComplexLandingConfig,
@@ -60,6 +60,7 @@ const DEFAULT_MAP_CENTER: LatLngExpression = [55.751244, 37.618423]
 const MAP_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 const MAP_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
 const MAX_NEARBY_IMAGE_VARIANTS = 24
+const MAP_LOOKUP_TIMEOUT_MS = 35000
 
 function normalizeGeoPoint(lat?: number, lon?: number): GeoPoint | null {
   if (typeof lat !== 'number' || typeof lon !== 'number') return null
@@ -395,11 +396,15 @@ export default function AdminComplexSettingsPage() {
 
     setMapLookupLoading(true)
     setMapLookupError(null)
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), MAP_LOOKUP_TIMEOUT_MS)
     try {
       const useComplexNameBias = !looksLikeAddressQuery(query)
       const result = await geocodeAddress(query, {
-        city: 'Moscow',
+        city: 'Москва',
         complexName: useComplexNameBias ? (draftComplex.title || undefined) : undefined,
+        signal: controller.signal,
+        maxQueries: 2,
       })
       if (!result) {
         setMapLookupError('Не удалось определить координаты автоматически. Укажите точку вручную на карте.')
@@ -411,8 +416,13 @@ export default function AdminComplexSettingsPage() {
         lon: Number(result.lon.toFixed(6)),
       })
     } catch (error) {
-      setMapLookupError(error instanceof Error ? error.message : 'Ошибка определения координат.')
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setMapLookupError('Map lookup timed out. Try a more specific address or set marker manually.')
+      } else {
+        setMapLookupError(error instanceof Error ? error.message : 'Ошибка определения координат.')
+      }
     } finally {
+      window.clearTimeout(timeout)
       setMapLookupLoading(false)
     }
   }, [draftComplex, mapSearchQuery])
@@ -500,6 +510,7 @@ export default function AdminComplexSettingsPage() {
   useEffect(() => {
     if (!selectedId || !draftComplex || !nearbyConfig) return
     if (autoNearbyGeneratedFor === selectedId) return
+    if (!mapPoint) return
 
     if (nearbyConfig.candidates.length > 0) {
       setAutoNearbyGeneratedFor(selectedId)
@@ -508,7 +519,7 @@ export default function AdminComplexSettingsPage() {
 
     setAutoNearbyGeneratedFor(selectedId)
     generateNearbyCandidates().catch(() => {})
-  }, [autoNearbyGeneratedFor, draftComplex, generateNearbyCandidates, nearbyConfig, selectedId])
+  }, [autoNearbyGeneratedFor, draftComplex, generateNearbyCandidates, mapPoint, nearbyConfig, selectedId])
 
   const toggleFeaturePreset = (presetKey: string) => {
     patchLanding((cfg) => {
@@ -764,34 +775,75 @@ export default function AdminComplexSettingsPage() {
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-[#05131c] via-[#05131c]/70 to-transparent" />
 
-              <div className="absolute left-4 right-4 top-4 grid min-w-0 grid-cols-1 gap-2 rounded-xl border border-white/15 bg-black/35 p-3 backdrop-blur md:grid-cols-[minmax(0,1fr)_auto]">
-                <div className="space-y-2">
-                  <label className="text-xs text-white/60">Фото первого экрана (URL)</label>
-                  <Input
-                    value={draftLanding.hero_image || ''}
-                    className="border-white/20 bg-white/10 text-white placeholder:text-white/40"
-                    onChange={(e) => patchLanding((cfg) => ({ ...cfg, hero_image: e.target.value }))}
-                  />
+              <div className="absolute left-4 right-4 top-4 min-w-0 space-y-2 rounded-xl border border-white/15 bg-black/35 p-3 backdrop-blur">
+                {/* URL input + upload button */}
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-white/60">Фото первого экрана (URL)</label>
+                    <Input
+                      value={draftLanding.hero_image || ''}
+                      className="border-white/20 bg-white/10 text-white placeholder:text-white/40"
+                      onChange={(e) => patchLanding((cfg) => ({ ...cfg, hero_image: e.target.value }))}
+                    />
+                  </div>
+                  <label className="inline-flex h-10 cursor-pointer items-center justify-center self-end rounded-md border border-white/25 bg-white/10 px-3 text-xs hover:bg-white/15">
+                    Загрузить
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        if (!e.target.files?.[0]) return
+                        try {
+                          const url = await uploadImage(token || '', e.target.files[0])
+                          patchLanding((cfg) => ({ ...cfg, hero_image: url }))
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : 'Upload error')
+                        } finally {
+                          e.target.value = ''
+                        }
+                      }}
+                    />
+                  </label>
                 </div>
-                <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-white/25 bg-white/10 px-3 text-xs hover:bg-white/15">
-                  Загрузить
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*"
-                    onChange={async (e) => {
-                      if (!e.target.files?.[0]) return
-                      try {
-                        const url = await uploadImage(token || '', e.target.files[0])
-                        patchLanding((cfg) => ({ ...cfg, hero_image: url }))
-                      } catch (err) {
-                        alert(err instanceof Error ? err.message : 'Upload error')
-                      } finally {
-                        e.target.value = ''
-                      }
-                    }}
-                  />
-                </label>
+
+                {/* Feed photo picker — non-layout images only */}
+                {draftComplex && (draftComplex.images || []).filter((u) => !isLayoutImage(u)).length > 0 && (
+                  <div>
+                    <label className="text-xs text-white/60">Выбрать из фото фида</label>
+                    <div
+                      className="mt-1.5 flex gap-2 overflow-x-auto pb-1"
+                      style={{ scrollbarWidth: 'none' }}
+                    >
+                      {(draftComplex.images || []).filter((u) => !isLayoutImage(u)).map((url) => {
+                        const active = draftLanding.hero_image === url
+                        return (
+                          <button
+                            key={url}
+                            type="button"
+                            onClick={() => patchLanding((cfg) => ({ ...cfg, hero_image: url }))}
+                            className={`relative h-16 w-24 flex-shrink-0 overflow-hidden rounded-lg border-2 transition-all ${
+                              active
+                                ? 'border-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.5)]'
+                                : 'border-white/20 opacity-60 hover:opacity-100 hover:border-white/50'
+                            }`}
+                          >
+                            <img src={url} alt="" className="h-full w-full object-cover" />
+                            {active && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-sky-400/20">
+                                <div className="rounded-full bg-sky-400 p-0.5">
+                                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              </div>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="absolute inset-x-0 bottom-0 p-4 md:p-6">
@@ -1338,4 +1390,3 @@ export default function AdminComplexSettingsPage() {
     </div>
   )
 }
-

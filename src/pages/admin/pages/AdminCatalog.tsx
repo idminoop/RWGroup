@@ -33,6 +33,7 @@ export default function AdminCatalogPage() {
     district: '',
     metro: '',
     q: '',
+    sort: '',
   })
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(12)

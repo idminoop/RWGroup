@@ -263,6 +263,8 @@ const geocodeCache = new Map<string, GeocodeCacheEntry>()
 type GeocodeAddressOptions = {
   city?: string
   complexName?: string
+  signal?: AbortSignal
+  maxQueries?: number
 }
 
 type GeocodeApiResponse = {
@@ -356,13 +358,15 @@ function normalizeAddress(raw: string): string[] {
 
 async function nominatimSearch(
   query: string,
-  options?: { city?: string; moscowFirst?: boolean }
+  options?: { city?: string; moscowFirst?: boolean; signal?: AbortSignal }
 ): Promise<GeoCoords | null> {
   const params = new URLSearchParams({ q: query })
   if (options?.city) params.set('city', options.city)
   if (options?.moscowFirst) params.set('moscowFirst', '1')
 
-  const response = await fetch(`${GEOCODE_API}?${params}`)
+  const response = await fetch(`${GEOCODE_API}?${params}`, {
+    signal: options?.signal,
+  })
   if (!response.ok) return null
 
   const json = await response.json() as GeocodeApiResponse
@@ -378,29 +382,23 @@ async function nominatimSearch(
   }
 }
 
-function geocodeDistanceMeters(a: GeoCoords, b: GeoCoords): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180
-  const earthRadius = 6371000
-  const dLat = toRad(b.lat - a.lat)
-  const dLon = toRad(b.lon - a.lon)
-  const aa =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2)
-    + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) * Math.sin(dLon / 2)
-  const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa))
-  return earthRadius * c
-}
-
 async function findBestGeocodeCandidate(
   queries: string[],
   options: { city?: string; moscowFirst?: boolean },
-  minQueriesBeforeBreak = 1
+  minQueriesBeforeBreak = 1,
+  signal?: AbortSignal,
+  maxQueries = queries.length
 ): Promise<GeoCoords | null> {
   const list = uniqStrings(queries).filter(Boolean)
   if (!list.length) return null
 
   let best: GeoCoords | null = null
-  for (let i = 0; i < list.length; i += 1) {
-    const result = await nominatimSearch(list[i], options)
+  const maxAttempts = Math.max(1, Math.min(maxQueries, list.length))
+  for (let i = 0; i < maxAttempts; i += 1) {
+    const result = await nominatimSearch(list[i], {
+      ...options,
+      signal,
+    })
     if (result && (!best || (result.score || 0) > (best.score || 0))) {
       best = result
     }
@@ -412,13 +410,13 @@ async function findBestGeocodeCandidate(
 
 export async function geocodeAddress(
   address: string,
-  options: string | GeocodeAddressOptions = 'Moscow'
+  options: string | GeocodeAddressOptions = 'Москва'
 ): Promise<GeoCoords | null> {
   const normalizedOptions: GeocodeAddressOptions =
     typeof options === 'string' ? { city: options } : options
 
   const rawAddress = address.trim()
-  const cityLabel = (normalizedOptions.city || 'Moscow').trim()
+  const cityLabel = (normalizedOptions.city || 'Москва').trim()
   const complexNameRaw = (normalizedOptions.complexName || '').trim()
   const complexName = complexNameRaw.replace(/^(?:\u0416\u041a|\u0436\u043a)\s+/u, '').replace(/\s+\u043d\u0430\s+\u043a\u0430\u0440\u0442\u0435$/iu, '').trim()
   const addressLooksExplicit = hasAddressHint(rawAddress)
@@ -456,6 +454,7 @@ export async function geocodeAddress(
     city: cityLabel || undefined,
     moscowFirst: isMoscow,
   }
+  const maxQueries = Math.max(1, Math.min(6, Math.floor(normalizedOptions.maxQueries ?? 3)))
 
   let best: GeoCoords | null = null
   if (addressLooksExplicit) {
@@ -464,49 +463,27 @@ export async function geocodeAddress(
       secondaryAddress,
       addressWithoutHouse,
       cityLabel && topAddress ? `${topAddress}, ${cityLabel}` : '',
+      shouldInjectComplexName && complexName ? `${complexName}, ${topAddress}` : '',
+      shouldInjectComplexName && complexName ? `${topAddress}, ${complexName}` : '',
+      nameVariants[0] || '',
     ]).slice(0, 6)
-    best = await findBestGeocodeCandidate(addressQueries, searchOptions, Math.min(3, addressQueries.length))
-
-    if (best && shouldInjectComplexName && complexName) {
-      const refineQueries = uniqStrings([
-        `${complexName}, ${topAddress}`,
-        `${topAddress}, ${complexName}`,
-        nameVariants[0] || '',
-      ]).slice(0, 4)
-
-      const maxRefineDistanceMeters = 2000
-      let refined = best
-      for (const query of refineQueries) {
-        const candidate = await nominatimSearch(query, searchOptions)
-        if (!candidate) continue
-        const distance = geocodeDistanceMeters(best, candidate)
-        if (!Number.isFinite(distance) || distance > maxRefineDistanceMeters) continue
-        const candidateScore = candidate.score || 0
-        const refinedScore = refined.score || 0
-        if (candidateScore > refinedScore + 2) {
-          refined = candidate
-        }
-      }
-      best = refined
-    }
-
-    if (!best && shouldInjectComplexName && complexName) {
-      const fallbackQueries = uniqStrings([
-        `${complexName}, ${topAddress}`,
-        `${topAddress}, ${complexName}`,
-        nameVariants[0] || '',
-      ])
-      best = await findBestGeocodeCandidate(fallbackQueries, searchOptions, Math.min(2, fallbackQueries.length))
-    }
+    best = await findBestGeocodeCandidate(
+      addressQueries,
+      searchOptions,
+      Math.min(2, addressQueries.length),
+      normalizedOptions.signal,
+      maxQueries
+    )
   } else {
     const nameFirstQueries = uniqStrings([
       topAddress && complexName ? `${complexName}, ${topAddress}` : '',
       topAddress && complexName ? `${topAddress}, ${complexName}` : '',
+      topAddress && cityLabel ? `${topAddress}, ${cityLabel}` : '',
       topAddress,
       secondaryAddress,
       nameVariants[0] || '',
     ]).slice(0, 5)
-    best = await findBestGeocodeCandidate(nameFirstQueries, searchOptions, 1)
+    best = await findBestGeocodeCandidate(nameFirstQueries, searchOptions, 1, normalizedOptions.signal, maxQueries)
   }
 
   geocodeCache.set(key, {

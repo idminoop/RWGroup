@@ -1,6 +1,8 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Search } from 'lucide-react'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
+import Button from '@/components/ui/Button'
 import { apiGet } from '@/lib/api'
 
 export type FiltersState = {
@@ -13,6 +15,7 @@ export type FiltersState = {
   district: string
   metro: string
   q: string
+  sort: string
 }
 
 type Props = {
@@ -22,16 +25,20 @@ type Props = {
 }
 
 const UI = {
-  bedrooms: '\u0421\u043f\u0430\u043b\u044c\u043d\u0438',
-  studio: '\u0421\u0442\u0443\u0434\u0438\u044f',
-  area: '\u041f\u043b\u043e\u0449\u0430\u0434\u044c',
-  priceFrom: '\u0426\u0435\u043d\u0430 \u043e\u0442',
-  priceTo: '\u0426\u0435\u043d\u0430 \u0434\u043e',
-  complexSearch: '\u0416\u041a / \u043f\u043e\u0438\u0441\u043a',
-  search: '\u041f\u043e\u0438\u0441\u043a',
-  district: '\u0420\u0430\u0439\u043e\u043d',
-  metro: '\u041c\u0435\u0442\u0440\u043e',
-  m2: '\u043c\u00b2',
+  bedrooms: 'Спальни',
+  studio: 'Студия',
+  area: 'Площадь',
+  priceFrom: 'Цена от',
+  priceTo: 'Цена до',
+  complexSearch: 'ЖК / поиск',
+  search: 'Поиск',
+  district: 'Район',
+  metro: 'Метро',
+  m2: 'м²',
+  sort: 'Сортировка',
+  sortPriceAsc: 'Цена ↑',
+  sortPriceDesc: 'Цена ↓',
+  findBtn: 'Найти',
 }
 
 export default function CatalogFilters({ tab, value, onChange }: Props) {
@@ -100,13 +107,15 @@ export default function CatalogFilters({ tab, value, onChange }: Props) {
           value={value.priceMax}
           onChange={(e) => onChange({ ...value, priceMax: e.target.value })}
         />
-        <Input
-          placeholder={tab === 'newbuild' ? UI.complexSearch : UI.search}
-          value={value.q}
-          onChange={(e) => onChange({ ...value, q: e.target.value })}
-        />
+
+        <Select value={value.sort} onChange={(e) => onChange({ ...value, sort: e.target.value })}>
+          <option value="">{UI.sort}</option>
+          <option value="price_asc">{UI.sortPriceAsc}</option>
+          <option value="price_desc">{UI.sortPriceDesc}</option>
+        </Select>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Select value={value.district} onChange={(e) => onChange({ ...value, district: e.target.value })}>
           <option value="">{UI.district}</option>
           {facets.districts.map((d) => (
@@ -123,6 +132,19 @@ export default function CatalogFilters({ tab, value, onChange }: Props) {
             </option>
           ))}
         </Select>
+        <Input
+          placeholder={tab === 'newbuild' ? UI.complexSearch : UI.search}
+          value={value.q}
+          onChange={(e) => onChange({ ...value, q: e.target.value })}
+        />
+        <Button
+          variant="dark"
+          className="w-full gap-2"
+          onClick={() => onChange({ ...value })}
+        >
+          <Search size={15} />
+          {UI.findBtn}
+        </Button>
       </div>
     </div>
   )

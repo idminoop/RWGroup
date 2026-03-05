@@ -25,12 +25,16 @@ const MOSCOW_BOUNDS = {
 
 const MOSCOW_VIEWBOX = `${MOSCOW_BOUNDS.minLon},${MOSCOW_BOUNDS.maxLat},${MOSCOW_BOUNDS.maxLon},${MOSCOW_BOUNDS.minLat}`
 const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search'
-const NOMINATIM_TIMEOUT_MS = 7000
-const NOMINATIM_RETRY_ATTEMPTS = 2
+const NOMINATIM_TIMEOUT_MS = 4200
+const NOMINATIM_RETRY_ATTEMPTS = 0
 const NOMINATIM_RETRY_DELAY_MS = 300
+const NOMINATIM_MIN_INTERVAL_MS = 1100
+const GEOCODE_ROUTE_MAX_MS = 12000
 const STRONG_GEOCODE_SCORE = 175
 const GEOCODE_CACHE_TTL_MS = 15 * 60 * 1000
 const GEOCODE_NEGATIVE_CACHE_TTL_MS = 45 * 1000
+const KREMLIN_COORDS = { lat: 55.752023, lon: 37.617499 }
+const MAX_MOSCOW_DISTANCE_KM = 45
 
 const GEOCODE_STOPWORDS = new Set([
   'москва',
@@ -99,6 +103,8 @@ type GeocodeCacheEntry = {
 }
 
 const geocodeResultCache = new Map<string, GeocodeCacheEntry>()
+let nominatimLastCallAt = 0
+let nominatimQueue: Promise<void> = Promise.resolve()
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -123,8 +129,36 @@ function uniqStrings(values: string[]): string[] {
 function hasAddressHint(value: string): boolean {
   if (!value.trim()) return false
   const hasHouseNumber = /\b\d+[\p{L}]?\b/u.test(value)
-  const hasStreetKeyword = /\b(?:\u0443\u043b(?:\.|\u0438\u0446\u0430)?|\u043f\u0440(?:-|\.)?|\u043f\u0440\u043e\u0441\u043f(?:\.|\u0435\u043a\u0442)?|\u043f\u0435\u0440(?:\.|\u0435\u0443\u043b\u043e\u043a)?|\u043d\u0430\u0431(?:\.|\u0435\u0440\u0435\u0436\u043d\u0430\u044f)?|\u0448\u043e\u0441\u0441\u0435|\u0431\u0443\u043b(?:\.|\u044c\u0432\u0430\u0440)?|street|st\.?|road|rd\.?|avenue|ave\.?|lane|ln\.?|drive|dr\.?)\b/iu.test(value)
+  const hasStreetKeyword = /\b(?:\u0443\u043b(?:\.|\u0438\u0446\u0430)?|\u043f\u0440(?:-|\.)?|\u043f\u0440\u043e\u0441\u043f(?:\.|\u0435\u043a\u0442)?|\u043f\u0435\u0440(?:\.|\u0435\u0443\u043b\u043e\u043a)?|\u043d\u0430\u0431(?:\.|\u0435\u0440\u0435\u0436\u043d\u0430\u044f)?|\u0448\u043e\u0441\u0441\u0435|\u0431\u0443\u043b(?:\.|\u044c\u0432\u0430\u0440)?|\u043f\u043b(?:\.|\u043e\u0449\u0430\u0434\u044c)?|\u0430\u043b\u043b\u0435\u044f|\u0432\u0430\u043b|\u043c\u043a\u0440(?:\.|\u0430\u0439\u043e\u043d)?|street|st\.?|road|rd\.?|avenue|ave\.?|lane|ln\.?|drive|dr\.?)\b/iu.test(value)
   return hasHouseNumber || hasStreetKeyword
+}
+
+function isNumericLikeToken(value: string): boolean {
+  return /^\d+[\p{L}]?$/iu.test(value)
+}
+
+function normalizeHouseToken(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+}
+
+function extractHouseTokens(value: string): string[] {
+  const rawMatches = value.match(/\d+\s*[/\\-]\s*\d+[\p{L}]?|\d+[\p{L}]?/giu) || []
+  return uniqStrings(rawMatches.map((token) => normalizeHouseToken(token)).filter(Boolean))
+}
+
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const earthRadius = 6371
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2)
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return earthRadius * c
 }
 
 function buildGeocodeQueryVariants(query: string, city: string): string[] {
@@ -198,6 +232,10 @@ function buildCandidateScore(candidate: NominatimCandidate, query: string, mosco
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
 
   if (moscowFirst && !isWithinMoscowBounds(lat, lon)) return null
+  if (moscowFirst) {
+    const distToKremlin = haversineKm(lat, lon, KREMLIN_COORDS.lat, KREMLIN_COORDS.lon)
+    if (distToKremlin > MAX_MOSCOW_DISTANCE_KM) return null
+  }
 
   const displayName = candidate.display_name || ''
   const candidateText = [
@@ -213,13 +251,26 @@ function buildCandidateScore(candidate: NominatimCandidate, query: string, mosco
     .toLowerCase()
 
   const queryTokens = tokenize(query)
-  const tokenHits = queryTokens.reduce((acc, token) => (candidateText.includes(token) ? acc + 1 : acc), 0)
-  const hasHouseInQuery = /\b\d+[\p{L}]?\b/u.test(query)
+  const textualTokens = queryTokens.filter((token) => !isNumericLikeToken(token))
+  const numericTokens = queryTokens.filter((token) => isNumericLikeToken(token))
+  const textualHits = textualTokens.reduce((acc, token) => (candidateText.includes(token) ? acc + 1 : acc), 0)
+  const numericHits = numericTokens.reduce((acc, token) => (candidateText.includes(token) ? acc + 1 : acc), 0)
+  const tokenHits = textualHits + numericHits
+  const explicitAddressQuery = hasAddressHint(query)
+  if (explicitAddressQuery && textualTokens.length > 0 && textualHits === 0) return null
+
+  const queryHouseTokens = extractHouseTokens(query)
+  const hasHouseInQuery = queryHouseTokens.length > 0
   const candidateHouse = candidate.address?.house_number || ''
-  const houseMatched = hasHouseInQuery && candidateHouse ? query.toLowerCase().includes(candidateHouse.toLowerCase()) : false
+  const normalizedCandidateHouse = normalizeHouseToken(candidateHouse)
+  const houseMatched = hasHouseInQuery && normalizedCandidateHouse
+    ? queryHouseTokens.some((token) => normalizedCandidateHouse.includes(token) || token.includes(normalizedCandidateHouse))
+    : false
+  if (explicitAddressQuery && hasHouseInQuery && !houseMatched && textualHits === 0) return null
 
   let score = 0
-  score += tokenHits * 22
+  score += textualHits * 30
+  score += numericHits * 8
   score += Math.round((candidate.importance || 0) * 100)
   score += isWithinMoscowBounds(lat, lon) ? 30 : -200
   score += roadLikePenalty(candidate.class, candidate.type)
@@ -230,19 +281,50 @@ function buildCandidateScore(candidate: NominatimCandidate, query: string, mosco
   if (candidate.class === 'place') score -= 35
   if (candidate.type === 'neighbourhood') score -= 12
 
-  if (hasHouseInQuery) score += houseMatched ? 35 : -12
+  if (hasHouseInQuery) score += houseMatched ? 35 : -40
   if (tokenHits === 0) score -= 40
   if (tokenHits >= Math.max(2, Math.floor(queryTokens.length / 2))) score += 25
 
   return { lat, lon, score, displayName }
 }
 
-async function fetchNominatimCandidates(params: URLSearchParams): Promise<NominatimFetchResult> {
+async function waitForNominatimSlot(deadlineAt: number): Promise<boolean> {
+  let release: (() => void) | null = null
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const previous = nominatimQueue
+  nominatimQueue = previous.then(() => gate).catch(() => gate)
+
+  await previous
+  const now = Date.now()
+  const waitMs = Math.max(0, nominatimLastCallAt + NOMINATIM_MIN_INTERVAL_MS - now)
+  if (Date.now() + waitMs >= deadlineAt) {
+    release?.()
+    return false
+  }
+
+  if (waitMs > 0) await sleep(waitMs)
+  nominatimLastCallAt = Date.now()
+  release?.()
+  return true
+}
+
+async function fetchNominatimCandidates(params: URLSearchParams, deadlineAt: number): Promise<NominatimFetchResult> {
   let transientError = false
 
   for (let attempt = 0; attempt <= NOMINATIM_RETRY_ATTEMPTS; attempt += 1) {
+    const slotGranted = await waitForNominatimSlot(deadlineAt)
+    if (!slotGranted) return { candidates: [], transientError: true }
+
+    const remaining = deadlineAt - Date.now()
+    if (remaining <= 0) {
+      return { candidates: [], transientError: true }
+    }
+
+    const timeoutMs = Math.max(600, Math.min(NOMINATIM_TIMEOUT_MS, remaining))
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), NOMINATIM_TIMEOUT_MS)
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
       const response = await fetch(`${NOMINATIM_SEARCH_URL}?${params}`, {
@@ -255,10 +337,18 @@ async function fetchNominatimCandidates(params: URLSearchParams): Promise<Nomina
 
       if (!response.ok) {
         const retryable = response.status === 429 || response.status >= 500
+        if (response.status === 429) {
+          transientError = true
+          return { candidates: [], transientError }
+        }
         if (retryable) {
           transientError = true
           if (attempt < NOMINATIM_RETRY_ATTEMPTS) {
-            await sleep(NOMINATIM_RETRY_DELAY_MS * (attempt + 1))
+            const retryDelay = NOMINATIM_RETRY_DELAY_MS * (attempt + 1)
+            if (Date.now() + retryDelay >= deadlineAt) {
+              return { candidates: [], transientError }
+            }
+            await sleep(retryDelay)
             continue
           }
         }
@@ -271,7 +361,11 @@ async function fetchNominatimCandidates(params: URLSearchParams): Promise<Nomina
     } catch {
       transientError = true
       if (attempt < NOMINATIM_RETRY_ATTEMPTS) {
-        await sleep(NOMINATIM_RETRY_DELAY_MS * (attempt + 1))
+        const retryDelay = NOMINATIM_RETRY_DELAY_MS * (attempt + 1)
+        if (Date.now() + retryDelay >= deadlineAt) {
+          return { candidates: [], transientError }
+        }
+        await sleep(retryDelay)
         continue
       }
       return { candidates: [], transientError }
@@ -472,10 +566,11 @@ router.get('/geocode', async (req: Request, res: Response) => {
       return res.json({ success: true, data: cached.data })
     }
 
-    const candidateQueries = buildGeocodeQueryVariants(q, city).slice(0, 4)
+    const candidateQueries = buildGeocodeQueryVariants(q, city).slice(0, 2)
+    const deadlineAt = Date.now() + GEOCODE_ROUTE_MAX_MS
 
     const paramsQueue: Array<{ params: URLSearchParams; query: string }> = []
-    candidateQueries.forEach((candidate) => {
+    candidateQueries.forEach((candidate, index) => {
       if (moscowFirst) {
         paramsQueue.push({
           query: candidate,
@@ -491,16 +586,19 @@ router.get('/geocode', async (req: Request, res: Response) => {
         })
       }
 
-      paramsQueue.push({
-        query: candidate,
-        params: new URLSearchParams({
-          q: candidate,
-          format: 'json',
-          limit: '5',
-          addressdetails: '1',
-          countrycodes: 'ru',
-        }),
-      })
+      const shouldTryGlobalSearch = !moscowFirst || index === 0
+      if (shouldTryGlobalSearch) {
+        paramsQueue.push({
+          query: candidate,
+          params: new URLSearchParams({
+            q: candidate,
+            format: 'json',
+            limit: '5',
+            addressdetails: '1',
+            countrycodes: 'ru',
+          }),
+        })
+      }
     })
 
     let best: RankedCandidate | null = null
@@ -508,8 +606,14 @@ router.get('/geocode', async (req: Request, res: Response) => {
     let hadTransientError = false
 
     for (const attempt of paramsQueue) {
-      const fetched = await fetchNominatimCandidates(attempt.params)
+      if (Date.now() >= deadlineAt) {
+        hadTransientError = true
+        break
+      }
+
+      const fetched = await fetchNominatimCandidates(attempt.params, deadlineAt)
       if (fetched.transientError) hadTransientError = true
+      if (fetched.transientError && fetched.candidates.length === 0 && !best) break
 
       for (const candidate of fetched.candidates) {
         const rankedCandidate = buildCandidateScore(candidate, attempt.query, moscowFirst)

@@ -22,7 +22,6 @@ export default function PropertyPage() {
   const [error, setError] = useState<string | null>(null)
   const [galleryOpen, setGalleryOpen] = useState(false)
   const [galleryIndex, setGalleryIndex] = useState(0)
-  const [galleryType, setGalleryType] = useState<'presentable' | 'layouts'>('presentable')
 
   useEffect(() => {
     if (!id) return
@@ -31,19 +30,19 @@ export default function PropertyPage() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Ошибка'))
   }, [id])
 
-  const openGallery = (type: 'presentable' | 'layouts', index = 0) => {
-    setGalleryType(type)
+  const openGallery = (index = 0) => {
     setGalleryIndex(index)
     setGalleryOpen(true)
   }
 
-  const presentableImages = data ? getPresentableImages(data.property.images) : []
   const layoutImages = data ? getLayoutImages(data.property.images) : []
+  const presentableImages = data ? getPresentableImages(data.property.images) : []
+  // Unified gallery: floor plans first, then general photos
+  const allImages = [...layoutImages, ...presentableImages]
   // Floor plan is the primary hero image; fall back to best presentable photo
   const coverImage = data ? selectPropertyCoverImage(data.property.images) : undefined
   const coverIsLayout = coverImage ? isLayoutImage(coverImage) : false
   const shouldContainCoverImage = coverIsLayout || (presentableImages.length <= 1 && layoutImages.length === 0)
-  const shouldContainPresentableThumbs = presentableImages.length === 1
 
   useEffect(() => {
     if (!data) return
@@ -95,7 +94,7 @@ export default function PropertyPage() {
             <div className="grid gap-5 lg:grid-cols-2 md:gap-6">
               <Card className="overflow-hidden border-slate-200 bg-white">
                 <button
-                  onClick={() => openGallery(coverIsLayout ? 'layouts' : 'presentable', 0)}
+                  onClick={() => openGallery(0)}
                   className="relative aspect-[4/3] min-h-52 w-full cursor-pointer transition-opacity hover:opacity-90"
                 >
                   {coverImage ? (
@@ -113,6 +112,32 @@ export default function PropertyPage() {
                     </div>
                   </div>
                 </button>
+
+                {allImages.length > 1 && (
+                  <div
+                    className="flex gap-1.5 overflow-x-auto px-2 pb-2 pt-1.5"
+                    style={{ scrollbarWidth: 'none' }}
+                  >
+                    {allImages.slice(0, 7).map((src, idx) => (
+                      <button
+                        key={src}
+                        onClick={() => openGallery(idx)}
+                        className="relative h-[60px] w-[60px] flex-shrink-0 overflow-hidden rounded-md border-2 border-transparent transition-all hover:border-sky-400 focus:outline-none"
+                      >
+                        <img
+                          src={src}
+                          alt=""
+                          className={`h-full w-full ${isLayoutImage(src) ? 'object-contain bg-slate-50 p-0.5' : 'object-cover'}`}
+                        />
+                        {idx === 6 && allImages.length > 7 && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/55 text-xs font-bold text-white">
+                            +{allImages.length - 6}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </Card>
 
             <Card className="border-slate-200 bg-white p-4 sm:p-6">
@@ -225,24 +250,6 @@ export default function PropertyPage() {
             </Card>
           </div>
 
-          {/* Floor Plans Section */}
-          {layoutImages.length > 0 && (
-            <div className="mt-6">
-              <Heading size="h3" className="mb-4">Планировки</Heading>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                {layoutImages.map((src, idx) => (
-                  <button
-                    key={src}
-                    onClick={() => openGallery('layouts', idx)}
-                    className="overflow-hidden rounded-lg border border-slate-200 transition-shadow hover:shadow-md"
-                  >
-                    <img src={src} alt={`План ${idx + 1}`} className="aspect-square w-full object-contain bg-white p-2" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Additional Info Section */}
           {(data.property.building_section || data.property.building_state || data.complex?.developer) && (
             <Card className="mt-6 border-slate-200 bg-white p-4 sm:p-6">
@@ -301,24 +308,6 @@ export default function PropertyPage() {
             </Card>
           )}
 
-          {/* Additional Photos Section — below description */}
-          {presentableImages.length > 0 && (
-            <Card className="mt-6 border-slate-200 bg-white p-4 sm:p-6">
-              <Heading size="h3" className="mb-4">Фотографии</Heading>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
-                {presentableImages.map((src, idx) => (
-                  <button
-                    key={src}
-                    onClick={() => openGallery('presentable', idx)}
-                    className="aspect-square w-full overflow-hidden rounded-md transition-opacity hover:opacity-75"
-                  >
-                    <img src={src} alt="" className={`h-full w-full ${shouldContainPresentableThumbs ? 'object-contain bg-white p-1' : 'object-cover'}`} />
-                  </button>
-                ))}
-              </div>
-            </Card>
-          )}
-
           {/* Map Section */}
           {data.complex?.geo_lat && data.complex?.geo_lon && (
             <div className="mt-8">
@@ -334,7 +323,7 @@ export default function PropertyPage() {
 
           {/* Image Gallery Modal */}
           <ImageGallery
-            images={galleryType === 'presentable' ? presentableImages : layoutImages}
+            images={allImages}
             initialIndex={galleryIndex}
             open={galleryOpen}
             onClose={() => setGalleryOpen(false)}

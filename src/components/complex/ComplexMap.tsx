@@ -117,14 +117,21 @@ export default function ComplexMap({
     }
 
     let cancelled = false
+    const controller = new AbortController()
     if (!hasDirectCoords) setGeocoding(true)
 
     geocodeAddress(source, {
-      city: 'Moscow',
+      city: 'Москва',
       complexName: complexName || undefined,
+      signal: controller.signal,
+      maxQueries: 2,
     })
       .then((result) => {
         if (!cancelled) setGeocoded(result)
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        if (!cancelled) setGeocoded(null)
       })
       .finally(() => {
         if (!cancelled && !hasDirectCoords) setGeocoding(false)
@@ -132,6 +139,7 @@ export default function ComplexMap({
 
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [district, hasDirectCoords, title])
 

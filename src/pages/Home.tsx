@@ -86,50 +86,60 @@ export default function Home() {
     <SiteLayout>
       <JsonLd data={organizationLd} />
       {/* 1. Hero Section - Full Screen */}
-      <section className="relative h-[calc(100svh-72px)] min-h-[520px] w-full overflow-hidden bg-background md:h-[calc(100vh-80px)] md:min-h-[600px]">
+      <section className="relative h-[calc(100svh-72px)] min-h-[520px] w-full overflow-hidden bg-background md:h-[calc(100vh-80px)] md:min-h-[620px]">
         <div className="absolute inset-0">
-          <img src="/hero-bg.jpg" alt="Luxury Real Estate" className="h-full w-full object-cover opacity-60 max-w-full max-h-full scale-110" style={{ objectPosition: 'center 20%' }} />
-          <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/40 to-transparent" />
+          <img
+            src="/hero-bg.jpg"
+            alt="Luxury Real Estate"
+            className="h-full w-full max-h-full max-w-full object-cover opacity-60 scale-105"
+            style={{ objectPosition: '72% 20%' }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-background/95 via-background/55 to-background/15 lg:via-background/35" />
         </div>
-        
-        <div className="relative mx-auto flex h-full w-full max-w-[1400px] flex-col justify-center px-4 pb-12 pt-8 sm:pt-10 md:pb-20">
-          <Heading size="h1" className="w-full text-left text-4xl font-bold leading-[1.05] tracking-tight text-white sm:text-5xl md:text-7xl lg:text-9xl xl:text-[10rem]">
-            <span className="block">Эксперты</span>
-            <span className="block text-gray-400">по недвижимости</span>
-          </Heading>
 
-          <Text className="mt-4 max-w-lg text-base text-gray-400 sm:mt-6 sm:text-lg">
-            Ваша безопасная сделка — наша репутация
-          </Text>
+        <div className="relative mx-auto flex h-full w-full max-w-[1400px] flex-col justify-center px-4 pb-12 pt-8 sm:px-6 sm:pt-10 md:px-8 md:pb-20">
+          <div className="max-w-[860px]">
+            <Heading
+              size="h1"
+              className="text-left text-[clamp(2.7rem,7.8vw,7.4rem)] font-bold leading-[0.9] tracking-[-0.02em] text-white"
+            >
+              <span className="block">Эксперты по</span>
+              <span className="block text-slate-300">недвижимости</span>
+            </Heading>
 
-          <div className="mt-4 flex">
-            <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 backdrop-blur sm:px-4 sm:text-sm">
-              <span className="h-2 w-2 rounded-full bg-accent" />
-              13 лет на рынке недвижимости
+            <Text className="mt-4 max-w-lg text-base text-gray-400 sm:mt-6 sm:text-lg">
+              Ваша безопасная сделка — наша репутация
+            </Text>
+
+            <div className="mt-4 flex">
+              <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 backdrop-blur sm:px-4 sm:text-sm">
+                <span className="h-2 w-2 rounded-full bg-accent" />
+                13 лет на рынке недвижимости
+              </div>
             </div>
-          </div>
 
-          <div className="mt-8 flex flex-col gap-3 sm:mt-10 sm:flex-row sm:gap-4">
-            <Button
-              variant="default"
-              className="h-12 w-full px-6 text-base sm:h-14 sm:w-auto sm:px-8 sm:text-lg"
-              onClick={() => {
-                trackEvent('click_consultation', { page: 'home', block: 'hero' })
-                openLeadModal('consultation', { page: 'home', block: 'hero' })
-              }}
-            >
-              Получить консультацию
-            </Button>
-            <Button
-              variant="outline"
-              className="h-12 w-full border-white/20 px-6 text-base text-white hover:bg-white/10 hover:text-white sm:h-14 sm:w-auto sm:px-8 sm:text-lg"
-              onClick={() => {
-                trackEvent('click_catalog', { page: 'home', block: 'hero' })
-                navigate('/catalog')
-              }}
-            >
-              Смотреть объекты
-            </Button>
+            <div className="mt-8 flex flex-col gap-3 sm:mt-10 sm:flex-row sm:gap-4">
+              <Button
+                variant="default"
+                className="h-12 w-full px-6 text-base sm:h-14 sm:w-auto sm:px-8 sm:text-lg"
+                onClick={() => {
+                  trackEvent('click_consultation', { page: 'home', block: 'hero' })
+                  openLeadModal('consultation', { page: 'home', block: 'hero' })
+                }}
+              >
+                Получить консультацию
+              </Button>
+              <Button
+                variant="outline"
+                className="h-12 w-full border-white/20 px-6 text-base text-white hover:bg-white/10 hover:text-white sm:h-14 sm:w-auto sm:px-8 sm:text-lg"
+                onClick={() => {
+                  trackEvent('click_catalog', { page: 'home', block: 'hero' })
+                  navigate('/catalog')
+                }}
+              >
+                Смотреть объекты
+              </Button>
+            </div>
           </div>
         </div>
       </section>
@@ -273,10 +283,11 @@ export default function Home() {
       </section>
 
       {/* 5. Почему выбирают нас */}
-      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#FFFFFF,_#F6F4EF)] py-16 text-background md:py-24">
-        <div className="pointer-events-none absolute -top-16 left-0 h-64 w-64 rounded-full bg-[#E7EEF6] blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 right-0 h-56 w-56 rounded-full bg-[#EFE7D9] blur-3xl" />
-        <div className="relative mx-auto max-w-7xl px-4">
+      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#F8F7F3_0%,_#F3F1EB_100%)] py-16 text-background md:py-24">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,_rgba(15,29,40,0.56)_0%,_rgba(15,29,40,0.22)_46%,_rgba(248,247,243,0)_100%)]" />
+        <div className="pointer-events-none absolute left-[-140px] top-24 h-80 w-80 rounded-full bg-[#DDE6F2]/35" />
+        <div className="pointer-events-none absolute right-[-120px] bottom-10 h-72 w-72 rounded-full bg-[#E7DDD0]/30" />
+        <div className="relative z-10 mx-auto max-w-7xl px-4">
           <Heading size="h2">Почему выбирают нас</Heading>
           <Text className="mt-2 mb-12 text-gray-500">Мы делаем всё, чтобы каждая сделка прошла безупречно</Text>
 
@@ -302,10 +313,10 @@ export default function Home() {
       </section>
 
       {/* 6. Стоимость услуг */}
-      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#FFFFFF,_#F6F4EF)] py-16 text-background md:py-24">
-        <div className="pointer-events-none absolute -top-20 right-0 h-64 w-64 rounded-full bg-[#E7EEF6] blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 left-0 h-56 w-56 rounded-full bg-[#EFE7D9] blur-3xl" />
-        <div className="relative mx-auto max-w-7xl px-4">
+      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#F8F7F3_0%,_#F3F1EB_100%)] py-16 text-background md:py-24">
+        <div className="pointer-events-none absolute right-[-140px] top-12 h-80 w-80 rounded-full bg-[#DDE6F2]/28" />
+        <div className="pointer-events-none absolute left-[-120px] bottom-12 h-72 w-72 rounded-full bg-[#E7DDD0]/24" />
+        <div className="relative z-10 mx-auto max-w-7xl px-4">
           <Heading size="h2" className="text-center">Стоимость услуг</Heading>
 
           {/* Главный акцент — бесплатно */}
@@ -368,16 +379,20 @@ export default function Home() {
       <section className="relative w-full overflow-hidden py-16 md:py-32">
         {/* Background Image */}
         <div className="absolute inset-0">
-          <img 
-            src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?ixlib=rb-4.0.3&auto=format&fit=crop&w=1974&q=80" 
-            alt="Mission Background" 
+          <img
+            src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?ixlib=rb-4.0.3&auto=format&fit=crop&w=1974&q=80"
+            alt="Mission Background"
             className="h-full w-full object-cover"
           />
           {/* Soft white gradient overlay to blend with card */}
-          <div className="absolute inset-0 bg-white/20" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,_rgba(248,247,243,0.30)_0%,_rgba(248,247,243,0.22)_52%,_rgba(248,247,243,0.36)_100%)]" />
         </div>
+        {/* Gradient fade from dark Roadmap at top */}
+        <div className="pointer-events-none absolute top-0 inset-x-0 h-20 bg-[linear-gradient(180deg,_rgba(15,29,40,0.72)_0%,_rgba(15,29,40,0.24)_55%,_rgba(15,29,40,0)_100%)]" />
+        {/* Gradient fade to light Team at bottom */}
+        <div className="pointer-events-none absolute bottom-0 inset-x-0 h-20 bg-[linear-gradient(180deg,_rgba(247,247,247,0)_0%,_rgba(247,247,247,0.62)_100%)]" />
 
-        <div className="relative mx-auto max-w-5xl px-4">
+        <div className="relative z-10 mx-auto max-w-5xl px-4">
           <div className="rounded-3xl border border-white/50 bg-white/70 p-6 text-center shadow-sm backdrop-blur-md sm:p-8 md:p-16">
             <Heading size="h6" className="mb-6 text-sm font-bold uppercase tracking-[0.2em] text-gray-500">Миссия</Heading>
             
@@ -398,10 +413,10 @@ export default function Home() {
       </section>
 
       {/* 7. Team */}
-      <section id="team" className="relative overflow-hidden bg-[linear-gradient(180deg,_#F7F7F7,_#EFEDE8)] py-16 text-[#0B1115] md:py-24">
-        <div className="pointer-events-none absolute -left-16 -top-16 h-72 w-72 rounded-full bg-[#DDE6F4] blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 right-0 h-80 w-80 rounded-full bg-[#E6DCCB] blur-3xl" />
-        <div className="relative mx-auto max-w-7xl px-4">
+      <section id="team" className="relative overflow-hidden bg-[linear-gradient(180deg,_#F7F7F7_0%,_#EEEAE0_64%,_#172530_100%)] py-16 text-[#0B1115] md:py-24">
+        <div className="pointer-events-none absolute left-[-120px] top-10 h-72 w-72 rounded-full bg-[#DDE6F2]/22" />
+        <div className="pointer-events-none absolute right-[-120px] bottom-10 h-72 w-72 rounded-full bg-[#E6DCCB]/18" />
+        <div className="relative z-10 mx-auto max-w-7xl px-4">
           <div className="mb-12">
             <Heading size="h2">Команда</Heading>
             <Text className="mt-3 max-w-2xl text-sm text-slate-600">
@@ -441,8 +456,10 @@ export default function Home() {
         </div>
       </section>
       {/* 9. Отзывы */}
-      <section className="bg-background py-16 md:py-24">
-        <div className="mx-auto max-w-7xl px-4">
+      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#0F1D28_0%,_#0B1821_100%)] py-16 md:py-24">
+        <div className="pointer-events-none absolute right-[-140px] top-16 h-80 w-80 rounded-full bg-[#1D3446]/28" />
+        <div className="pointer-events-none absolute left-[-120px] bottom-14 h-72 w-72 rounded-full bg-[#243C52]/18" />
+        <div className="relative z-10 mx-auto max-w-7xl px-4">
           <Heading size="h2" className="text-white">Отзывы клиентов</Heading>
           <Text className="mt-2 mb-12 text-gray-400">Реальные истории людей, которым мы помогли</Text>
 
@@ -519,10 +536,12 @@ export default function Home() {
         </div>
       </section>
       {/* 10. Стать партнёром */}
-      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#FFFFFF,_#F6F4EF)] py-16 text-background md:py-24">
-        <div className="pointer-events-none absolute -top-16 right-0 h-64 w-64 rounded-full bg-[#E7EEF6] blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 left-0 h-56 w-56 rounded-full bg-[#EFE7D9] blur-3xl" />
-        <div className="relative mx-auto max-w-7xl px-4">
+      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#F8F7F3_0%,_#F3F1EB_100%)] py-16 text-background md:py-24">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,_rgba(15,29,40,0.58)_0%,_rgba(15,29,40,0.24)_44%,_rgba(248,247,243,0)_100%)]" />
+        <div className="pointer-events-none absolute right-[-140px] top-12 h-72 w-72 rounded-full bg-[#DDE6F2]/26" />
+        <div className="pointer-events-none absolute left-[-120px] bottom-12 h-72 w-72 rounded-full bg-[#E7DDD0]/22" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,_rgba(243,241,235,0)_0%,_rgba(11,24,33,0.42)_78%,_#0B1821_100%)]" />
+        <div className="relative z-10 mx-auto max-w-7xl px-4">
           <div className="grid items-center gap-12 lg:grid-cols-2">
             <div>
               <Heading size="h2">Стать партнёром</Heading>
