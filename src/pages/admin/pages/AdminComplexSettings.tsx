@@ -193,14 +193,38 @@ export default function AdminComplexSettingsPage() {
     return Array.from(map.values())
   }, [customFeaturePresets, hiddenBuiltinKeys])
 
+  const featurePresetKeySet = useMemo(() => new Set(featurePresetOptions.map((preset) => preset.key)), [featurePresetOptions])
+
+  const normalizeFeatureTicker = useCallback((items: ComplexLandingConfig['feature_ticker']) => {
+    const byKey = new Map(featurePresetOptions.map((preset) => [preset.key, preset]))
+    const existingByKey = new Map<string, ComplexLandingConfig['feature_ticker'][number]>()
+    for (const item of items || []) {
+      const key = inferFeaturePresetKey(item) || item.preset_key
+      if (!key || !byKey.has(key) || existingByKey.has(key)) continue
+      existingByKey.set(key, item)
+    }
+
+    return featurePresetOptions
+      .filter((preset) => existingByKey.has(preset.key))
+      .map((preset) => {
+        const existing = existingByKey.get(preset.key)
+        return createLandingFeature({
+          id: existing?.id,
+          title: preset.title,
+          image: preset.image,
+          preset_key: preset.key,
+        })
+      })
+  }, [featurePresetOptions])
+
   const selectedFeaturePresetKeys = useMemo(() => {
     const keys = new Set<string>()
     for (const feature of draftLanding?.feature_ticker || []) {
       const key = inferFeaturePresetKey(feature) || feature.preset_key
-      if (key) keys.add(key)
+      if (key && featurePresetKeySet.has(key)) keys.add(key)
     }
     return keys
-  }, [draftLanding])
+  }, [draftLanding, featurePresetKeySet])
 
   useEffect(() => {
     if (!draftLanding?.plans.items.length) {
@@ -494,38 +518,31 @@ export default function AdminComplexSettingsPage() {
 
   const toggleFeaturePreset = (presetKey: string) => {
     patchLanding((cfg) => {
-      const preset = featurePresetOptions.find((item) => item.key === presetKey)
-      if (!preset) return cfg
-
-      const resolveKey = (item: { preset_key?: string; title: string; image?: string }) => inferFeaturePresetKey(item) || item.preset_key
-      const exists = cfg.feature_ticker.some((item) => resolveKey(item) === presetKey)
-      if (exists) {
-        return {
-          ...cfg,
-          feature_ticker: cfg.feature_ticker.filter((item) => resolveKey(item) !== presetKey),
-        }
+      if (!featurePresetKeySet.has(presetKey)) return cfg
+      const normalized = normalizeFeatureTicker(cfg.feature_ticker)
+      const selectedKeys = new Set<string>()
+      const existingByKey = new Map<string, ComplexLandingConfig['feature_ticker'][number]>()
+      for (const item of normalized) {
+        const key = inferFeaturePresetKey(item) || item.preset_key
+        if (!key) continue
+        selectedKeys.add(key)
+        existingByKey.set(key, item)
       }
 
-      const next = [
-        ...cfg.feature_ticker,
-        createLandingFeature({
-          id: `feature_${preset.key}_${Date.now()}`,
-          title: preset.title,
-          image: preset.image,
-          preset_key: preset.key,
-        }),
-      ]
-      const orderedKeys = featurePresetOptions.map((item) => item.key)
-      next.sort((a, b) => {
-        const aKey = resolveKey(a)
-        const bKey = resolveKey(b)
-        const aIndex = aKey ? orderedKeys.indexOf(aKey) : -1
-        const bIndex = bKey ? orderedKeys.indexOf(bKey) : -1
-        const aRank = aIndex >= 0 ? aIndex : Number.MAX_SAFE_INTEGER
-        const bRank = bIndex >= 0 ? bIndex : Number.MAX_SAFE_INTEGER
-        if (aRank === bRank) return a.title.localeCompare(b.title, 'ru')
-        return aRank - bRank
-      })
+      if (selectedKeys.has(presetKey)) selectedKeys.delete(presetKey)
+      else selectedKeys.add(presetKey)
+
+      const next = featurePresetOptions
+        .filter((preset) => selectedKeys.has(preset.key))
+        .map((preset) => {
+          const existing = existingByKey.get(preset.key)
+          return createLandingFeature({
+            id: existing?.id,
+            title: preset.title,
+            image: preset.image,
+            preset_key: preset.key,
+          })
+        })
       return { ...cfg, feature_ticker: next }
     })
   }
@@ -590,6 +607,11 @@ export default function AdminComplexSettingsPage() {
     const point = normalizeGeoPoint(draftComplex.geo_lat, draftComplex.geo_lon)
     const nextHeroImage = (draftLanding.hero_image || '').trim()
     const heroChanged = nextHeroImage !== loadedHeroImage
+    const normalizedFeatureTicker = normalizeFeatureTicker(draftLanding.feature_ticker)
+    const landingForSave: ComplexLandingConfig = {
+      ...draftLanding,
+      feature_ticker: normalizedFeatureTicker,
+    }
     const imagesForSave =
       heroChanged && nextHeroImage
         ? promoteImageToFront(draftComplex.images, nextHeroImage)
@@ -611,9 +633,10 @@ export default function AdminComplexSettingsPage() {
         finish_type: draftComplex.finish_type,
         geo_lat: point?.lat,
         geo_lon: point?.lon,
-        landing: draftLanding,
+        landing: landingForSave,
       }, headers)
       setDraftComplex((prev) => (prev ? { ...prev, images: imagesForSave } : prev))
+      setDraftLanding((prev) => (prev ? { ...prev, feature_ticker: normalizedFeatureTicker } : prev))
       setLoadedHeroImage(nextHeroImage)
       alert('Настройки ЖК сохранены')
       loadComplexes()
@@ -1079,7 +1102,7 @@ export default function AdminComplexSettingsPage() {
 
               <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs text-white/60">Latitude (lat)</label>
+                  <label className="mb-1 block text-xs text-white/60">Широта (lat)</label>
                   <Input
                     type="number"
                     step="0.000001"
@@ -1099,7 +1122,7 @@ export default function AdminComplexSettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-white/60">Longitude (lon)</label>
+                  <label className="mb-1 block text-xs text-white/60">Долгота (lon)</label>
                   <Input
                     type="number"
                     step="0.000001"

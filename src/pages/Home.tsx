@@ -91,8 +91,7 @@ export default function Home() {
           <img
             src="/hero-bg.jpg"
             alt="Luxury Real Estate"
-            className="h-full w-full max-h-full max-w-full object-cover opacity-60 scale-105"
-            style={{ objectPosition: '72% 20%' }}
+            className="h-full w-full max-h-full max-w-full object-cover object-[70%_8%] opacity-60 sm:object-[72%_10%] lg:object-[74%_12%]"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-background/95 via-background/55 to-background/15 lg:via-background/35" />
         </div>
