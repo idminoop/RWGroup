@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { z } from 'zod'
 import type { CatalogTab, Category } from '../../shared/types.js'
-import { withDbRead, withPublishedDb } from '../lib/storage.js'
+import { withDbRead, withPublishedDb, readDb } from '../lib/storage.js'
 import { resolveCollectionItems } from '../lib/collections.js'
 
 const router = Router()
@@ -24,6 +24,7 @@ const MOSCOW_BOUNDS = {
 }
 
 const MOSCOW_VIEWBOX = `${MOSCOW_BOUNDS.minLon},${MOSCOW_BOUNDS.maxLat},${MOSCOW_BOUNDS.maxLon},${MOSCOW_BOUNDS.minLat}`
+const YANDEX_GEOCODER_URL = 'https://geocode-maps.yandex.ru/1.x/'
 const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search'
 const NOMINATIM_TIMEOUT_MS = 4200
 const NOMINATIM_RETRY_ATTEMPTS = 0
@@ -310,6 +311,43 @@ async function waitForNominatimSlot(deadlineAt: number): Promise<boolean> {
   return true
 }
 
+async function fetchYandexGeocode(query: string, apiKey: string): Promise<{ lat: number; lon: number } | null> {
+  const params = new URLSearchParams({
+    apikey: apiKey,
+    geocode: query,
+    format: 'json',
+    results: '1',
+    lang: 'ru_RU',
+  })
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 5000)
+    const response = await fetch(`${YANDEX_GEOCODER_URL}?${params}`, {
+      headers: { 'User-Agent': 'RWGroupWebsite/1.0' },
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer))
+    if (!response.ok) return null
+    const json = await response.json() as {
+      response?: {
+        GeoObjectCollection?: {
+          featureMember?: Array<{ GeoObject?: { Point?: { pos?: string } } }>
+        }
+      }
+    }
+    const pos = json?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject?.Point?.pos
+    if (!pos) return null
+    const [lonStr, latStr] = pos.trim().split(' ')
+    const lon = parseFloat(lonStr)
+    const lat = parseFloat(latStr)
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+    if (lat < MOSCOW_BOUNDS.minLat || lat > MOSCOW_BOUNDS.maxLat) return null
+    if (lon < MOSCOW_BOUNDS.minLon || lon > MOSCOW_BOUNDS.maxLon) return null
+    return { lat, lon }
+  } catch {
+    return null
+  }
+}
+
 async function fetchNominatimCandidates(params: URLSearchParams, deadlineAt: number): Promise<NominatimFetchResult> {
   let transientError = false
 
@@ -567,6 +605,25 @@ router.get('/geocode', async (req: Request, res: Response) => {
     const moscowByCity = /(?:\u043c\u043e\u0441\u043a|moscow)/i.test(city)
     const moscowFirst = moscowByFlag || moscowByCity
     const cacheKey = `${q}|${city}|${moscowFirst ? '1' : '0'}`
+
+    // Try Yandex Geocoder first (reliable on production servers)
+    try {
+      const db = readDb()
+      const yandexKey = (db.home?.maps?.yandex_maps_api_key || '').trim()
+      if (yandexKey) {
+        const cityPrefix = city && !q.toLowerCase().includes(city.toLowerCase()) ? `${q}, ${city}` : q
+        const yandexResult = await fetchYandexGeocode(cityPrefix, yandexKey)
+        if (yandexResult) {
+          geocodeResultCache.set(cacheKey, {
+            data: { lat: yandexResult.lat, lon: yandexResult.lon, score: 200 },
+            expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
+          })
+          return res.json({ success: true, data: { lat: yandexResult.lat, lon: yandexResult.lon, score: 200 } })
+        }
+      }
+    } catch {
+      // fall through to Nominatim
+    }
     const now = Date.now()
     const cached = geocodeResultCache.get(cacheKey)
     if (cached && cached.expiresAt > now) {
