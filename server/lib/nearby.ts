@@ -25,6 +25,10 @@ type RoutedPoi = PoiWithMeta & {
   interestScore: number
 }
 
+type GenerateNearbyOptions = {
+  resolveImages?: boolean
+}
+
 type OverpassElement = {
   tags?: Record<string, string>
   lat?: number
@@ -50,7 +54,8 @@ const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
 const OSRM_BASE_URL = 'https://router.project-osrm.org'
 
 const USER_AGENT = 'RWGroupWebsite/1.0 (+nearby-generator)'
-const OVERPASS_TIMEOUT_MS = 12000
+const OVERPASS_TIMEOUT_MS = 6500
+const OVERPASS_CATEGORY_DEADLINE_MS = 12000
 const OVERPASS_CACHE_TTL_MS = 8 * 60 * 1000
 const OVERPASS_FAILURE_COOLDOWN_MS = 70 * 1000
 const OVERPASS_RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504])
@@ -399,7 +404,7 @@ function endpointOrder(key: string): string[] {
   return [...OVERPASS_ENDPOINTS.slice(offset), ...OVERPASS_ENDPOINTS.slice(0, offset)]
 }
 
-async function requestOverpass(endpoint: string, query: string): Promise<Array<{ name: string; lat: number; lon: number; tags?: Record<string, string> }>> {
+async function requestOverpass(endpoint: string, query: string, timeoutMs = OVERPASS_TIMEOUT_MS): Promise<Array<{ name: string; lat: number; lon: number; tags?: Record<string, string> }>> {
   const response = await withTimeout(
     endpoint,
     {
@@ -410,7 +415,7 @@ async function requestOverpass(endpoint: string, query: string): Promise<Array<{
       },
       body: `data=${encodeURIComponent(query)}`,
     },
-    OVERPASS_TIMEOUT_MS
+    timeoutMs
   )
 
   if (!response.ok) {
@@ -449,16 +454,21 @@ async function fetchCategoryPois(origin: Coords, category: CategoryDef, radiusMe
   const request = (async () => {
     const cooldownUntil = overpassFailedUntil.get(key)
     if (typeof cooldownUntil === 'number' && cooldownUntil > Date.now()) return []
+    const deadlineAt = Date.now() + OVERPASS_CATEGORY_DEADLINE_MS
 
     const radii = [radiusMeters]
     if (radiusMeters > 1400) radii.push(Math.max(900, Math.round(radiusMeters * 0.65)))
 
     for (const radius of radii) {
+      if (Date.now() >= deadlineAt) break
       const query = overpassQuery(category.query, origin, radius)
       const endpoints = endpointOrder(key)
       for (const endpoint of endpoints) {
+        const timeLeft = deadlineAt - Date.now()
+        if (timeLeft <= 1200) break
         try {
-          const results = await requestOverpass(endpoint, query)
+          const timeoutMs = Math.min(OVERPASS_TIMEOUT_MS, Math.max(1800, timeLeft))
+          const results = await requestOverpass(endpoint, query, timeoutMs)
           const normalized = filterPoisByDistance(origin, results, radius)
           overpassCache.set(key, { results: normalized, expiresAt: Date.now() + OVERPASS_CACHE_TTL_MS })
           overpassFailedUntil.delete(key)
@@ -470,6 +480,7 @@ async function fetchCategoryPois(origin: Coords, category: CategoryDef, radiusMe
             overpassFailedUntil.set(key, Date.now() + OVERPASS_FAILURE_COOLDOWN_MS)
             return []
           }
+          if (Date.now() >= deadlineAt) break
           if (status === 429) await sleep(OVERPASS_RETRY_DELAY_MS * 2)
           else await sleep(OVERPASS_RETRY_DELAY_MS)
         }
@@ -592,7 +603,7 @@ async function osrmTable(profile: 'walking' | 'driving', origin: Coords, destina
   const response = await withTimeout(
     `${OSRM_BASE_URL}/table/v1/${profile}/${coordinates}?${params}`,
     {},
-    10000
+    6000
   )
   if (!response.ok) throw new Error(`OSRM ${profile} ${response.status}`)
   const json = await response.json() as { code?: string; durations?: Array<Array<number | null>> }
@@ -1298,6 +1309,17 @@ function getCategoryFallbackImages(category?: string): string[] {
   return found?.fallbackImages || []
 }
 
+function fallbackImageDataForPoi(poi: PoiWithMeta): { imageUrl: string; variants: string[]; fallback: boolean } {
+  const fallback = poi.category.fallbackImages || []
+  const fallbackImage = fallback[Math.abs(placeId(poi.name, poi.lat, poi.lon).length) % fallback.length]
+  const fallbackVariants = [fallbackImage, ...fallback].filter(Boolean)
+  return {
+    imageUrl: fallbackImage || '',
+    variants: Array.from(new Set(fallbackVariants)),
+    fallback: true,
+  }
+}
+
 async function resolvePlaceImages(poi: PoiWithMeta, district: string): Promise<{ imageUrl: string; variants: string[]; fallback: boolean }> {
   const tags = poi.tags || {}
   const variants: string[] = []
@@ -1396,7 +1418,8 @@ async function collectPoiCandidates(origin: Coords): Promise<PoiWithMeta[]> {
 
 export async function generateNearbyPlacesForComplex(
   complex: Complex,
-  originOverride?: Coords
+  originOverride?: Coords,
+  options: GenerateNearbyOptions = {}
 ): Promise<{ origin: Coords | null; items: ComplexNearbyPlace[]; reason?: string }> {
   const origin = normalizeCoords(originOverride) || await resolveComplexCoords(complex)
   if (!origin) {
@@ -1427,12 +1450,32 @@ export async function generateNearbyPlacesForComplex(
   const withinTravel = routedCandidates.filter((item) => item.walkMinutes <= MAX_MINUTES || item.driveMinutes <= MAX_MINUTES)
   const pool = withinTravel.length >= MIN_ROUTED_CANDIDATES ? withinTravel : routedCandidates
   const picked = pickInterestingCandidates(pool, MAX_ITEMS)
+  const resolveImages = options.resolveImages !== false
+
+  if (!resolveImages) {
+    const items = picked.map((item) => {
+      const image = fallbackImageDataForPoi(item)
+      return {
+        id: placeId(item.name, item.lat, item.lon),
+        name: item.name || item.category.label,
+        category: item.category.label,
+        lat: item.lat,
+        lon: item.lon,
+        walk_minutes: item.walkMinutes,
+        drive_minutes: item.driveMinutes,
+        image_url: image.imageUrl,
+        image_variants: image.variants,
+        image_fallback: true,
+      } satisfies ComplexNearbyPlace
+    })
+    return { origin, items }
+  }
 
   const items = await mapWithConcurrency(
     picked,
     IMAGE_RESOLVE_CONCURRENCY,
     async (item) => {
-      const image = await resolvePlaceImages(item, complex.district || '')
+      const image = await resolvePlaceImages(item, complex.district || '').catch(() => fallbackImageDataForPoi(item))
       return {
         id: placeId(item.name, item.lat, item.lon),
         name: item.name || item.category.label,

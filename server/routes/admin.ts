@@ -1469,7 +1469,8 @@ router.post('/catalog/complex/:id/nearby/generate', requireAdminPermission('cata
       complex,
       hasOriginLat && hasOriginLon
         ? { lat: payloadParsed.data.origin_lat as number, lon: payloadParsed.data.origin_lon as number }
-        : undefined
+        : undefined,
+      { resolveImages: false }
     )
     if (!generated.origin) {
       res.status(422).json({ success: false, error: generated.reason || 'Unable to resolve coordinates' })
