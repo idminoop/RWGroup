@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Tooltip } from 'react-leaflet'
-import type { LatLngExpression } from 'leaflet'
+import { Map as YandexMap, Placemark, YMaps } from '@pbe/react-yandex-maps'
 import { Heading, Text } from '@/components/ui/Typography'
 import { fetchPOIs, geocodeAddress, type GeoCoords, type PoiResult } from '@/lib/overpass'
-import 'leaflet/dist/leaflet.css'
+import { YANDEX_MAPS_QUERY } from '@/lib/yandexMaps'
 
 type PoiCategory = {
   key: string
@@ -11,7 +10,9 @@ type PoiCategory = {
   color: string
 }
 
-const DEFAULT_CENTER: LatLngExpression = [55.751244, 37.618423]
+type YMapCoords = [number, number]
+
+const DEFAULT_CENTER: YMapCoords = [55.751244, 37.618423]
 const KREMLIN_COORDS = { lat: 55.752023, lon: 37.617499 }
 const MOSCOW_BOUNDS = {
   minLat: 55.0,
@@ -35,9 +36,6 @@ const POI_CATEGORIES: PoiCategory[] = [
   { key: 'market', label: 'Супермаркеты', color: '#F97316' },
   { key: 'fun', label: 'Развлечения', color: '#4ADE80' },
 ]
-
-const TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
 
 function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const toRad = (deg: number) => (deg * Math.PI) / 180
@@ -147,7 +145,7 @@ export default function ComplexMap({
   const resolvedLon = directCoords?.lon ?? geocoded?.lon
   const hasCoords = typeof resolvedLat === 'number' && typeof resolvedLon === 'number'
 
-  const center = useMemo<LatLngExpression>(() => {
+  const center = useMemo<YMapCoords>(() => {
     if (hasCoords) return [resolvedLat!, resolvedLon!]
     return DEFAULT_CENTER
   }, [resolvedLat, resolvedLon, hasCoords])
@@ -173,8 +171,11 @@ export default function ComplexMap({
   }, [hasCoords, poiData, resolvedLat, resolvedLon])
 
   useEffect(() => {
-    ensureCategoryLoaded('metro').catch(() => {})
-  }, [ensureCategoryLoaded])
+    if (!hasCoords) return
+    enabled.forEach((key) => {
+      ensureCategoryLoaded(key).catch(() => {})
+    })
+  }, [enabled, ensureCategoryLoaded, hasCoords])
 
   useEffect(() => {
     if (!hasCoords) {
@@ -218,7 +219,7 @@ export default function ComplexMap({
   }, [ensureCategoryLoaded])
 
   const visiblePois = useMemo(() => {
-    const result: Array<{ id: string; name: string; position: LatLngExpression; color: string }> = []
+    const result: Array<{ id: string; name: string; position: YMapCoords; color: string }> = []
     for (const cat of POI_CATEGORIES) {
       if (!enabled.has(cat.key)) continue
       const items = poiData[cat.key]
@@ -265,52 +266,51 @@ export default function ComplexMap({
         <Text className="mb-3 text-sm text-rose-300/80">Не удалось определить координаты объекта.</Text>
       )}
 
-      <div className="relative overflow-hidden rounded-2xl border border-[#22343d]/80">
-        <MapContainer
-          key={`${String(center)}`}
-          center={center}
-          zoom={12}
-          scrollWheelZoom={false}
-          className="h-[300px] w-full sm:h-[360px] md:h-[560px]"
-        >
-          <TileLayer attribution={TILE_ATTR} url={TILE_URL} />
-          {hasCoords && (
-            <CircleMarker
-              center={center}
-              radius={11}
-              pathOptions={{ color: '#C2A87A', fillColor: '#C2A87A', fillOpacity: 1, weight: 3 }}
+      <div className="overflow-hidden rounded-2xl border border-[#22343d]/80">
+        <div className="h-[300px] w-full sm:h-[360px] md:h-[560px]">
+          <YMaps query={YANDEX_MAPS_QUERY}>
+            <YandexMap
+              key={`${center[0]}-${center[1]}-${hasCoords ? 'coords' : 'default'}`}
+              state={{ center, zoom: hasCoords ? 12 : 11, controls: ['zoomControl'] }}
+              width="100%"
+              height="100%"
+              modules={['geoObject.addon.hint', 'control.ZoomControl']}
+              options={{
+                suppressMapOpenBlock: true,
+                yandexMapDisablePoiInteractivity: true,
+              }}
             >
-              <Tooltip direction="top" offset={[0, -8]} opacity={1} permanent className="map-tooltip-main">
-                {title}
-              </Tooltip>
-            </CircleMarker>
-          )}
-          {visiblePois.map((poi) => (
-            <CircleMarker
-              key={poi.id}
-              center={poi.position}
-              radius={6}
-              pathOptions={{ color: poi.color, fillColor: poi.color, fillOpacity: 0.9, weight: 2 }}
-            >
-              <Tooltip direction="top" offset={[0, -6]} opacity={0.95} className="map-tooltip-poi">
-                {poi.name}
-              </Tooltip>
-            </CircleMarker>
-          ))}
-        </MapContainer>
-
-        {onCtaClick && (
-          <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-[500] sm:bottom-4 sm:left-auto sm:right-4">
-            <button
-              type="button"
-              onClick={onCtaClick}
-              className="pointer-events-auto w-full rounded-md bg-[#C2A87A] px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-[#041019] transition hover:brightness-110 sm:w-auto sm:px-6 sm:py-3 sm:text-sm"
-            >
-              {ctaLabel}
-            </button>
-          </div>
-        )}
+              {hasCoords && (
+                <Placemark
+                  geometry={center}
+                  properties={{ hintContent: title }}
+                  options={{ preset: 'islands#yellowCircleDotIcon' }}
+                />
+              )}
+              {visiblePois.map((poi) => (
+                <Placemark
+                  key={poi.id}
+                  geometry={poi.position}
+                  properties={{ hintContent: poi.name }}
+                  options={{ preset: 'islands#circleDotIcon', iconColor: poi.color }}
+                />
+              ))}
+            </YandexMap>
+          </YMaps>
+        </div>
       </div>
+
+      {onCtaClick && (
+        <div className="mt-3 flex sm:justify-end">
+          <button
+            type="button"
+            onClick={onCtaClick}
+            className="w-full rounded-md bg-[#C2A87A] px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-[#041019] transition hover:brightness-110 sm:w-auto sm:px-6 sm:py-3 sm:text-sm"
+          >
+            {ctaLabel}
+          </button>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
         {POI_CATEGORIES.map((cat) => {

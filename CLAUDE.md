@@ -57,7 +57,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | **Styling** | TailwindCSS + CVA | class-variance-authority для вариантов компонентов |
 | **State** | Zustand | Клиентское состояние UI |
 | **Validation** | Zod | Валидация данных на сервере |
-| **Maps** | Leaflet + React-Leaflet | Карты для ЖК и объектов |
+| **Maps** | Yandex Maps API | Карты для ЖК и объектов |
 | **File Import** | xlsx, csv-parse, fast-xml-parser | Парсинг фидов |
 | **File Upload** | Multer | Обработка загрузки файлов |
 | **Dev Tools** | Vite proxy, Nodemon, Concurrently | Параллельный запуск клиента и сервера |
@@ -74,7 +74,7 @@ RWGroup/
 │   │   │   ├── PropertyCard.tsx      # Карточка лота
 │   │   │   └── ComplexCard.tsx       # Карточка ЖК
 │   │   ├── complex/              # Компоненты страницы ЖК
-│   │   │   ├── ComplexMap.tsx        # Карта расположения ЖК (Leaflet)
+│   │   │   ├── ComplexMap.tsx        # Карта расположения ЖК (Yandex Maps)
 │   │   │   └── NearbyPlaces.tsx      # Ближайшие места
 │   │   ├── forms/                # Лид-формы
 │   │   │   └── LeadModal.tsx         # Универсальная модалка заявки (4 типа форм)

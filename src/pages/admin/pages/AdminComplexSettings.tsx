@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
-import type { LatLngExpression } from 'leaflet'
 import { useSearchParams } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -32,7 +30,6 @@ import type {
   ComplexLandingTag,
   Property,
 } from '../../../../shared/types'
-import 'leaflet/dist/leaflet.css'
 
 type ComplexListItem = Pick<Complex, 'id' | 'title' | 'status' | 'district' | 'price_from' | 'images'>
 
@@ -56,9 +53,6 @@ type GeoPoint = {
   lon: number
 }
 
-const DEFAULT_MAP_CENTER: LatLngExpression = [55.751244, 37.618423]
-const MAP_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-const MAP_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
 const MAX_NEARBY_IMAGE_VARIANTS = 24
 const MAP_LOOKUP_TIMEOUT_MS = 35000
 
@@ -83,29 +77,6 @@ function looksLikeAddressQuery(value: string): boolean {
   const hasHouse = /\b\d+[a-zа-я]?\b/iu.test(value)
   const hasStreet = /\b(?:ул(?:\.|ица)?|пр(?:-|\.)?|просп(?:\.|ект)?|пер(?:\.|еулок)?|наб(?:\.|ережная)?|шоссе|бул(?:\.|ьвар)?|street|st\.?|road|rd\.?|avenue|ave\.?|lane|ln\.?|drive|dr\.?)\b/iu.test(value)
   return hasHouse || hasStreet
-}
-
-function MapCenterSync({ point }: { point: GeoPoint | null }) {
-  const map = useMap()
-
-  useEffect(() => {
-    if (!point) return
-    map.setView([point.lat, point.lon], Math.max(map.getZoom(), 14), { animate: true })
-  }, [map, point?.lat, point?.lon])
-
-  return null
-}
-
-function MapClickCapture({ onSelect }: { onSelect: (point: GeoPoint) => void }) {
-  useMapEvents({
-    click(event) {
-      onSelect({
-        lat: Number(event.latlng.lat.toFixed(6)),
-        lon: Number(event.latlng.lng.toFixed(6)),
-      })
-    },
-  })
-  return null
 }
 
 async function uploadImage(token: string, file: File): Promise<string> {
@@ -1069,17 +1040,17 @@ export default function AdminComplexSettingsPage() {
 
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-white">Карта ЖК</h3>
+                <h3 className="text-sm font-semibold text-white">Координаты ЖК</h3>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="secondary" onClick={() => setComplexMapPoint(null)} disabled={!mapPoint}>
-                    Сбросить метку
+                    Сбросить координаты
                   </Button>
                 </div>
               </div>
 
               <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
                 <div>
-                  <label className="mb-1 block text-xs text-white/60">Поиск точки (название + адрес)</label>
+                  <label className="mb-1 block text-xs text-white/60">Поиск координат (название + адрес)</label>
                   <Input
                     value={mapSearchQuery}
                     className="border-white/20 bg-white/5 text-white"
@@ -1097,45 +1068,63 @@ export default function AdminComplexSettingsPage() {
                 </div>
                 <div className="flex items-end">
                   <Button size="sm" onClick={resolveMapPoint} disabled={mapLookupLoading}>
-                    {mapLookupLoading ? 'Ищем...' : 'Найти на карте'}
+                    {mapLookupLoading ? 'Ищем...' : 'Найти координаты'}
                   </Button>
                 </div>
               </div>
 
               <div className="text-xs text-white/60">
-                Введите адрес и нажмите «Найти на карте», затем при необходимости поправьте метку кликом по карте.
+                Карта в админке отключена. Используйте поиск адреса или введите координаты вручную.
+              </div>
+
+              <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-white/60">Latitude (lat)</label>
+                  <Input
+                    type="number"
+                    step="0.000001"
+                    value={draftComplex?.geo_lat ?? ''}
+                    className="border-white/20 bg-white/5 text-white"
+                    onChange={(e) => {
+                      const raw = e.target.value.trim()
+                      setMapLookupError(null)
+                      setDraftComplex((prev) => {
+                        if (!prev) return prev
+                        if (!raw) return { ...prev, geo_lat: undefined }
+                        const parsed = Number(raw.replace(',', '.'))
+                        if (!Number.isFinite(parsed)) return prev
+                        return { ...prev, geo_lat: parsed }
+                      })
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-white/60">Longitude (lon)</label>
+                  <Input
+                    type="number"
+                    step="0.000001"
+                    value={draftComplex?.geo_lon ?? ''}
+                    className="border-white/20 bg-white/5 text-white"
+                    onChange={(e) => {
+                      const raw = e.target.value.trim()
+                      setMapLookupError(null)
+                      setDraftComplex((prev) => {
+                        if (!prev) return prev
+                        if (!raw) return { ...prev, geo_lon: undefined }
+                        const parsed = Number(raw.replace(',', '.'))
+                        if (!Number.isFinite(parsed)) return prev
+                        return { ...prev, geo_lon: parsed }
+                      })
+                    }}
+                  />
+                </div>
               </div>
 
               {mapPoint ? (
                 <div className="text-xs text-white/65">
-                  Текущая метка: {mapPoint.lat.toFixed(6)}, {mapPoint.lon.toFixed(6)}
+                  Текущие координаты: {mapPoint.lat.toFixed(6)}, {mapPoint.lon.toFixed(6)}
                 </div>
               ) : null}
-
-              <div className="overflow-hidden rounded-xl border border-white/10">
-                <MapContainer
-                  center={mapPoint ? [mapPoint.lat, mapPoint.lon] : DEFAULT_MAP_CENTER}
-                  zoom={mapPoint ? 14 : 11}
-                  scrollWheelZoom
-                  className="h-[300px] w-full md:h-[360px]"
-                >
-                  <TileLayer attribution={MAP_TILE_ATTR} url={MAP_TILE_URL} />
-                  <MapCenterSync point={mapPoint} />
-                  <MapClickCapture
-                    onSelect={(point) => {
-                      setMapLookupError(null)
-                      setComplexMapPoint(point)
-                    }}
-                  />
-                  {mapPoint ? (
-                    <CircleMarker
-                      center={[mapPoint.lat, mapPoint.lon]}
-                      radius={11}
-                      pathOptions={{ color: '#F8D77D', fillColor: '#F8D77D', fillOpacity: 0.92, weight: 2 }}
-                    />
-                  ) : null}
-                </MapContainer>
-              </div>
 
               {mapLookupError ? <div className="text-xs text-rose-300">{mapLookupError}</div> : null}
             </section>
