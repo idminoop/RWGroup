@@ -9,6 +9,7 @@ import AdminImportPage from './pages/AdminImport'
 import AdminLeadsPage from './pages/AdminLeads'
 import AdminCatalogPage from './pages/AdminCatalog'
 import AdminComplexSettingsPage from './pages/AdminComplexSettings'
+import AdminMapSettingsPage from './pages/AdminMapSettings'
 import AdminUsersPage from './pages/AdminUsers'
 import AdminLogsPage from './pages/AdminLogs'
 import AdminBackupsPage from './pages/AdminBackups'
@@ -57,6 +58,7 @@ export default function AdminLayout() {
   )
 
   const canAccessHome = hasAnyPermission('home.write')
+  const canAccessMapSettings = hasAnyPermission('home.write')
   const canAccessCatalog = hasAnyPermission('catalog.write')
   const canAccessComplexSettings = canAccessCatalog
   const canAccessCollections = hasAnyPermission('collections.write')
@@ -71,6 +73,7 @@ export default function AdminLayout() {
   const defaultAdminPath = useMemo(() => {
     if (canAccessHome) return '/admin'
     if (canAccessCatalog) return '/admin/catalog'
+    if (canAccessMapSettings) return '/admin/map-settings'
     if (canAccessComplexSettings) return '/admin/complex-settings'
     if (canAccessCollections) return '/admin/collections'
     if (canAccessImport) return '/admin/import'
@@ -79,7 +82,7 @@ export default function AdminLayout() {
     if (canAccessUsers) return '/admin/users'
     if (canAccessLogs) return '/admin/logs'
     return null
-  }, [canAccessBackups, canAccessCatalog, canAccessCollections, canAccessComplexSettings, canAccessHome, canAccessImport, canAccessLeads, canAccessLogs, canAccessUsers])
+  }, [canAccessBackups, canAccessCatalog, canAccessCollections, canAccessComplexSettings, canAccessHome, canAccessImport, canAccessLeads, canAccessLogs, canAccessMapSettings, canAccessUsers])
 
   useEffect(() => {
     if (!token) return
@@ -218,6 +221,7 @@ export default function AdminLayout() {
           <aside className="min-w-0 rounded-2xl border border-white/10 bg-[#081724]/80 p-3 backdrop-blur-md md:sticky md:top-4">
             <nav className="grid min-w-0 grid-cols-2 gap-2 text-sm sm:flex sm:overflow-x-auto md:block md:space-y-1 md:overflow-visible">
               {canAccessHome && <NavLink to="/admin" current={loc.pathname === '/admin'} title="Витрина" />}
+              {canAccessMapSettings && <NavLink to="/admin/map-settings" current={loc.pathname.startsWith('/admin/map-settings')} title="Карты" />}
               {canAccessCatalog && <NavLink to="/admin/catalog" current={loc.pathname.startsWith('/admin/catalog')} title="Каталог" />}
               {canAccessComplexSettings && <NavLink to="/admin/complex-settings" current={loc.pathname.startsWith('/admin/complex-settings')} title="Настройка ЖК" />}
               {canAccessCollections && <NavLink to="/admin/collections" current={loc.pathname.startsWith('/admin/collections')} title="Подборки" />}
@@ -231,6 +235,7 @@ export default function AdminLayout() {
           <section className="admin-content min-w-0 rounded-2xl border border-white/10 bg-[#0a1b29]/82 p-3 backdrop-blur-md sm:p-4 md:p-5">
             <Routes>
               <Route path="/" element={canAccessHome ? <AdminHomePage /> : <Navigate to={defaultAdminPath} replace />} />
+              <Route path="/map-settings" element={canAccessMapSettings ? <AdminMapSettingsPage /> : <Navigate to={defaultAdminPath} replace />} />
               <Route path="/catalog" element={canAccessCatalog ? <AdminCatalogPage /> : <Navigate to={defaultAdminPath} replace />} />
               <Route path="/complex-settings" element={canAccessComplexSettings ? <AdminComplexSettingsPage /> : <Navigate to={defaultAdminPath} replace />} />
               <Route path="/collections" element={canAccessCollections ? <AdminCollectionsPage /> : <Navigate to={defaultAdminPath} replace />} />

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Map as YandexMap, Placemark, YMaps } from '@pbe/react-yandex-maps'
 import { Heading, Text } from '@/components/ui/Typography'
 import { fetchPOIs, geocodeAddress, type GeoCoords, type PoiResult } from '@/lib/overpass'
-import { YANDEX_MAPS_QUERY } from '@/lib/yandexMaps'
+import { getDefaultYandexMapsQuery, loadYandexMapsQuery, type YandexMapsQuery } from '@/lib/yandexMaps'
 
 type PoiCategory = {
   key: string
@@ -82,6 +82,7 @@ export default function ComplexMap({
   ctaLabel = 'Записаться на экскурсию',
   onCtaClick,
 }: ComplexMapProps) {
+  const [mapsQuery, setMapsQuery] = useState<YandexMapsQuery>(getDefaultYandexMapsQuery)
   const [enabled, setEnabled] = useState<Set<string>>(() => new Set(['metro', 'cafe']))
   const [poiData, setPoiData] = useState<Record<string, PoiResult[]>>({})
   const [loading, setLoading] = useState<Set<string>>(() => new Set())
@@ -89,6 +90,23 @@ export default function ComplexMap({
 
   const [geocoded, setGeocoded] = useState<GeoCoords | null>(null)
   const [geocoding, setGeocoding] = useState(false)
+  const [mapsQueryLoading, setMapsQueryLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setMapsQueryLoading(true)
+    loadYandexMapsQuery()
+      .then((query) => {
+        if (cancelled) return
+        setMapsQuery(query)
+      })
+      .finally(() => {
+        if (!cancelled) setMapsQueryLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const directCoords = useMemo(
     () => normalizeDirectCoords(
@@ -268,35 +286,41 @@ export default function ComplexMap({
 
       <div className="overflow-hidden rounded-2xl border border-[#22343d]/80">
         <div className="h-[300px] w-full sm:h-[360px] md:h-[560px]">
-          <YMaps query={YANDEX_MAPS_QUERY}>
-            <YandexMap
-              key={`${center[0]}-${center[1]}-${hasCoords ? 'coords' : 'default'}`}
-              state={{ center, zoom: hasCoords ? 12 : 11, controls: ['zoomControl'] }}
-              width="100%"
-              height="100%"
-              modules={['geoObject.addon.hint', 'control.ZoomControl']}
-              options={{
-                suppressMapOpenBlock: true,
-                yandexMapDisablePoiInteractivity: true,
-              }}
-            >
-              {hasCoords && (
-                <Placemark
-                  geometry={center}
-                  properties={{ hintContent: title }}
-                  options={{ preset: 'islands#yellowCircleDotIcon' }}
-                />
-              )}
-              {visiblePois.map((poi) => (
-                <Placemark
-                  key={poi.id}
-                  geometry={poi.position}
-                  properties={{ hintContent: poi.name }}
-                  options={{ preset: 'islands#circleDotIcon', iconColor: poi.color }}
-                />
-              ))}
-            </YandexMap>
-          </YMaps>
+          {mapsQueryLoading ? (
+            <div className="flex h-full w-full items-center justify-center bg-[#061723] text-sm text-[#8fa0a7]">
+              Загружаем карту...
+            </div>
+          ) : (
+            <YMaps query={mapsQuery}>
+              <YandexMap
+                key={`${mapsQuery.apikey || 'no-key'}:${center[0]}-${center[1]}-${hasCoords ? 'coords' : 'default'}`}
+                state={{ center, zoom: hasCoords ? 12 : 11, controls: ['zoomControl'] }}
+                width="100%"
+                height="100%"
+                modules={['geoObject.addon.hint', 'control.ZoomControl']}
+                options={{
+                  suppressMapOpenBlock: true,
+                  yandexMapDisablePoiInteractivity: true,
+                }}
+              >
+                {hasCoords && (
+                  <Placemark
+                    geometry={center}
+                    properties={{ hintContent: title }}
+                    options={{ preset: 'islands#yellowCircleDotIcon' }}
+                  />
+                )}
+                {visiblePois.map((poi) => (
+                  <Placemark
+                    key={poi.id}
+                    geometry={poi.position}
+                    properties={{ hintContent: poi.name }}
+                    options={{ preset: 'islands#circleDotIcon', iconColor: poi.color }}
+                  />
+                ))}
+              </YandexMap>
+            </YMaps>
+          )}
         </div>
       </div>
 

@@ -64,6 +64,23 @@ function normalizeGeoPoint(lat?: number, lon?: number): GeoPoint | null {
   return null
 }
 
+function parseCoordinateQuery(raw: string): GeoPoint | null {
+  const source = raw
+    .trim()
+    .replace(/[()]/g, ' ')
+    .replace(/[;|]/g, ',')
+  if (!source) return null
+  if (/[a-zа-яё]/i.test(source)) return null
+
+  const matches = source.match(/-?\d+(?:[.,]\d+)?/g)
+  if (!matches || matches.length < 2) return null
+
+  const first = Number(matches[0].replace(',', '.'))
+  const second = Number(matches[1].replace(',', '.'))
+  if (!Number.isFinite(first) || !Number.isFinite(second)) return null
+  return normalizeGeoPoint(first, second)
+}
+
 function buildMapSearchQuery(complex?: Pick<Complex, 'title' | 'district'> | null): string {
   if (!complex) return ''
   return [complex.title, complex.district]
@@ -386,6 +403,17 @@ export default function AdminComplexSettingsPage() {
     const query = typedQuery || buildMapSearchQuery(draftComplex)
     if (!query) {
       setMapLookupError('Введите название и адрес ЖК, чтобы найти точку на карте.')
+      return
+    }
+
+    const directPoint = parseCoordinateQuery(query)
+    if (directPoint) {
+      setMapLookupError(null)
+      setMapSearchQuery(`${directPoint.lat.toFixed(6)}, ${directPoint.lon.toFixed(6)}`)
+      setComplexMapPoint({
+        lat: Number(directPoint.lat.toFixed(6)),
+        lon: Number(directPoint.lon.toFixed(6)),
+      })
       return
     }
 

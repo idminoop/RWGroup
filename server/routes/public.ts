@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { z } from 'zod'
 import type { CatalogTab, Category } from '../../shared/types.js'
-import { withPublishedDb } from '../lib/storage.js'
+import { withDbRead, withPublishedDb } from '../lib/storage.js'
 import { resolveCollectionItems } from '../lib/collections.js'
 
 const router = Router()
@@ -406,6 +406,13 @@ router.get('/home', (req: Request, res: Response) => {
       },
     }
   })
+  res.json({ success: true, data })
+})
+
+router.get('/map-config', (req: Request, res: Response) => {
+  const data = withDbRead((db) => ({
+    yandex_maps_api_key: (db.home?.maps?.yandex_maps_api_key || '').trim(),
+  }))
   res.json({ success: true, data })
 })
 

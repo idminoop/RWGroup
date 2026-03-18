@@ -263,6 +263,9 @@ export function ensureSeed(): void {
       properties: properties.slice(0, 6).map(p => p.id), 
       collections: [col1Id, col2Id] 
     },
+    maps: {
+      yandex_maps_api_key: '',
+    },
     updated_at: nowIso(),
   }
 

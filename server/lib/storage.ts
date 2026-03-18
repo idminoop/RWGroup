@@ -70,6 +70,9 @@ function createEmptyDbState(): DbShape {
         properties: [],
         collections: [],
       },
+      maps: {
+        yandex_maps_api_key: '',
+      },
       updated_at: now,
     },
     feed_sources: [],

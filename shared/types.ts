@@ -313,6 +313,9 @@ export interface HomeContent {
     properties: Id[]
     collections: Id[]
   }
+  maps?: {
+    yandex_maps_api_key?: string
+  }
   updated_at: string
 }
 
