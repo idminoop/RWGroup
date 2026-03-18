@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -55,12 +55,36 @@ type GeoPoint = {
 
 const MAX_NEARBY_IMAGE_VARIANTS = 24
 const MAP_LOOKUP_TIMEOUT_MS = 35000
+const MOSCOW_COORD_BOUNDS = {
+  minLat: 54.9,
+  maxLat: 56.3,
+  minLon: 36.2,
+  maxLon: 38.8,
+}
+
+function isWithinMoscowCoords(point: GeoPoint): boolean {
+  return point.lat >= MOSCOW_COORD_BOUNDS.minLat
+    && point.lat <= MOSCOW_COORD_BOUNDS.maxLat
+    && point.lon >= MOSCOW_COORD_BOUNDS.minLon
+    && point.lon <= MOSCOW_COORD_BOUNDS.maxLon
+}
 
 function normalizeGeoPoint(lat?: number, lon?: number): GeoPoint | null {
   if (typeof lat !== 'number' || typeof lon !== 'number') return null
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
-  if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) return { lat, lon }
-  if (Math.abs(lat) <= 180 && Math.abs(lon) <= 90) return { lat: lon, lon: lat }
+
+  const direct = Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null
+  const swapped = Math.abs(lat) <= 180 && Math.abs(lon) <= 90 ? { lat: lon, lon: lat } : null
+
+  if (direct && swapped) {
+    const directInMoscow = isWithinMoscowCoords(direct)
+    const swappedInMoscow = isWithinMoscowCoords(swapped)
+    if (directInMoscow && !swappedInMoscow) return direct
+    if (swappedInMoscow && !directInMoscow) return swapped
+    return direct
+  }
+  if (direct) return direct
+  if (swapped) return swapped
   return null
 }
 
@@ -70,7 +94,7 @@ function parseCoordinateQuery(raw: string): GeoPoint | null {
     .replace(/[()]/g, ' ')
     .replace(/[;|]/g, ',')
   if (!source) return null
-  if (/[a-zа-яё]/i.test(source)) return null
+  if (/[A-Za-z\u0400-\u04FF]/.test(source)) return null
 
   const matches = source.match(/-?\d+(?:[.,]\d+)?/g)
   if (!matches || matches.length < 2) return null
@@ -174,6 +198,7 @@ export default function AdminComplexSettingsPage() {
   const [mapSearchQuery, setMapSearchQuery] = useState('')
   const [mapLookupLoading, setMapLookupLoading] = useState(false)
   const [mapLookupError, setMapLookupError] = useState<string | null>(null)
+  const autoNearbyPhotoRequestedRef = useRef<Set<string>>(new Set())
 
   const filteredComplexes = useMemo(() => {
     const q = pickerFilter.trim().toLowerCase()
@@ -286,6 +311,7 @@ export default function AdminComplexSettingsPage() {
   useEffect(() => {
     if (!selectedId) {
       setLoadedHeroImage('')
+      autoNearbyPhotoRequestedRef.current = new Set()
       return
     }
     setDetailsLoading(true)
@@ -295,6 +321,7 @@ export default function AdminComplexSettingsPage() {
     setMapLookupError(null)
     setNearbyPhotoLoadingById({})
     setAutoNearbyGeneratedFor('')
+    autoNearbyPhotoRequestedRef.current = new Set()
     apiGet<ComplexDetailsResponse>(`/api/admin/catalog/complex/${selectedId}`, headers)
       .then((res) => {
         const minPrice = getMinPositive(res.properties.map((item) => item.status === 'active' ? item.price : undefined))
@@ -452,6 +479,7 @@ export default function AdminComplexSettingsPage() {
 
   const generateNearbyCandidates = useCallback(async () => {
     if (!draftComplex) return
+    autoNearbyPhotoRequestedRef.current = new Set()
     setNearbyLoading(true)
     setNearbyError(null)
     try {
@@ -514,10 +542,14 @@ export default function AdminComplexSettingsPage() {
         headers
       )
       const variants = dedupeUrls([...(candidate.image_variants || []), ...data.urls]).slice(0, MAX_NEARBY_IMAGE_VARIANTS)
+      const hasRealVariant = variants.some((url) => url && url !== candidate.image_url)
+      const nextImageUrl = candidate.image_custom
+        ? candidate.image_url
+        : (hasRealVariant ? (variants.find((url) => url && url !== candidate.image_url) || variants[0] || candidate.image_url) : candidate.image_url)
       updateNearbyCandidate(candidate.id, {
         image_variants: variants,
-        image_url: candidate.image_custom ? candidate.image_url : (candidate.image_url || variants[0]),
-        image_fallback: candidate.image_custom ? candidate.image_fallback : false,
+        image_url: nextImageUrl,
+        image_fallback: candidate.image_custom ? candidate.image_fallback : (hasRealVariant ? false : candidate.image_fallback),
       })
     } catch (e) {
       setNearbyError(e instanceof Error ? e.message : 'Ошибка загрузки дополнительных фото')
@@ -529,6 +561,37 @@ export default function AdminComplexSettingsPage() {
       })
     }
   }, [draftComplex, headers])
+
+  useEffect(() => {
+    if (!draftComplex || !nearbyConfig?.candidates?.length) return
+
+    const targets = nearbyConfig.candidates
+      .filter((candidate) => (candidate.image_fallback || !candidate.image_url) && !autoNearbyPhotoRequestedRef.current.has(candidate.id))
+      .slice(0, 8)
+
+    if (!targets.length) return
+
+    targets.forEach((candidate) => autoNearbyPhotoRequestedRef.current.add(candidate.id))
+
+    let cancelled = false
+    const queue = [...targets]
+    const workers = Array.from({ length: 2 }, async () => {
+      while (!cancelled && queue.length > 0) {
+        const next = queue.shift()
+        if (!next) break
+        try {
+          await loadMoreNearbyPhotos(next)
+        } catch {
+          // keep current fallback image if lookup failed
+        }
+      }
+    })
+
+    Promise.all(workers).catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [draftComplex, nearbyConfig?.candidates, loadMoreNearbyPhotos])
 
   useEffect(() => {
     if (!selectedId || !draftComplex || !nearbyConfig) return

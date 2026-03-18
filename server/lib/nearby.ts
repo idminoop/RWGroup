@@ -27,6 +27,7 @@ type RoutedPoi = PoiWithMeta & {
 
 type GenerateNearbyOptions = {
   resolveImages?: boolean
+  preciseRoutes?: boolean
 }
 
 type OverpassElement = {
@@ -54,8 +55,8 @@ const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
 const OSRM_BASE_URL = 'https://router.project-osrm.org'
 
 const USER_AGENT = 'RWGroupWebsite/1.0 (+nearby-generator)'
-const OVERPASS_TIMEOUT_MS = 6500
-const OVERPASS_CATEGORY_DEADLINE_MS = 12000
+const OVERPASS_TIMEOUT_MS = 8000
+const OVERPASS_CATEGORY_DEADLINE_MS = 18000
 const OVERPASS_CACHE_TTL_MS = 8 * 60 * 1000
 const OVERPASS_FAILURE_COOLDOWN_MS = 70 * 1000
 const OVERPASS_RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504])
@@ -1429,13 +1430,19 @@ export async function generateNearbyPlacesForComplex(
   const candidates = await collectPoiCandidates(origin)
   if (!candidates.length) return { origin, items: [] }
 
+  const preciseRoutes = options.preciseRoutes !== false
   const destinations = candidates.map((item) => ({ lat: item.lat, lon: item.lon }))
-  const [walkResult, driveResult] = await Promise.allSettled([
-    osrmTableBatched('walking', origin, destinations),
-    osrmTableBatched('driving', origin, destinations),
-  ])
-  const walk = walkResult.status === 'fulfilled' ? walkResult.value : []
-  const drive = driveResult.status === 'fulfilled' ? driveResult.value : []
+  const walk: Array<number | null> = []
+  const drive: Array<number | null> = []
+
+  if (preciseRoutes) {
+    const [walkResult, driveResult] = await Promise.allSettled([
+      osrmTableBatched('walking', origin, destinations),
+      osrmTableBatched('driving', origin, destinations),
+    ])
+    if (walkResult.status === 'fulfilled') walk.push(...walkResult.value)
+    if (driveResult.status === 'fulfilled') drive.push(...driveResult.value)
+  }
 
   const routedCandidates = candidates
     .map((item, index) => {
