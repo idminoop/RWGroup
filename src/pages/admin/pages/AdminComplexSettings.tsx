@@ -42,6 +42,7 @@ type NearbyGenerateResponse = {
   origin: { lat: number; lon: number }
   refreshed_at: string
   candidates: ComplexNearbyPlace[]
+  auto_selected_ids?: string[]
 }
 
 type NearbyPhotoVariantsResponse = {
@@ -413,6 +414,21 @@ export default function AdminComplexSettingsPage() {
     patchNearby((nearby) => ({ ...nearby, selected_ids: [] }))
   }
 
+  const selectNearbyAlternative = (candidateId: string, categoryKey: string) => {
+    patchNearby((nearby) => {
+      const selectedSet = new Set(nearby.selected_ids)
+      // Deselect any other candidate in the same category
+      nearby.candidates
+        .filter((c) => c.category_key === categoryKey && c.id !== candidateId)
+        .forEach((c) => selectedSet.delete(c.id))
+      selectedSet.add(candidateId)
+      return {
+        ...nearby,
+        selected_ids: nearby.candidates.map((c) => c.id).filter((id) => selectedSet.has(id)).slice(0, 20),
+      }
+    })
+  }
+
   const setComplexMapPoint = (point: GeoPoint | null) => {
     setDraftComplex((prev) => {
       if (!prev) return prev
@@ -493,7 +509,7 @@ export default function AdminComplexSettingsPage() {
       const previous = createLandingNearby(draftLanding?.nearby)
       const previousById = new Map(previous.candidates.map((item) => [item.id, item]))
 
-      const merged = generated.candidates.slice(0, 20).map((raw) => {
+      const merged = generated.candidates.map((raw) => {
         const next = createLandingNearbyPlace(raw)
         const prev = previousById.get(next.id)
         if (!prev?.image_custom || !prev.image_url) return next
@@ -510,7 +526,9 @@ export default function AdminComplexSettingsPage() {
 
       const mergedIdSet = new Set(merged.map((item) => item.id))
       const preservedSelected = previous.selected_ids.filter((id) => mergedIdSet.has(id))
-      const nextSelected = preservedSelected.length ? preservedSelected : merged.map((item) => item.id)
+      // Use server-provided auto_selected_ids (best 1 per category) as default selection
+      const autoIds = (generated.auto_selected_ids || []).filter((id) => mergedIdSet.has(id))
+      const nextSelected = preservedSelected.length ? preservedSelected : (autoIds.length ? autoIds : merged.slice(0, 20).map((item) => item.id))
 
       patchNearby((nearby) => ({
         ...nearby,
@@ -1256,7 +1274,7 @@ export default function AdminComplexSettingsPage() {
                     Очистить выбор
                   </Button>
                   <Button size="sm" onClick={generateNearbyCandidates} disabled={nearbyLoading}>
-                    {nearbyLoading ? 'Загрузка...' : 'Обновить из карты'}
+                    {nearbyLoading ? 'Загрузка...' : 'Обновить места'}
                   </Button>
                 </div>
               </div>
@@ -1289,12 +1307,29 @@ export default function AdminComplexSettingsPage() {
 
               {!nearbyConfig?.candidates.length ? (
                 <div className="rounded-xl border border-dashed border-white/20 bg-white/[0.03] p-4 text-sm text-white/55">
-                  Нажмите «Обновить из карты», чтобы получить список мест поблизости с предрасчетом времени пешком и на машине.
+                  Нажмите «Обновить места», чтобы найти лучшие места рядом с ЖК через Яндекс (кофейни, парки, театры, фитнес и др.).
                 </div>
               ) : (
-                <div className="space-y-3">
-                  <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {nearbyConfig.candidates.map((candidate) => {
+                <div className="space-y-5">
+                  {(() => {
+                    const groupDefs = [
+                      { key: 'life' as const, label: 'Жизнь рядом' },
+                      { key: 'leisure' as const, label: 'Досуг' },
+                      { key: 'family' as const, label: 'Для семьи и спорта' },
+                    ]
+                    const grouped = new Map<string, typeof nearbyConfig.candidates>()
+                    const ungrouped: typeof nearbyConfig.candidates = []
+                    for (const c of nearbyConfig.candidates) {
+                      if (c.group) {
+                        const arr = grouped.get(c.group) || []
+                        arr.push(c)
+                        grouped.set(c.group, arr)
+                      } else {
+                        ungrouped.push(c)
+                      }
+                    }
+
+                    const renderCandidate = (candidate: ComplexNearbyPlace) => {
                       const selected = nearbySelectedIds.has(candidate.id)
                       const imageVariants = dedupeUrls([candidate.image_url || '', ...(candidate.image_variants || [])]).slice(0, MAX_NEARBY_IMAGE_VARIANTS)
                       const photoLoading = Boolean(nearbyPhotoLoadingById[candidate.id])
@@ -1305,12 +1340,12 @@ export default function AdminComplexSettingsPage() {
                             selected ? 'border-amber-300/70 bg-amber-200/10' : 'border-white/10 bg-white/[0.03]'
                           }`}
                         >
-                          <div className="relative h-40 overflow-hidden rounded-lg border border-white/10">
+                          <div className="relative h-36 overflow-hidden rounded-lg border border-white/10">
                             {candidate.image_url ? (
                               <img src={candidate.image_url} alt={candidate.name} className="h-full w-full object-cover" />
                             ) : (
-                              <div className="flex h-full w-full items-center justify-center bg-white/5 text-xs text-white/55">
-                                Нет фото
+                              <div className="flex h-full w-full items-center justify-center bg-white/5 text-3xl opacity-40">
+                                {candidate.emoji || '📍'}
                               </div>
                             )}
                             {candidate.image_fallback ? (
@@ -1318,13 +1353,24 @@ export default function AdminComplexSettingsPage() {
                                 Иллюстративное
                               </span>
                             ) : null}
+                            {candidate.emoji && (
+                              <span className="absolute right-2 top-2 rounded-lg bg-black/55 px-1.5 py-0.5 text-base">
+                                {candidate.emoji}
+                              </span>
+                            )}
                           </div>
 
                           <div className="mt-2 flex min-w-0 items-start justify-between gap-2">
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <div className="break-words text-sm font-semibold text-white">{candidate.name}</div>
-                              <div className="mt-1 text-xs text-white/65">
-                                Пешком: {Math.round(candidate.walk_minutes)} мин · На машине: {Math.round(candidate.drive_minutes)} мин
+                              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-white/55">
+                                <span>{Math.round(candidate.walk_minutes)} мин пешком · {Math.round(candidate.drive_minutes)} мин на машине</span>
+                                {candidate.rating !== undefined && (
+                                  <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/20 border border-amber-500/25 px-1.5 py-0.5 text-[10px] text-amber-300 font-semibold">
+                                    ★ {candidate.rating.toFixed(1)}
+                                    {candidate.reviews_count ? <span className="text-amber-400/60"> · {candidate.reviews_count}</span> : null}
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <Button size="sm" variant={selected ? 'secondary' : 'default'} onClick={() => toggleNearbySelection(candidate.id)}>
@@ -1403,8 +1449,90 @@ export default function AdminComplexSettingsPage() {
                           )}
                         </article>
                       )
-                    })}
-                  </div>
+                    }
+
+                    const renderCategoryBlock = (categoryCandidates: ComplexNearbyPlace[]) => {
+                      if (!categoryCandidates.length) return null
+                      const selectedInCategory = categoryCandidates.find((c) => nearbySelectedIds.has(c.id))
+                      const mainCandidate = selectedInCategory || categoryCandidates[0]
+                      const alternatives = categoryCandidates.filter((c) => c.id !== mainCandidate.id)
+                      const categoryLabel = mainCandidate.category || ''
+                      return (
+                        <div key={mainCandidate.category_key || mainCandidate.id} className="space-y-2">
+                          {categoryLabel && (
+                            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/40">{categoryLabel}</div>
+                          )}
+                          {renderCandidate(mainCandidate)}
+                          {alternatives.length > 0 && (
+                            <div className="space-y-1.5 pl-2">
+                              <div className="text-[10px] uppercase tracking-widest text-white/35">Альтернативы</div>
+                              {alternatives.map((alt) => (
+                                <div key={alt.id} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-2">
+                                  <div className="h-10 w-14 shrink-0 overflow-hidden rounded border border-white/10">
+                                    {alt.image_url ? (
+                                      <img src={alt.image_url} alt={alt.name} className="h-full w-full object-cover" />
+                                    ) : (
+                                      <div className="flex h-full w-full items-center justify-center bg-white/5 text-base opacity-40">📍</div>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-xs font-semibold text-white">{alt.name}</div>
+                                    <div className="flex flex-wrap items-center gap-2 text-[10px] text-white/50">
+                                      <span>{Math.round(alt.walk_minutes)} мин пешком</span>
+                                      {alt.rating !== undefined && (
+                                        <span className="text-amber-300">
+                                          ★ {alt.rating.toFixed(1)}
+                                          {alt.reviews_count ? ` · ${alt.reviews_count}` : ''}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <Button size="sm" variant="secondary" onClick={() => selectNearbyAlternative(alt.id, alt.category_key || '')}>
+                                    Выбрать
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <>
+                        {groupDefs.map(({ key, label }) => {
+                          const groupCandidates = grouped.get(key) || []
+                          if (!groupCandidates.length) return null
+                          const byCategory = new Map<string, ComplexNearbyPlace[]>()
+                          for (const c of groupCandidates) {
+                            const catKey = c.category_key || '__none__'
+                            const arr = byCategory.get(catKey) || []
+                            arr.push(c)
+                            byCategory.set(catKey, arr)
+                          }
+                          return (
+                            <div key={key}>
+                              <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-white/55">
+                                <span>{label}</span>
+                                <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-white/45">{groupCandidates.length}</span>
+                              </div>
+                              <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                {Array.from(byCategory.values()).map((cats) => renderCategoryBlock(cats))}
+                              </div>
+                            </div>
+                          )
+                        })}
+                        {ungrouped.length > 0 && (
+                          <div>
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/45">Другие места</div>
+                            <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                              {ungrouped.map(renderCandidate)}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
               )}
             </section>

@@ -1,12 +1,19 @@
-import type { Complex, ComplexNearbyPlace } from '../../shared/types.js'
+import type { Complex, ComplexNearbyPlace, NearbyGroup } from '../../shared/types.js'
 import { slugify } from './ids.js'
+import { readDb } from './storage.js'
 
 type Coords = { lat: number; lon: number }
+
+type CategorySource = 'yandex' | 'overpass'
 
 type CategoryDef = {
   key: string
   label: string
-  query: string
+  group: NearbyGroup
+  emoji: string
+  source: CategorySource
+  yandexQuery?: string
+  overpassQuery?: string
   fallbackImages: string[]
 }
 
@@ -15,8 +22,10 @@ type PoiWithMeta = {
   lat: number
   lon: number
   tags?: Record<string, string>
-  category: CategoryDef
+  categoryDef: CategoryDef
   distanceKm: number
+  rating?: number
+  reviews_count?: number
 }
 
 type RoutedPoi = PoiWithMeta & {
@@ -46,11 +55,29 @@ type OverpassCacheRecord = {
   expiresAt: number
 }
 
+type YandexFeature = {
+  geometry: { coordinates: [number, number] }
+  properties: {
+    name: string
+    CompanyMetaData?: {
+      name?: string
+      address?: string
+      Categories?: Array<{ class?: string; name?: string }>
+      rating?: { score?: number; count?: number }
+    }
+  }
+}
+
+type YandexSearchResponse = {
+  features?: YandexFeature[]
+}
+
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
 ]
+const YANDEX_SEARCH_URL = 'https://search-maps.yandex.ru/v1/'
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
 const OSRM_BASE_URL = 'https://router.project-osrm.org'
 
@@ -69,123 +96,272 @@ const MOSCOW_BOUNDS = {
   maxLon: 38.3,
 }
 const MOSCOW_VIEWBOX = `${MOSCOW_BOUNDS.minLon},${MOSCOW_BOUNDS.maxLat},${MOSCOW_BOUNDS.maxLon},${MOSCOW_BOUNDS.minLat}`
-const MOSCOW_LABEL = '\u041c\u043e\u0441\u043a\u0432\u0430'
+const MOSCOW_LABEL = 'Москва'
 
-const SEARCH_RADIUS_METERS = 2600
+const SEARCH_RADIUS_METERS = 2000
 const MAX_ITEMS = 20
-const MAX_PER_CATEGORY = 12
-const MAX_CANDIDATES_BEFORE_ROUTES = 110
-const MAX_MINUTES = 20
+const MAX_CANDIDATES_PER_YANDEX_CATEGORY = 10
+const MAX_MINUTES = 25
 const IMAGE_VARIANTS_LIMIT = 24
 const IMAGE_RESOLVE_CONCURRENCY = 4
-const MIN_ROUTED_CANDIDATES = 8
+const MIN_ROUTED_CANDIDATES = 6
 const IMAGE_GEOSEARCH_RADIUS_METERS = 420
 const IMAGE_GEOSEARCH_LIMIT = 14
 const IMAGE_GEOSEARCH_WIDE_RADIUS_METERS = 900
 const IMAGE_GEOSEARCH_WIDE_LIMIT = 12
 
-const CATEGORY_BASE_SCORE: Record<string, number> = {
-  theatre: 4.6,
-  fun: 4.2,
-  parks: 3.6,
-  metro: 3.4,
-  church: 3.1,
-  mall: 2.7,
-  sport: 2.5,
-}
-
-const CATEGORY_HARD_LIMIT: Record<string, number> = {
-  theatre: 4,
-  fun: 5,
-  parks: 5,
-  metro: 4,
-  church: 3,
-  mall: 4,
-  sport: 4,
-}
-const DEFAULT_CATEGORY_HARD_LIMIT = 4
-const GENERIC_PLACE_NAME_RX = /^(park|mall|museum|theatre|cinema|church|center|centre|парк|музей|театр|кинотеатр|храм|церковь|центр|сквер)$/i
+// Yandex quality thresholds
+const MIN_RATING = 4.0
+const MIN_REVIEWS = 15
 
 const FALLBACK_WALK_M_PER_MIN = 75
 const FALLBACK_DRIVE_M_PER_MIN = 450
 
-const overpassCache = new Map<string, OverpassCacheRecord>()
-const overpassInFlight = new Map<string, Promise<Array<{ name: string; lat: number; lon: number; tags?: Record<string, string> }>>>()
-const overpassFailedUntil = new Map<string, number>()
-const geocodeCache = new Map<string, Coords | null>()
-const commonsFileThumbCache = new Map<string, string | null>()
-const wikidataImageFileCache = new Map<string, string | null>()
-const wikidataCommonsCategoryCache = new Map<string, string | null>()
-const wikipediaThumbCache = new Map<string, string | null>()
-const commonsSearchCache = new Map<string, string[]>()
-const commonsGeoSearchCache = new Map<string, string[]>()
-const commonsCategorySearchCache = new Map<string, string[]>()
-const wikipediaSearchCache = new Map<string, string[]>()
-const wikipediaGeoSearchCache = new Map<string, string[]>()
-const openverseSearchCache = new Map<string, string[]>()
-
-const CATEGORIES: CategoryDef[] = [
+// 21 categories in 3 groups
+const CATEGORY_DEFS: CategoryDef[] = [
+  // ── Group: life (Жизнь рядом) ──────────────────────────────────────────
   {
-    key: 'parks',
-    label: 'Park',
-    query: 'node["leisure"="park"](around:{RADIUS},{LAT},{LON});way["leisure"="park"](around:{RADIUS},{LAT},{LON});',
+    key: 'coffee_shop',
+    label: 'Кофейня',
+    group: 'life',
+    emoji: '☕',
+    source: 'yandex',
+    yandexQuery: 'кофейня',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'cafe',
+    label: 'Кафе',
+    group: 'life',
+    emoji: '🍽️',
+    source: 'yandex',
+    yandexQuery: 'кафе',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1521017432531-fbd92d768814?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'restaurant',
+    label: 'Ресторан',
+    group: 'life',
+    emoji: '🍷',
+    source: 'yandex',
+    yandexQuery: 'ресторан',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1424847651672-bf20a4b0982b?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'bakery',
+    label: 'Пекарня',
+    group: 'life',
+    emoji: '🥐',
+    source: 'yandex',
+    yandexQuery: 'пекарня',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1517433670267-08bbd4be890f?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1568254183919-78a4f43a2877?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'bar',
+    label: 'Бар',
+    group: 'life',
+    emoji: '🍺',
+    source: 'yandex',
+    yandexQuery: 'бар',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1543007631-283050bb3e8c?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'park',
+    label: 'Парк',
+    group: 'life',
+    emoji: '🌿',
+    source: 'overpass',
+    overpassQuery: 'node["leisure"="park"](around:{RADIUS},{LAT},{LON});way["leisure"="park"](around:{RADIUS},{LAT},{LON});relation["leisure"="park"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1472396961693-142e6e269027?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1473116763249-2faaef81ccda?auto=format&fit=crop&w=1400&q=80',
     ],
   },
   {
-    key: 'metro',
-    label: 'Metro',
-    query: 'node["station"="subway"](around:{RADIUS},{LAT},{LON});node["railway"="station"]["station"~"subway|metro"](around:{RADIUS},{LAT},{LON});node["public_transport"="station"]["subway"="yes"](around:{RADIUS},{LAT},{LON});',
+    key: 'waterfront',
+    label: 'Набережная',
+    group: 'life',
+    emoji: '🌊',
+    source: 'overpass',
+    overpassQuery: 'way["leisure"="promenade"](around:{RADIUS},{LAT},{LON});node["tourism"="attraction"]["name"~"набережная|набережній|promenade|embankment",i](around:{RADIUS},{LAT},{LON});way["name"~"набережная|набережній|набережная",i](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
-      'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=1400&q=80',
-      'https://images.unsplash.com/photo-1508179522353-11ba468c4a1c?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1499346030926-9a72daac6c63?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=1400&q=80',
     ],
   },
   {
-    key: 'sport',
-    label: 'Sport',
-    query: 'node["leisure"~"fitness_centre|sports_centre|stadium"](around:{RADIUS},{LAT},{LON});way["leisure"~"fitness_centre|sports_centre|stadium"](around:{RADIUS},{LAT},{LON});',
+    key: 'viewpoint',
+    label: 'Смотровая',
+    group: 'life',
+    emoji: '🔭',
+    source: 'overpass',
+    overpassQuery: 'node["tourism"="viewpoint"](around:{RADIUS},{LAT},{LON});way["tourism"="viewpoint"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
-      'https://images.unsplash.com/photo-1486286701208-1d58e9338013?auto=format&fit=crop&w=1400&q=80',
-      'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1553391977-f5c6893f8df0?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=1400&q=80',
     ],
   },
+
+  // ── Group: leisure (Досуг) ─────────────────────────────────────────────
   {
-    key: 'fun',
-    label: 'Culture',
-    query: 'node["amenity"~"cinema|theatre|arts_centre|museum"](around:{RADIUS},{LAT},{LON});node["tourism"~"attraction|museum|gallery|viewpoint"](around:{RADIUS},{LAT},{LON});way["tourism"~"attraction|museum|gallery|viewpoint"](around:{RADIUS},{LAT},{LON});',
+    key: 'museum',
+    label: 'Музей',
+    group: 'leisure',
+    emoji: '🏛️',
+    source: 'yandex',
+    yandexQuery: 'музей',
     fallbackImages: [
       'https://images.unsplash.com/photo-1518998053901-5348d3961a04?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1577083552431-6e5fd01988f1?auto=format&fit=crop&w=1400&q=80',
     ],
   },
   {
-    key: 'theatre',
-    label: 'Theatre',
-    query: 'node["amenity"="theatre"](around:{RADIUS},{LAT},{LON});way["amenity"="theatre"](around:{RADIUS},{LAT},{LON});',
+    key: 'theater',
+    label: 'Театр',
+    group: 'leisure',
+    emoji: '🎭',
+    source: 'yandex',
+    yandexQuery: 'театр',
     fallbackImages: [
       'https://images.unsplash.com/photo-1503095396549-807759245b35?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1400&q=80',
     ],
   },
   {
-    key: 'church',
-    label: 'Architecture',
-    query: 'node["amenity"="place_of_worship"](around:{RADIUS},{LAT},{LON});way["amenity"="place_of_worship"](around:{RADIUS},{LAT},{LON});',
+    key: 'cinema',
+    label: 'Кинотеатр',
+    group: 'leisure',
+    emoji: '🎬',
+    source: 'yandex',
+    yandexQuery: 'кинотеатр',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'art_gallery',
+    label: 'Галерея',
+    group: 'leisure',
+    emoji: '🖼️',
+    source: 'yandex',
+    yandexQuery: 'художественная галерея',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1531243269054-5ebf6f34081e?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1565799557187-2d87e04ae98b?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'landmark',
+    label: 'Достопримечательность',
+    group: 'leisure',
+    emoji: '🏰',
+    source: 'overpass',
+    overpassQuery: 'node["tourism"~"attraction|museum|gallery|viewpoint"](around:{RADIUS},{LAT},{LON});node["historic"~"monument|memorial|castle"](around:{RADIUS},{LAT},{LON});way["tourism"="attraction"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1513326738677-b964603b136d?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1465447142348-e9952c393450?auto=format&fit=crop&w=1400&q=80',
     ],
   },
+
+  // ── Group: family (Для семьи и спорта) ───────────────────────────────
   {
-    key: 'mall',
-    label: 'Mall',
-    query: 'node["shop"="mall"](around:{RADIUS},{LAT},{LON});way["shop"="mall"](around:{RADIUS},{LAT},{LON});',
+    key: 'gym',
+    label: 'Фитнес-клуб',
+    group: 'family',
+    emoji: '💪',
+    source: 'yandex',
+    yandexQuery: 'фитнес-клуб',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1486286701208-1d58e9338013?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'yoga',
+    label: 'Йога',
+    group: 'family',
+    emoji: '🧘',
+    source: 'yandex',
+    yandexQuery: 'студия йоги',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'sports_complex',
+    label: 'Спорткомплекс',
+    group: 'family',
+    emoji: '⚽',
+    source: 'yandex',
+    yandexQuery: 'спортивный комплекс',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1571019613914-85f342c6a11e?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'shopping_mall',
+    label: 'Торговый центр',
+    group: 'family',
+    emoji: '🛍️',
+    source: 'yandex',
+    yandexQuery: 'торговый центр',
     fallbackImages: [
       'https://images.unsplash.com/photo-1519567241046-7f570eee3ce6?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'coworking',
+    label: 'Коворкинг',
+    group: 'family',
+    emoji: '💻',
+    source: 'yandex',
+    yandexQuery: 'коворкинг',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'playground',
+    label: 'Детская площадка',
+    group: 'family',
+    emoji: '🛝',
+    source: 'overpass',
+    overpassQuery: 'node["leisure"="playground"](around:{RADIUS},{LAT},{LON});way["leisure"="playground"](around:{RADIUS},{LAT},{LON});',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1575783970733-1aaedde1db74?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1587536849024-4e4b8f35b98e?auto=format&fit=crop&w=1400&q=80',
+    ],
+  },
+  {
+    key: 'kids_center',
+    label: 'Детский центр',
+    group: 'family',
+    emoji: '👶',
+    source: 'yandex',
+    yandexQuery: 'детский развивающий центр',
+    fallbackImages: [
+      'https://images.unsplash.com/photo-1526634332515-d56c5fd16991?auto=format&fit=crop&w=1400&q=80',
+      'https://images.unsplash.com/photo-1567748157439-651aca2ff064?auto=format&fit=crop&w=1400&q=80',
     ],
   },
 ]
@@ -213,116 +389,77 @@ function poiKey(item: { name: string; lat: number; lon: number }): string {
   return `${normalized || 'poi'}|${item.lat.toFixed(5)}|${item.lon.toFixed(5)}`
 }
 
-function isGenericPlaceName(name: string): boolean {
-  const trimmed = name.trim()
-  if (!trimmed) return true
-  const normalized = normalizeName(trimmed).replace(/[.,'"`!?()-]+/g, ' ').replace(/\s+/g, ' ').trim()
-  if (!normalized) return true
-  if (GENERIC_PLACE_NAME_RX.test(normalized)) return true
-  if (/^\d+$/.test(normalized)) return true
-  return false
-}
-
 function safeTag(tags: Record<string, string> | undefined, key: string): string {
   const value = tags?.[key]
   return typeof value === 'string' ? value.trim().toLowerCase() : ''
 }
 
-function categoryHardLimit(categoryKey: string): number {
-  return CATEGORY_HARD_LIMIT[categoryKey] || DEFAULT_CATEGORY_HARD_LIMIT
-}
+function scorePoiItem(item: PoiWithMeta & { walkMinutes: number; driveMinutes: number }): number {
+  // For Yandex-sourced places: rating * log(reviews + 1)
+  if (item.rating !== undefined && item.reviews_count !== undefined) {
+    const quality = item.rating * Math.log(item.reviews_count + 1)
+    const proximity = Math.max(0, 1.5 - item.distanceKm * 0.5)
+    return quality + proximity
+  }
 
-function scorePoi(item: PoiWithMeta & { walkMinutes: number; driveMinutes: number }): number {
+  // For OSM places: tag-based scoring
   const tags = item.tags || {}
-  let score = CATEGORY_BASE_SCORE[item.category.key] || 2.3
+  let score = 3.0
 
   const hasWikiRef = Boolean(
     safeTag(tags, 'wikipedia')
     || safeTag(tags, 'wikidata')
     || safeTag(tags, 'wikimedia_commons')
   )
-  if (hasWikiRef) score += 2.3
-
-  const amenity = safeTag(tags, 'amenity')
+  if (hasWikiRef) score += 2.0
+  if (safeTag(tags, 'historic') || safeTag(tags, 'heritage')) score += 1.5
   const tourism = safeTag(tags, 'tourism')
-  const leisure = safeTag(tags, 'leisure')
-  const historic = safeTag(tags, 'historic')
-  const heritage = safeTag(tags, 'heritage')
-
-  if (historic || heritage) score += 1.6
-  if (tourism === 'attraction' || tourism === 'museum' || tourism === 'gallery' || tourism === 'viewpoint') score += 1.4
-  if (amenity === 'museum' || amenity === 'theatre' || amenity === 'cinema') score += 1.1
-  if (leisure === 'park') score += 0.7
-
-  if (safeTag(tags, 'brand') || safeTag(tags, 'operator')) score += 0.3
-  if (item.name.trim().length >= 16) score += 0.3
-  if (isGenericPlaceName(item.name)) score -= 1.8
+  if (tourism === 'attraction' || tourism === 'museum' || tourism === 'gallery' || tourism === 'viewpoint') score += 1.2
+  if (item.name.trim().length >= 10) score += 0.3
 
   const bestTravel = Math.min(item.walkMinutes * 0.95, item.driveMinutes * 1.1)
-  score += Math.max(-1.5, 4.6 - bestTravel / 4.4)
-  score += Math.max(-1.3, 2.0 - item.distanceKm * 0.85)
+  score += Math.max(-1.5, 3.5 - bestTravel / 5.0)
+  score += Math.max(-1.0, 1.5 - item.distanceKm * 0.7)
 
   return score
 }
 
-function pickInterestingCandidates(items: Array<PoiWithMeta & { walkMinutes: number; driveMinutes: number }>, maxItems: number): RoutedPoi[] {
+// Returns up to maxPerCategory candidates per category, sorted by group then category then score.
+// The FIRST item in each category group is the auto-selected "best" choice.
+function pickAllCandidates(
+  items: Array<PoiWithMeta & { walkMinutes: number; driveMinutes: number }>,
+  maxPerCategory = 3
+): RoutedPoi[] {
   const scored = items
     .map((item) => ({
       ...item,
-      interestScore: scorePoi(item),
+      interestScore: scorePoiItem(item),
     }))
-    .sort((a, b) => {
-      if (b.interestScore !== a.interestScore) return b.interestScore - a.interestScore
-      if (a.walkMinutes !== b.walkMinutes) return a.walkMinutes - b.walkMinutes
-      if (a.driveMinutes !== b.driveMinutes) return a.driveMinutes - b.driveMinutes
-      return a.distanceKm - b.distanceKm
-    })
+    .sort((a, b) => b.interestScore - a.interestScore)
 
   const selected: RoutedPoi[] = []
   const selectedKeys = new Set<string>()
   const perCategory = new Map<string, number>()
 
-  const pushCandidate = (item: RoutedPoi, categoryCap: number): boolean => {
+  for (const item of scored) {
     const key = poiKey(item)
-    if (selectedKeys.has(key)) return false
-    const categoryCount = perCategory.get(item.category.key) || 0
-    if (categoryCount >= categoryCap) return false
+    if (selectedKeys.has(key)) continue
+    const count = perCategory.get(item.categoryDef.key) || 0
+    if (count >= maxPerCategory) continue
     selected.push(item)
     selectedKeys.add(key)
-    perCategory.set(item.category.key, categoryCount + 1)
-    return true
+    perCategory.set(item.categoryDef.key, count + 1)
   }
 
-  const bestPerCategory = new Map<string, RoutedPoi>()
-  for (const item of scored) {
-    if (!bestPerCategory.has(item.category.key)) {
-      bestPerCategory.set(item.category.key, item)
-    }
-  }
-  const categorySeeds = Array.from(bestPerCategory.values()).sort((a, b) => b.interestScore - a.interestScore)
-  for (const item of categorySeeds) {
-    if (selected.length >= maxItems) break
-    pushCandidate(item, 1)
-  }
-
-  const passes = [2, 3, 4, 5]
-  for (const passCap of passes) {
-    for (const item of scored) {
-      if (selected.length >= maxItems) break
-      const cap = Math.min(passCap, categoryHardLimit(item.category.key))
-      pushCandidate(item, cap)
-    }
-    if (selected.length >= maxItems) break
-  }
-
-  if (selected.length < maxItems) {
-    for (const item of scored) {
-      if (selected.length >= maxItems) break
-      pushCandidate(item, categoryHardLimit(item.category.key))
-    }
-  }
-
-  return selected.slice(0, maxItems)
+  // Sort: group order → category key → score DESC (so first item per category = best)
+  const groupOrder: Record<NearbyGroup, number> = { life: 0, leisure: 1, family: 2 }
+  return selected.sort((a, b) => {
+    const gDiff = groupOrder[a.categoryDef.group] - groupOrder[b.categoryDef.group]
+    if (gDiff !== 0) return gDiff
+    const catDiff = a.categoryDef.key.localeCompare(b.categoryDef.key)
+    if (catDiff !== 0) return catDiff
+    return b.interestScore - a.interestScore
+  })
 }
 
 async function mapWithConcurrency<T, R>(
@@ -405,6 +542,22 @@ function endpointOrder(key: string): string[] {
   return [...OVERPASS_ENDPOINTS.slice(offset), ...OVERPASS_ENDPOINTS.slice(0, offset)]
 }
 
+const overpassCache = new Map<string, OverpassCacheRecord>()
+const overpassInFlight = new Map<string, Promise<Array<{ name: string; lat: number; lon: number; tags?: Record<string, string> }>>>()
+const overpassFailedUntil = new Map<string, number>()
+const geocodeCache = new Map<string, Coords | null>()
+const yandexSearchCache = new Map<string, YandexFeature[]>()
+const commonsFileThumbCache = new Map<string, string | null>()
+const wikidataImageFileCache = new Map<string, string | null>()
+const wikidataCommonsCategoryCache = new Map<string, string | null>()
+const wikipediaThumbCache = new Map<string, string | null>()
+const commonsSearchCache = new Map<string, string[]>()
+const commonsGeoSearchCache = new Map<string, string[]>()
+const commonsCategorySearchCache = new Map<string, string[]>()
+const wikipediaSearchCache = new Map<string, string[]>()
+const wikipediaGeoSearchCache = new Map<string, string[]>()
+const openverseSearchCache = new Map<string, string[]>()
+
 async function requestOverpass(endpoint: string, query: string, timeoutMs = OVERPASS_TIMEOUT_MS): Promise<Array<{ name: string; lat: number; lon: number; tags?: Record<string, string> }>> {
   const response = await withTimeout(
     endpoint,
@@ -442,7 +595,8 @@ async function requestOverpass(endpoint: string, query: string, timeoutMs = OVER
     .filter((item): item is NonNullable<typeof item> => item !== null)
 }
 
-async function fetchCategoryPois(origin: Coords, category: CategoryDef, radiusMeters: number): Promise<Array<{ name: string; lat: number; lon: number; tags?: Record<string, string> }>> {
+async function fetchOverpassCategory(origin: Coords, category: CategoryDef, radiusMeters: number): Promise<Array<{ name: string; lat: number; lon: number; tags?: Record<string, string> }>> {
+  if (!category.overpassQuery) return []
   const key = overpassKey(origin, category.key, radiusMeters)
   const now = Date.now()
 
@@ -462,7 +616,7 @@ async function fetchCategoryPois(origin: Coords, category: CategoryDef, radiusMe
 
     for (const radius of radii) {
       if (Date.now() >= deadlineAt) break
-      const query = overpassQuery(category.query, origin, radius)
+      const query = overpassQuery(category.overpassQuery!, origin, radius)
       const endpoints = endpointOrder(key)
       for (const endpoint of endpoints) {
         const timeLeft = deadlineAt - Date.now()
@@ -496,6 +650,84 @@ async function fetchCategoryPois(origin: Coords, category: CategoryDef, radiusMe
 
   overpassInFlight.set(key, request)
   return request
+}
+
+async function fetchYandexCategory(
+  origin: Coords,
+  category: CategoryDef,
+  radiusMeters: number,
+  apiKey: string
+): Promise<PoiWithMeta[]> {
+  if (!category.yandexQuery || !apiKey.trim()) return []
+
+  const cacheKey = `${origin.lat.toFixed(4)}:${origin.lon.toFixed(4)}:${category.key}:${Math.round(radiusMeters)}`
+  const cached = yandexSearchCache.get(cacheKey)
+  const features = cached !== undefined ? cached : await (async () => {
+    const spnLat = (radiusMeters / 111000).toFixed(4)
+    const spnLon = (radiusMeters / (111000 * Math.cos(toRad(origin.lat)))).toFixed(4)
+    const params = new URLSearchParams({
+      text: category.yandexQuery!,
+      ll: `${origin.lon},${origin.lat}`,
+      spn: `${spnLon},${spnLat}`,
+      results: String(MAX_CANDIDATES_PER_YANDEX_CATEGORY),
+      lang: 'ru_RU',
+      type: 'biz',
+      apikey: apiKey,
+    })
+    try {
+      const response = await withTimeout(`${YANDEX_SEARCH_URL}?${params}`, { headers: { 'User-Agent': USER_AGENT } }, 9000)
+      if (!response.ok) {
+        console.warn(`[nearby] Yandex search ${response.status} for category=${category.key}`)
+        yandexSearchCache.set(cacheKey, [])
+        return []
+      }
+      const json = await response.json() as YandexSearchResponse
+      const result = Array.isArray(json.features) ? json.features : []
+      yandexSearchCache.set(cacheKey, result)
+      return result
+    } catch (err) {
+      console.warn(`[nearby] Yandex fetch error for category=${category.key}:`, err)
+      yandexSearchCache.set(cacheKey, [])
+      return []
+    }
+  })()
+
+  return features
+    .map((feature) => {
+      const [lon, lat] = feature.geometry.coordinates
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+      const meta = feature.properties.CompanyMetaData
+      const name = meta?.name || feature.properties.name || ''
+      if (normalizeName(name).length <= 1) return null
+      const rating = meta?.rating?.score
+      const reviews_count = meta?.rating?.count
+      // Quality filter: skip places without enough reviews or rating
+      if (rating !== undefined && reviews_count !== undefined) {
+        if (rating < MIN_RATING || reviews_count < MIN_REVIEWS) return null
+      }
+      const dist = distanceKm(origin, { lat, lon })
+      if (dist > (radiusMeters * 1.2) / 1000) return null
+      return {
+        name,
+        lat,
+        lon,
+        categoryDef: category,
+        distanceKm: dist,
+        rating,
+        reviews_count,
+      } satisfies PoiWithMeta
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .sort((a, b) => {
+      const scoreA = (a.rating !== undefined && a.reviews_count !== undefined)
+        ? a.rating * Math.log(a.reviews_count + 1)
+        : 0
+      const scoreB = (b.rating !== undefined && b.reviews_count !== undefined)
+        ? b.rating * Math.log(b.reviews_count + 1)
+        : 0
+      return scoreB - scoreA || a.distanceKm - b.distanceKm
+    })
+    .slice(0, 5)
 }
 
 async function geocodeDistrict(district: string): Promise<Coords | null> {
@@ -1093,26 +1325,6 @@ async function searchCommonsImagesByCategory(categoryTitle: string, nameHint: st
   }
 }
 
-function buildPhotoSearchQueries(name: string, district?: string, category?: string): string[] {
-  const districtPart = (district || '').trim()
-  const categoryPart = (category || '').trim()
-  const nameVariants = buildNameSearchVariants(name)
-  if (!nameVariants.length) return []
-
-  const out: string[] = []
-  for (const base of nameVariants) {
-    out.push(
-      districtPart ? `${base} ${districtPart} ${MOSCOW_LABEL}` : '',
-      `${base} ${MOSCOW_LABEL}`,
-      categoryPart ? `${base} ${categoryPart} ${MOSCOW_LABEL}` : '',
-      categoryPart ? `${base} ${categoryPart}` : '',
-      base,
-    )
-  }
-
-  return Array.from(new Set(out.map((item) => item.trim()).filter(Boolean))).slice(0, 10)
-}
-
 async function searchWikipediaImages(query: string, limit = 8): Promise<string[]> {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return []
@@ -1303,25 +1515,48 @@ function placeId(name: string, lat: number, lon: number): string {
   return `nearby_${slug}_${Math.round(lat * 10000)}_${Math.round(lon * 10000)}`
 }
 
-function getCategoryFallbackImages(category?: string): string[] {
-  const lookup = (category || '').trim().toLowerCase()
+function getCategoryFallbackImages(categoryKey?: string): string[] {
+  const lookup = (categoryKey || '').trim().toLowerCase()
   if (!lookup) return []
-  const found = CATEGORIES.find((item) => item.key.toLowerCase() === lookup || item.label.toLowerCase() === lookup)
+  const found = CATEGORY_DEFS.find((item) => item.key.toLowerCase() === lookup || item.label.toLowerCase() === lookup)
   return found?.fallbackImages || []
 }
 
-function fallbackImageDataForPoi(poi: PoiWithMeta): { imageUrl: string; variants: string[]; fallback: boolean } {
-  const fallback = poi.category.fallbackImages || []
-  const fallbackImage = fallback[Math.abs(placeId(poi.name, poi.lat, poi.lon).length) % fallback.length]
-  const fallbackVariants = [fallbackImage, ...fallback].filter(Boolean)
-  return {
-    imageUrl: fallbackImage || '',
-    variants: Array.from(new Set(fallbackVariants)),
-    fallback: true,
-  }
+function fallbackImageForCategory(categoryDef: CategoryDef, name: string, lat: number, lon: number): { imageUrl: string; variants: string[] } {
+  const fallback = categoryDef.fallbackImages || []
+  const id = placeId(name, lat, lon)
+  const fallbackImage = fallback[Math.abs(id.length) % Math.max(1, fallback.length)] || ''
+  const fallbackVariants = Array.from(new Set([fallbackImage, ...fallback].filter(Boolean)))
+  return { imageUrl: fallbackImage, variants: fallbackVariants }
 }
 
-async function resolvePlaceImages(poi: PoiWithMeta, district: string): Promise<{ imageUrl: string; variants: string[]; fallback: boolean }> {
+function buildPhotoSearchQueries(name: string, district?: string, categoryLabel?: string): string[] {
+  const nameVariants = buildNameSearchVariants(name)
+  const districtPart = district ? normalizeName(district).split(' ').filter((item) => !PHOTO_SEARCH_STOPWORDS.has(item)).join(' ').trim() : ''
+  const categoryPart = categoryLabel
+    ? normalizeName(categoryLabel).split(' ').filter((item) => !PHOTO_SEARCH_STOPWORDS.has(item)).join(' ').trim()
+    : ''
+
+  if (!nameVariants.length) return []
+
+  const out: string[] = []
+  for (const base of nameVariants) {
+    out.push(
+      districtPart ? `${base} ${districtPart} ${MOSCOW_LABEL}` : '',
+      `${base} ${MOSCOW_LABEL}`,
+      categoryPart ? `${base} ${categoryPart} ${MOSCOW_LABEL}` : '',
+      categoryPart ? `${base} ${categoryPart}` : '',
+      base,
+    )
+  }
+
+  return Array.from(new Set(out.map((item) => item.trim()).filter(Boolean))).slice(0, 10)
+}
+
+async function resolvePlaceImagesForOverpass(
+  poi: PoiWithMeta,
+  district: string
+): Promise<{ imageUrl: string; variants: string[]; fallback: boolean }> {
   const tags = poi.tags || {}
   const variants: string[] = []
 
@@ -1361,7 +1596,7 @@ async function resolvePlaceImages(poi: PoiWithMeta, district: string): Promise<{
     pushUniqueUrls(variants, nearImages, IMAGE_VARIANTS_LIMIT)
   }
 
-  const searchQueries = buildPhotoSearchQueries(poi.name, district, poi.category.label)
+  const searchQueries = buildPhotoSearchQueries(poi.name, district, poi.categoryDef.label)
   for (let i = 0; i < searchQueries.length && variants.length < IMAGE_VARIANTS_LIMIT; i += 1) {
     const includeOpenverse = variants.length < 8 && i >= 2
     const searched = await searchPhotoVariantsByQuery(searchQueries[i], 12, includeOpenverse)
@@ -1372,39 +1607,61 @@ async function resolvePlaceImages(poi: PoiWithMeta, district: string): Promise<{
     return { imageUrl: variants[0], variants, fallback: false }
   }
 
-  const fallback = poi.category.fallbackImages
-  const fallbackImage = fallback[Math.abs(placeId(poi.name, poi.lat, poi.lon).length) % fallback.length]
-  const fallbackVariants = [fallbackImage, ...fallback].filter(Boolean)
-  return { imageUrl: fallbackImage, variants: Array.from(new Set(fallbackVariants)), fallback: true }
+  const fb = fallbackImageForCategory(poi.categoryDef, poi.name, poi.lat, poi.lon)
+  return { imageUrl: fb.imageUrl, variants: fb.variants, fallback: true }
 }
 
-async function collectPoiCandidates(origin: Coords): Promise<PoiWithMeta[]> {
-  const categoryResults = await Promise.all(
-    CATEGORIES.map(async (category) => {
-      const pois = await fetchCategoryPois(origin, category, SEARCH_RADIUS_METERS)
+async function resolvePlaceImagesForYandex(
+  poi: PoiWithMeta,
+  district: string
+): Promise<{ imageUrl: string; variants: string[]; fallback: boolean }> {
+  const variants: string[] = []
+
+  if (poi.lat && poi.lon) {
+    const nearImages = await searchPhotoVariantsNearPoint({ lat: poi.lat, lon: poi.lon }, poi.name, 14)
+    pushUniqueUrls(variants, nearImages, IMAGE_VARIANTS_LIMIT)
+  }
+
+  const searchQueries = buildPhotoSearchQueries(poi.name, district, poi.categoryDef.label)
+  for (let i = 0; i < searchQueries.length && variants.length < IMAGE_VARIANTS_LIMIT; i += 1) {
+    const includeOpenverse = variants.length < 8 && i >= 2
+    const searched = await searchPhotoVariantsByQuery(searchQueries[i], 12, includeOpenverse)
+    pushUniqueUrls(variants, searched, IMAGE_VARIANTS_LIMIT)
+  }
+
+  if (variants.length > 0) {
+    return { imageUrl: variants[0], variants, fallback: false }
+  }
+
+  const fb = fallbackImageForCategory(poi.categoryDef, poi.name, poi.lat, poi.lon)
+  return { imageUrl: fb.imageUrl, variants: fb.variants, fallback: true }
+}
+
+async function collectAllCandidates(origin: Coords, apiKey: string): Promise<PoiWithMeta[]> {
+  const results = await Promise.all(
+    CATEGORY_DEFS.map(async (categoryDef) => {
+      if (categoryDef.source === 'yandex') {
+        return fetchYandexCategory(origin, categoryDef, SEARCH_RADIUS_METERS, apiKey)
+      }
+      // Overpass for nature categories
+      const pois = await fetchOverpassCategory(origin, categoryDef, SEARCH_RADIUS_METERS)
       return pois
-        .filter((poi) => {
-          if (normalizeName(poi.name).length <= 1) return false
-          if (!isGenericPlaceName(poi.name)) return true
-          const tags = poi.tags || {}
-          return Boolean(
-            tags.wikipedia
-            || tags.wikidata
-            || tags.wikimedia_commons
-            || tags.brand
-            || tags.operator
-            || tags.tourism
-            || tags.amenity
-            || tags.leisure
-          )
-        })
-        .map((poi) => ({ ...poi, category, distanceKm: distanceKm(origin, { lat: poi.lat, lon: poi.lon }) }))
+        .filter((poi) => normalizeName(poi.name).length > 1)
+        .map((poi) => ({
+          name: poi.name,
+          lat: poi.lat,
+          lon: poi.lon,
+          tags: poi.tags,
+          categoryDef,
+          distanceKm: distanceKm(origin, { lat: poi.lat, lon: poi.lon }),
+        } satisfies PoiWithMeta))
         .sort((a, b) => a.distanceKm - b.distanceKm)
-        .slice(0, MAX_PER_CATEGORY)
+        .slice(0, 5)
     })
   )
 
-  const merged = categoryResults.flat().sort((a, b) => a.distanceKm - b.distanceKm)
+  const merged = results.flat()
+  // Deduplicate by name+position
   const deduped: PoiWithMeta[] = []
   const seen = new Set<string>()
   for (const item of merged) {
@@ -1412,7 +1669,6 @@ async function collectPoiCandidates(origin: Coords): Promise<PoiWithMeta[]> {
     if (seen.has(key)) continue
     seen.add(key)
     deduped.push(item)
-    if (deduped.length >= MAX_CANDIDATES_BEFORE_ROUTES) break
   }
   return deduped
 }
@@ -1421,14 +1677,27 @@ export async function generateNearbyPlacesForComplex(
   complex: Complex,
   originOverride?: Coords,
   options: GenerateNearbyOptions = {}
-): Promise<{ origin: Coords | null; items: ComplexNearbyPlace[]; reason?: string }> {
+): Promise<{ origin: Coords | null; items: ComplexNearbyPlace[]; autoSelectedIds: string[]; reason?: string }> {
   const origin = normalizeCoords(originOverride) || await resolveComplexCoords(complex)
   if (!origin) {
-    return { origin: null, items: [], reason: 'Unable to resolve complex coordinates' }
+    return { origin: null, items: [], autoSelectedIds: [], reason: 'Unable to resolve complex coordinates' }
   }
 
-  const candidates = await collectPoiCandidates(origin)
-  if (!candidates.length) return { origin, items: [] }
+  // Get Yandex API key from DB
+  let apiKey = ''
+  try {
+    const db = readDb()
+    apiKey = (db.home?.maps?.yandex_maps_api_key || '').trim()
+  } catch {
+    // continue without API key (OSM only)
+  }
+
+  if (!apiKey) {
+    console.warn('[nearby] No Yandex API key configured — using OSM-only mode (limited categories)')
+  }
+
+  const candidates = await collectAllCandidates(origin, apiKey)
+  if (!candidates.length) return { origin, items: [], autoSelectedIds: [] }
 
   const preciseRoutes = options.preciseRoutes !== false
   const destinations = candidates.map((item) => ({ lat: item.lat, lon: item.lon }))
@@ -1444,61 +1713,94 @@ export async function generateNearbyPlacesForComplex(
     if (driveResult.status === 'fulfilled') drive.push(...driveResult.value)
   }
 
-  const routedCandidates = candidates
-    .map((item, index) => {
-      const walkMinutes = walk[index] ?? fallbackWalkMinutes(item.distanceKm)
-      const driveMinutes = drive[index] ?? fallbackDriveMinutes(item.distanceKm)
-      return {
-        ...item,
-        walkMinutes,
-        driveMinutes,
-      }
-    })
+  const routedCandidates = candidates.map((item, index) => ({
+    ...item,
+    walkMinutes: walk[index] ?? fallbackWalkMinutes(item.distanceKm),
+    driveMinutes: drive[index] ?? fallbackDriveMinutes(item.distanceKm),
+  }))
+
   const withinTravel = routedCandidates.filter((item) => item.walkMinutes <= MAX_MINUTES || item.driveMinutes <= MAX_MINUTES)
   const pool = withinTravel.length >= MIN_ROUTED_CANDIDATES ? withinTravel : routedCandidates
-  const picked = pickInterestingCandidates(pool, MAX_ITEMS)
+
+  // Pick up to 3 candidates per category (sorted: best first within each category)
+  const picked = pickAllCandidates(pool, 3)
   const resolveImages = options.resolveImages !== false
+
+  const toComplexNearbyPlace = (item: RoutedPoi, image: { imageUrl: string; variants: string[]; fallback: boolean }): ComplexNearbyPlace => ({
+    id: placeId(item.name, item.lat, item.lon),
+    name: item.name || item.categoryDef.label,
+    category: item.categoryDef.label,
+    category_key: item.categoryDef.key,
+    group: item.categoryDef.group,
+    lat: item.lat,
+    lon: item.lon,
+    walk_minutes: item.walkMinutes,
+    drive_minutes: item.driveMinutes,
+    rating: item.rating,
+    reviews_count: item.reviews_count,
+    image_url: image.imageUrl,
+    image_variants: image.variants,
+    image_fallback: image.fallback || undefined,
+  })
 
   if (!resolveImages) {
     const items = picked.map((item) => {
-      const image = fallbackImageDataForPoi(item)
-      return {
-        id: placeId(item.name, item.lat, item.lon),
-        name: item.name || item.category.label,
-        category: item.category.label,
-        lat: item.lat,
-        lon: item.lon,
-        walk_minutes: item.walkMinutes,
-        drive_minutes: item.driveMinutes,
-        image_url: image.imageUrl,
-        image_variants: image.variants,
-        image_fallback: true,
-      } satisfies ComplexNearbyPlace
+      const fb = fallbackImageForCategory(item.categoryDef, item.name, item.lat, item.lon)
+      return toComplexNearbyPlace(item, { imageUrl: fb.imageUrl, variants: fb.variants, fallback: true })
     })
-    return { origin, items }
+    // auto-selected: first (best) item per category
+    const seenCats = new Set<string>()
+    const autoSelectedIds = items
+      .filter((item) => {
+        if (!item.category_key || seenCats.has(item.category_key)) return false
+        seenCats.add(item.category_key)
+        return true
+      })
+      .map((item) => item.id)
+    return { origin, items, autoSelectedIds }
   }
 
-  const items = await mapWithConcurrency(
-    picked,
+  // For resolveImages path, only resolve images for the best 1 per category (auto-selected)
+  const seenCatsForResolve = new Set<string>()
+  const pickedForImages = picked.filter((item) => {
+    if (seenCatsForResolve.has(item.categoryDef.key)) return false
+    seenCatsForResolve.add(item.categoryDef.key)
+    return true
+  })
+
+  const resolvedItems = await mapWithConcurrency(
+    pickedForImages,
     IMAGE_RESOLVE_CONCURRENCY,
     async (item) => {
-      const image = await resolvePlaceImages(item, complex.district || '').catch(() => fallbackImageDataForPoi(item))
-      return {
-        id: placeId(item.name, item.lat, item.lon),
-        name: item.name || item.category.label,
-        category: item.category.label,
-        lat: item.lat,
-        lon: item.lon,
-        walk_minutes: item.walkMinutes,
-        drive_minutes: item.driveMinutes,
-        image_url: image.imageUrl,
-        image_variants: image.variants,
-        image_fallback: image.fallback || undefined,
-      } satisfies ComplexNearbyPlace
+      const resolveImagesForItem = item.categoryDef.source === 'yandex'
+        ? resolvePlaceImagesForYandex(item, complex.district || '')
+        : resolvePlaceImagesForOverpass(item, complex.district || '')
+      const image = await resolveImagesForItem.catch(() => {
+        const fb = fallbackImageForCategory(item.categoryDef, item.name, item.lat, item.lon)
+        return { imageUrl: fb.imageUrl, variants: fb.variants, fallback: true }
+      })
+      return toComplexNearbyPlace(item, image)
     }
   )
 
-  return { origin, items }
+  // Alternatives (non-best per category) get fallback images
+  const resolvedIds = new Set(resolvedItems.map((item) => item.id))
+  const alternativeItems = picked
+    .filter((item) => !resolvedIds.has(placeId(item.name, item.lat, item.lon)))
+    .map((item) => {
+      const fb = fallbackImageForCategory(item.categoryDef, item.name, item.lat, item.lon)
+      return toComplexNearbyPlace(item, { imageUrl: fb.imageUrl, variants: fb.variants, fallback: true })
+    })
+
+  const items = [...resolvedItems, ...alternativeItems].sort((a, b) => {
+    const groupOrder: Record<string, number> = { life: 0, leisure: 1, family: 2 }
+    const gDiff = (groupOrder[a.group || ''] ?? 9) - (groupOrder[b.group || ''] ?? 9)
+    if (gDiff !== 0) return gDiff
+    return (a.category_key || '').localeCompare(b.category_key || '')
+  })
+
+  const autoSelectedIds = resolvedItems.map((item) => item.id)
+  return { origin, items, autoSelectedIds }
 }
 
 export async function searchNearbyPhotoVariants(name: string, district?: string, category?: string, point?: Coords): Promise<string[]> {
@@ -1533,6 +1835,3 @@ export async function searchNearbyPhotoVariants(name: string, district?: string,
 
   return result.slice(0, IMAGE_VARIANTS_LIMIT)
 }
-
-
-

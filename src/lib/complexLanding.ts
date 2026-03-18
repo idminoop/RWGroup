@@ -15,7 +15,8 @@ const DEFAULT_SURFACE = '#071520'
 const KREMLIN_COORDS = { lat: 55.752023, lon: 37.617499 }
 const PLAN_IMAGE_RX = /(plan|layout|preset|floor)/i
 export const MAX_LANDING_FACTS = 12
-const MAX_NEARBY_ITEMS = 20
+const MAX_NEARBY_CANDIDATES = 63 // up to 3 per category × 21 categories
+const MAX_NEARBY_SELECTED = 20
 const MAX_NEARBY_IMAGE_VARIANTS = 24
 
 export const FACT_IMAGE_PRESETS = [
@@ -349,10 +350,15 @@ export function createLandingNearbyPlace(partial?: Partial<ComplexNearbyPlace>):
     id: partial?.id || makeId('nearby'),
     name: toText(partial?.name) || 'Место поблизости',
     category: toText(partial?.category) || undefined,
+    category_key: toText(partial?.category_key) || undefined,
+    group: partial?.group || undefined,
+    emoji: toText(partial?.emoji) || undefined,
     lat: toFiniteNumber(partial?.lat) ?? 0,
     lon: toFiniteNumber(partial?.lon) ?? 0,
     walk_minutes: Math.max(1, Math.round(toFiniteNumber(partial?.walk_minutes) ?? 0)),
     drive_minutes: Math.max(1, Math.round(toFiniteNumber(partial?.drive_minutes) ?? 0)),
+    rating: typeof partial?.rating === 'number' && Number.isFinite(partial.rating) ? partial.rating : undefined,
+    reviews_count: typeof partial?.reviews_count === 'number' && Number.isFinite(partial.reviews_count) ? partial.reviews_count : undefined,
     image_url: toText(partial?.image_url) || undefined,
     image_variants: imageVariants.length ? imageVariants : undefined,
     image_fallback: typeof partial?.image_fallback === 'boolean' ? partial.image_fallback : undefined,
@@ -369,7 +375,7 @@ export function createLandingNearby(partial?: Partial<ComplexLandingNearby>): Co
       && (Math.abs(item.lat) > 0.0001 || Math.abs(item.lon) > 0.0001)
       && item.name.trim().length > 1
     )
-    .slice(0, MAX_NEARBY_ITEMS)
+    .slice(0, MAX_NEARBY_CANDIDATES)
 
   const candidateIds = new Set(candidates.map((item) => item.id))
   const selectedRaw = safeArray<string>(partial?.selected_ids)
@@ -383,7 +389,7 @@ export function createLandingNearby(partial?: Partial<ComplexLandingNearby>): Co
       seenSelected.add(item)
       return true
     })
-    .slice(0, MAX_NEARBY_ITEMS)
+    .slice(0, MAX_NEARBY_SELECTED)
 
   return {
     enabled: typeof partial?.enabled === 'boolean' ? partial.enabled : true,

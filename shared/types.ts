@@ -93,14 +93,21 @@ export interface ComplexLandingPlanItem {
   preview_images?: string[]
 }
 
+export type NearbyGroup = 'life' | 'leisure' | 'family'
+
 export interface ComplexNearbyPlace {
   id: string
   name: string
   category?: string
+  category_key?: string
+  group?: NearbyGroup
+  emoji?: string
   lat: number
   lon: number
   walk_minutes: number
   drive_minutes: number
+  rating?: number
+  reviews_count?: number
   image_url?: string
   image_variants?: string[]
   image_fallback?: boolean
