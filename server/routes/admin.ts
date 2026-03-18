@@ -1484,6 +1484,7 @@ router.post('/catalog/complex/:id/nearby/generate', requireAdminPermission('cata
         refreshed_at: new Date().toISOString(),
         candidates: generated.items,
         auto_selected_ids: generated.autoSelectedIds,
+        no_api_key: generated.no_api_key || false,
       },
     })
   } catch (error) {

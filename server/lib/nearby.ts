@@ -99,7 +99,6 @@ const MOSCOW_VIEWBOX = `${MOSCOW_BOUNDS.minLon},${MOSCOW_BOUNDS.maxLat},${MOSCOW
 const MOSCOW_LABEL = 'Москва'
 
 const SEARCH_RADIUS_METERS = 2000
-const MAX_ITEMS = 20
 const MAX_CANDIDATES_PER_YANDEX_CATEGORY = 10
 const MAX_MINUTES = 25
 const IMAGE_VARIANTS_LIMIT = 24
@@ -1646,9 +1645,8 @@ async function collectAllCandidates(origin: Coords, apiKey: string): Promise<Poi
       // Overpass for nature categories
       const pois = await fetchOverpassCategory(origin, categoryDef, SEARCH_RADIUS_METERS)
       return pois
-        .filter((poi) => normalizeName(poi.name).length > 1)
         .map((poi) => ({
-          name: poi.name,
+          name: poi.name || categoryDef.label,
           lat: poi.lat,
           lon: poi.lon,
           tags: poi.tags,
@@ -1677,7 +1675,7 @@ export async function generateNearbyPlacesForComplex(
   complex: Complex,
   originOverride?: Coords,
   options: GenerateNearbyOptions = {}
-): Promise<{ origin: Coords | null; items: ComplexNearbyPlace[]; autoSelectedIds: string[]; reason?: string }> {
+): Promise<{ origin: Coords | null; items: ComplexNearbyPlace[]; autoSelectedIds: string[]; reason?: string; no_api_key?: boolean }> {
   const origin = normalizeCoords(originOverride) || await resolveComplexCoords(complex)
   if (!origin) {
     return { origin: null, items: [], autoSelectedIds: [], reason: 'Unable to resolve complex coordinates' }
@@ -1692,12 +1690,13 @@ export async function generateNearbyPlacesForComplex(
     // continue without API key (OSM only)
   }
 
-  if (!apiKey) {
+  const noApiKey = !apiKey
+  if (noApiKey) {
     console.warn('[nearby] No Yandex API key configured — using OSM-only mode (limited categories)')
   }
 
   const candidates = await collectAllCandidates(origin, apiKey)
-  if (!candidates.length) return { origin, items: [], autoSelectedIds: [] }
+  if (!candidates.length) return { origin, items: [], autoSelectedIds: [], no_api_key: noApiKey }
 
   const preciseRoutes = options.preciseRoutes !== false
   const destinations = candidates.map((item) => ({ lat: item.lat, lon: item.lon }))
@@ -1757,7 +1756,7 @@ export async function generateNearbyPlacesForComplex(
         return true
       })
       .map((item) => item.id)
-    return { origin, items, autoSelectedIds }
+    return { origin, items, autoSelectedIds, no_api_key: noApiKey }
   }
 
   // For resolveImages path, only resolve images for the best 1 per category (auto-selected)
@@ -1800,7 +1799,7 @@ export async function generateNearbyPlacesForComplex(
   })
 
   const autoSelectedIds = resolvedItems.map((item) => item.id)
-  return { origin, items, autoSelectedIds }
+  return { origin, items, autoSelectedIds, no_api_key: noApiKey }
 }
 
 export async function searchNearbyPhotoVariants(name: string, district?: string, category?: string, point?: Coords): Promise<string[]> {

@@ -64,8 +64,9 @@ export default function AdminMapSettingsPage() {
           placeholder="Введите API-ключ"
           className="border-white/20 bg-white/10 text-white placeholder:text-white/40"
         />
-        <div className="mt-2 text-xs text-slate-400">
-          Ключ можно получить в кабинете разработчика Яндекса для JavaScript API и Геокодера.
+        <div className="mt-2 space-y-1 text-xs text-slate-400">
+          <div>Используется для публичной карты ЖК (JavaScript API) и для автоматического поиска мест поблизости (Search API HTTP).</div>
+          <div>Создайте ключ в кабинете разработчика Яндекса и убедитесь, что для него включены сервисы <strong className="text-slate-300">JavaScript API</strong> и <strong className="text-slate-300">Search API HTTP</strong>.</div>
         </div>
       </div>
 

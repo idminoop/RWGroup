@@ -43,6 +43,7 @@ type NearbyGenerateResponse = {
   refreshed_at: string
   candidates: ComplexNearbyPlace[]
   auto_selected_ids?: string[]
+  no_api_key?: boolean
 }
 
 type NearbyPhotoVariantsResponse = {
@@ -194,6 +195,7 @@ export default function AdminComplexSettingsPage() {
   const [newPresetImage, setNewPresetImage] = useState('')
   const [nearbyLoading, setNearbyLoading] = useState(false)
   const [nearbyError, setNearbyError] = useState<string | null>(null)
+  const [nearbyNoApiKey, setNearbyNoApiKey] = useState(false)
   const [nearbyPhotoLoadingById, setNearbyPhotoLoadingById] = useState<Record<string, boolean>>({})
   const [autoNearbyGeneratedFor, setAutoNearbyGeneratedFor] = useState('')
   const [mapSearchQuery, setMapSearchQuery] = useState('')
@@ -498,6 +500,7 @@ export default function AdminComplexSettingsPage() {
     autoNearbyPhotoRequestedRef.current = new Set()
     setNearbyLoading(true)
     setNearbyError(null)
+    setNearbyNoApiKey(false)
     try {
       const payload = mapPoint ? { origin_lat: mapPoint.lat, origin_lon: mapPoint.lon } : {}
       const generated = await apiPost<NearbyGenerateResponse>(
@@ -505,6 +508,8 @@ export default function AdminComplexSettingsPage() {
         payload,
         headers
       )
+
+      if (generated.no_api_key) setNearbyNoApiKey(true)
 
       const previous = createLandingNearby(draftLanding?.nearby)
       const previousById = new Map(previous.candidates.map((item) => [item.id, item]))
@@ -1304,6 +1309,12 @@ export default function AdminComplexSettingsPage() {
               </div>
 
               {nearbyError ? <div className="text-xs text-rose-300">{nearbyError}</div> : null}
+              {nearbyNoApiKey ? (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300">
+                  Яндекс API-ключ не настроен — доступны только парки и набережные (OSM). Для кофеен, ресторанов и других мест добавьте ключ Search API Яндекса в{' '}
+                  <a href="/admin/map-settings" target="_blank" className="underline">настройках карт</a>.
+                </div>
+              ) : null}
 
               {!nearbyConfig?.candidates.length ? (
                 <div className="rounded-xl border border-dashed border-white/20 bg-white/[0.03] p-4 text-sm text-white/55">
