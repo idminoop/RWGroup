@@ -1575,11 +1575,18 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
     image_custom: z.boolean().optional(),
   })
 
+  const landingNearbyCollectionSchema = z.object({
+    key: z.string().min(1),
+    label: z.string().min(1),
+    group: z.enum(['life', 'leisure', 'family']).optional(),
+  })
+
   const landingNearbySchema = z.object({
     enabled: z.boolean().optional(),
     title: z.string().optional(),
     subtitle: z.string().optional(),
     refreshed_at: z.string().optional(),
+    collections: z.array(landingNearbyCollectionSchema).max(20).optional(),
     selected_ids: z.array(z.string()).max(20),
     candidates: z.array(landingNearbyPlaceSchema).max(20),
   })

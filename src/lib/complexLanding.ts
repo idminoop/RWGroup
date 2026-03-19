@@ -6,6 +6,7 @@ import type {
   ComplexLandingNearby,
   ComplexLandingPlanItem,
   ComplexLandingTag,
+  ComplexNearbyCollection,
   ComplexNearbyPlace,
   Property,
 } from '../../shared/types'
@@ -205,6 +206,27 @@ function collectPlanPreviewImages(images?: string[]): string[] {
   return uniq(matched.length ? matched : images).slice(0, 12)
 }
 
+function normalizeNearbyCollectionKey(value?: string): string {
+  return toText(value)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9а-яё_]/gi, '')
+    .replace(/^_+|_+$/g, '') || '__none__'
+}
+
+function normalizeNearbyCollectionLabel(value?: string, fallbackKey?: string): string {
+  const label = toText(value).trim()
+  if (label) return label
+  const key = normalizeNearbyCollectionKey(fallbackKey)
+  if (key === '__none__') return 'Подборка'
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^./, (char) => char.toUpperCase())
+}
+
 function inferPlanItems(complex: Complex, properties: Property[]): ComplexLandingPlanItem[] {
   const grouped = new Map<number, {
     minPrice?: number
@@ -392,11 +414,43 @@ export function createLandingNearby(partial?: Partial<ComplexLandingNearby>): Co
     })
     .slice(0, MAX_NEARBY_SELECTED)
 
+  const declaredCollections = safeArray<Partial<ComplexNearbyCollection>>(partial?.collections)
+    .map((item) => {
+      const key = normalizeNearbyCollectionKey(item?.key || item?.label)
+      if (key === '__none__') return null
+      return {
+        key,
+        label: normalizeNearbyCollectionLabel(item?.label, key),
+        group: item?.group,
+      } as ComplexNearbyCollection
+    })
+    .filter((item): item is ComplexNearbyCollection => Boolean(item))
+
+  const autoCollectionsMap = new Map<string, ComplexNearbyCollection>()
+  for (const candidate of candidates) {
+    const key = normalizeNearbyCollectionKey(candidate.category_key || candidate.category)
+    if (key === '__none__' || autoCollectionsMap.has(key)) continue
+    autoCollectionsMap.set(key, {
+      key,
+      label: normalizeNearbyCollectionLabel(candidate.category, key),
+      group: candidate.group,
+    })
+  }
+
+  const collections: ComplexNearbyCollection[] = []
+  const seenCollectionKeys = new Set<string>()
+  for (const collection of [...declaredCollections, ...autoCollectionsMap.values()]) {
+    if (seenCollectionKeys.has(collection.key)) continue
+    seenCollectionKeys.add(collection.key)
+    collections.push(collection)
+  }
+
   return {
     enabled: typeof partial?.enabled === 'boolean' ? partial.enabled : true,
     title: toText(partial?.title) || 'Места поблизости',
     subtitle: toText(partial?.subtitle) || 'Пешком и на машине от жилого комплекса',
     refreshed_at: toText(partial?.refreshed_at) || undefined,
+    collections: collections.length ? collections : undefined,
     candidates,
     selected_ids: selected_ids.length ? selected_ids : candidates.map((item) => item.id),
   }

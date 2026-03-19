@@ -95,6 +95,12 @@ export interface ComplexLandingPlanItem {
 
 export type NearbyGroup = 'life' | 'leisure' | 'family'
 
+export interface ComplexNearbyCollection {
+  key: string
+  label: string
+  group?: NearbyGroup
+}
+
 export interface ComplexNearbyPlace {
   id: string
   name: string
@@ -120,6 +126,7 @@ export interface ComplexLandingNearby {
   title?: string
   subtitle?: string
   refreshed_at?: string
+  collections?: ComplexNearbyCollection[]
   selected_ids: string[]
   candidates: ComplexNearbyPlace[]
 }

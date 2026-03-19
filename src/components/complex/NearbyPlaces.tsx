@@ -1,10 +1,11 @@
 import { Car, Footprints, Navigation, Star } from 'lucide-react'
 import { Heading } from '@/components/ui/Typography'
-import type { ComplexNearbyPlace, NearbyGroup } from '../../../shared/types'
+import type { ComplexNearbyCollection, ComplexNearbyPlace, NearbyGroup } from '../../../shared/types'
 
 type NearbyPlacesProps = {
   title?: string
   subtitle?: string
+  collections?: ComplexNearbyCollection[]
   items: ComplexNearbyPlace[]
   originLat?: number
   originLon?: number
@@ -19,6 +20,8 @@ type GroupConfig = {
 type CategoryBucket = {
   key: string
   label: string
+  order: number
+  appearance: number
   items: ComplexNearbyPlace[]
 }
 
@@ -75,14 +78,27 @@ function groupLabelByKey(key: NearbyGroup): string {
   return GROUP_CONFIGS.find((item) => item.key === key)?.label || key
 }
 
-function buildBuckets(items: ComplexNearbyPlace[]): GroupBucket[] {
+function buildBuckets(items: ComplexNearbyPlace[], collections?: ComplexNearbyCollection[]): GroupBucket[] {
+  const collectionMetaByKey = new Map<string, { label: string; group?: NearbyGroup; order: number }>()
+  ;(collections || []).forEach((collection, order) => {
+    const key = (collection.key || '').trim()
+    if (!key || collectionMetaByKey.has(key)) return
+    collectionMetaByKey.set(key, {
+      label: (collection.label || '').trim() || 'Подборка',
+      group: collection.group,
+      order,
+    })
+  })
+
   const groupMap = new Map<GroupBucket['key'], { label?: string; categories: Map<string, CategoryBucket> }>()
+  let appearance = 0
 
   for (const item of items.slice(0, 20)) {
-    const groupKey: GroupBucket['key'] = item.group || 'ungrouped'
-    const groupLabel = item.group ? groupLabelByKey(item.group) : undefined
-    const categoryLabel = normalizeCategoryLabel(item)
-    const categoryKey = normalizeCategoryKey(item, categoryLabel)
+    const categoryKey = normalizeCategoryKey(item, normalizeCategoryLabel(item))
+    const meta = collectionMetaByKey.get(categoryKey)
+    const groupKey: GroupBucket['key'] = item.group || meta?.group || 'ungrouped'
+    const groupLabel = item.group ? groupLabelByKey(item.group) : (meta?.group ? groupLabelByKey(meta.group) : undefined)
+    const categoryLabel = meta?.label || normalizeCategoryLabel(item)
 
     if (!groupMap.has(groupKey)) {
       groupMap.set(groupKey, { label: groupLabel, categories: new Map() })
@@ -93,9 +109,13 @@ function buildBuckets(items: ComplexNearbyPlace[]): GroupBucket[] {
       group.categories.set(scopedCategoryKey, {
         key: scopedCategoryKey,
         label: categoryLabel,
+        order: meta?.order ?? Number.MAX_SAFE_INTEGER,
+        appearance: appearance++,
         items: [],
       })
     }
+    const bucket = group.categories.get(scopedCategoryKey)!
+    if (meta?.label && !bucket.items.length) bucket.label = meta.label
     group.categories.get(scopedCategoryKey)!.items.push(item)
   }
 
@@ -106,10 +126,12 @@ function buildBuckets(items: ComplexNearbyPlace[]): GroupBucket[] {
 
   return orderedKeys.map((key) => {
     const group = groupMap.get(key)!
+    const categories = Array.from(group.categories.values())
+      .sort((a, b) => (a.order - b.order) || (a.appearance - b.appearance))
     return {
       key,
       label: group.label,
-      categories: Array.from(group.categories.values()),
+      categories,
     }
   })
 }
@@ -198,6 +220,7 @@ function PlaceCard({
 export default function NearbyPlaces({
   title = 'Места поблизости',
   subtitle = 'Почему здесь хочется жить',
+  collections,
   items,
   originLat,
   originLon,
@@ -205,7 +228,7 @@ export default function NearbyPlaces({
 }: NearbyPlacesProps) {
   if (!items.length) return null
 
-  const buckets = buildBuckets(items)
+  const buckets = buildBuckets(items, collections)
   const hasNamedGroups = buckets.some((bucket) => bucket.key !== 'ungrouped')
 
   return (

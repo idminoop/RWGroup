@@ -25,6 +25,7 @@ import type {
   ComplexLandingConfig,
   ComplexLandingFact,
   ComplexLandingNearby,
+  ComplexNearbyCollection,
   LandingFeaturePreset,
   ComplexNearbyPlace,
   ComplexLandingTag,
@@ -207,8 +208,15 @@ function nearbyCollectionKey(candidate: Pick<ComplexNearbyPlace, 'category_key'>
   return (candidate.category_key || '__none__').trim() || '__none__'
 }
 
-function nearbyGroupKey(candidate: Pick<ComplexNearbyPlace, 'group'>): string {
-  return candidate.group || '__ungrouped__'
+function makeUniqueNearbyCollectionKey(baseLabel: string, takenKeys: Set<string>): string {
+  const base = nearbyCategoryKey(baseLabel) || 'manual'
+  let key = base
+  let suffix = 2
+  while (takenKeys.has(key)) {
+    key = `${base}_${suffix}`
+    suffix += 1
+  }
+  return key
 }
 
 export default function AdminComplexSettingsPage() {
@@ -263,6 +271,10 @@ export default function AdminComplexSettingsPage() {
     if (!draftLanding) return null
     return createLandingNearby(draftLanding.nearby)
   }, [draftLanding])
+  const nearbyCollections = useMemo<ComplexNearbyCollection[]>(() => {
+    if (!nearbyConfig) return []
+    return Array.isArray(nearbyConfig.collections) ? nearbyConfig.collections : []
+  }, [nearbyConfig])
   const mapPoint = useMemo(() => normalizeGeoPoint(draftComplex?.geo_lat, draftComplex?.geo_lon), [draftComplex?.geo_lat, draftComplex?.geo_lon])
 
   const featurePresetOptions = useMemo(() => {
@@ -432,30 +444,60 @@ export default function AdminComplexSettingsPage() {
     }))
   }
 
-  const addNearbyCandidate = (categoryLabel?: string) => {
-    const category = (categoryLabel || newNearbyCollectionName || 'Новая подборка').trim()
+  const addNearbyCollection = () => {
+    const label = newNearbyCollectionName.trim()
+    if (!label) return
+    patchNearby((nearby) => {
+      const takenKeys = new Set<string>([
+        ...(nearby.collections || []).map((item) => item.key),
+        ...nearby.candidates.map((item) => nearbyCollectionKey(item)).filter((key) => key !== '__none__'),
+      ])
+      const key = makeUniqueNearbyCollectionKey(label, takenKeys)
+      const collections: ComplexNearbyCollection[] = [...(nearby.collections || []), { key, label }]
+      return {
+        ...nearby,
+        refreshed_at: new Date().toISOString(),
+        collections,
+      }
+    })
+    setNewNearbyCollectionName('')
+  }
+
+  const addNearbyCandidate = (collection: Pick<ComplexNearbyCollection, 'key' | 'label'>) => {
     const point = mapPoint || { lat: 55.751244, lon: 37.618423 }
     patchNearby((nearby) => {
       const next = createLandingNearbyPlace({
         id: `manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         name: 'Новое место',
         description: '',
-        category,
-        category_key: nearbyCategoryKey(category),
+        category: collection.label,
+        category_key: collection.key,
         lat: point.lat,
         lon: point.lon,
         walk_minutes: 10,
         drive_minutes: 5,
       })
-      const candidates = [next, ...nearby.candidates].slice(0, 20)
+
+      const candidates = [...nearby.candidates]
+      let insertAt = -1
+      for (let i = candidates.length - 1; i >= 0; i -= 1) {
+        if (nearbyCollectionKey(candidates[i]) === collection.key) {
+          insertAt = i
+          break
+        }
+      }
+      if (insertAt >= 0) candidates.splice(insertAt + 1, 0, next)
+      else candidates.push(next)
+
+      const collections = nearby.collections || []
+      const hasCollection = collections.some((item) => item.key === collection.key)
       return {
         ...nearby,
         refreshed_at: new Date().toISOString(),
-        candidates,
-        selected_ids: candidates.map((item) => item.id).slice(0, 20),
+        collections: hasCollection ? collections : [...collections, { key: collection.key, label: collection.label }],
+        candidates: candidates.slice(0, 20),
       }
     })
-    setNewNearbyCollectionName('')
   }
 
   const deleteNearbyCandidate = (id: string) => {
@@ -474,9 +516,14 @@ export default function AdminComplexSettingsPage() {
     if (!nextCategory) return
     patchNearby((nearby) => ({
       ...nearby,
+      collections: (nearby.collections || []).map((item) => (
+        item.key === categoryKey
+          ? { ...item, label: nextCategory }
+          : item
+      )),
       candidates: nearby.candidates.map((item) => (
         nearbyCollectionKey(item) === categoryKey
-          ? createLandingNearbyPlace({ ...item, category: nextCategory, category_key: nearbyCategoryKey(nextCategory) })
+          ? createLandingNearbyPlace({ ...item, category: nextCategory, category_key: categoryKey })
           : item
       )),
     }))
@@ -488,31 +535,7 @@ export default function AdminComplexSettingsPage() {
       return {
         ...nearby,
         refreshed_at: new Date().toISOString(),
-        candidates,
-      }
-    })
-  }
-
-  const moveNearbyCandidateInCollection = (candidateId: string, categoryKey: string, direction: 'up' | 'down') => {
-    patchNearby((nearby) => {
-      const candidates = [...nearby.candidates]
-      const inCollection = candidates
-        .map((item, index) => ({ item, index }))
-        .filter((entry) => nearbyCollectionKey(entry.item) === categoryKey)
-      const currentPos = inCollection.findIndex((entry) => entry.item.id === candidateId)
-      if (currentPos < 0) return nearby
-
-      const targetPos = direction === 'up' ? currentPos - 1 : currentPos + 1
-      if (targetPos < 0 || targetPos >= inCollection.length) return nearby
-
-      const sourceIndex = inCollection[currentPos].index
-      const targetIndex = inCollection[targetPos].index
-      const [moved] = candidates.splice(sourceIndex, 1)
-      candidates.splice(targetIndex, 0, moved)
-
-      return {
-        ...nearby,
-        refreshed_at: new Date().toISOString(),
+        collections: (nearby.collections || []).filter((item) => item.key !== categoryKey),
         candidates,
       }
     })
@@ -520,49 +543,20 @@ export default function AdminComplexSettingsPage() {
 
   const moveNearbyCollection = (categoryKey: string, direction: 'up' | 'down') => {
     patchNearby((nearby) => {
-      type Collection = {
-        key: string
-        group: string
-        items: ComplexNearbyPlace[]
-      }
-
-      const orderedCollections: Collection[] = []
-      const indexByKey = new Map<string, number>()
-
-      for (const candidate of nearby.candidates) {
-        const key = nearbyCollectionKey(candidate)
-        if (!indexByKey.has(key)) {
-          indexByKey.set(key, orderedCollections.length)
-          orderedCollections.push({
-            key,
-            group: nearbyGroupKey(candidate),
-            items: [candidate],
-          })
-        } else {
-          orderedCollections[indexByKey.get(key)!].items.push(candidate)
-        }
-      }
-
-      const currentIndex = orderedCollections.findIndex((collection) => collection.key === categoryKey)
+      const collections = [...(nearby.collections || [])]
+      const currentIndex = collections.findIndex((collection) => collection.key === categoryKey)
       if (currentIndex < 0) return nearby
 
-      const step = direction === 'up' ? -1 : 1
-      const group = orderedCollections[currentIndex].group
-      let targetIndex = currentIndex + step
-      while (targetIndex >= 0 && targetIndex < orderedCollections.length && orderedCollections[targetIndex].group !== group) {
-        targetIndex += step
-      }
+      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+      if (targetIndex < 0 || targetIndex >= collections.length) return nearby
 
-      if (targetIndex < 0 || targetIndex >= orderedCollections.length) return nearby
-
-      const next = [...orderedCollections]
-      const [moved] = next.splice(currentIndex, 1)
-      next.splice(targetIndex, 0, moved)
+      const [moved] = collections.splice(currentIndex, 1)
+      collections.splice(targetIndex, 0, moved)
 
       return {
         ...nearby,
         refreshed_at: new Date().toISOString(),
-        candidates: next.flatMap((collection) => collection.items),
+        collections,
       }
     })
   }
@@ -1300,13 +1294,8 @@ export default function AdminComplexSettingsPage() {
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-white">
-                  Места поблизости {nearbyConfig ? `(${nearbyConfig.candidates.length})` : ''}
+                  Места поблизости {nearbyConfig ? `(${nearbyCollections.length} подборок, ${nearbyConfig.candidates.length} мест)` : ''}
                 </h3>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => addNearbyCandidate()}>
-                    + Добавить место
-                  </Button>
-                </div>
               </div>
 
               <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
@@ -1338,7 +1327,7 @@ export default function AdminComplexSettingsPage() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() => addNearbyCandidate(newNearbyCollectionName)}
+                  onClick={addNearbyCollection}
                   disabled={!newNearbyCollectionName.trim()}
                 >
                   + Создать подборку
@@ -1347,40 +1336,31 @@ export default function AdminComplexSettingsPage() {
 
               <div className="flex flex-wrap items-center gap-3 text-xs text-white/60">
                 <span>Показываем до 20 карточек</span>
-                <span>Порядок: стрелки ↑ ↓ у подборок и мест</span>
+                <span>Стрелки ↑ ↓ управляют только порядком подборок</span>
                 {nearbyConfig?.refreshed_at ? <span>Обновлено: {new Date(nearbyConfig.refreshed_at).toLocaleString('ru-RU')}</span> : null}
               </div>
 
-              {!nearbyConfig?.candidates.length ? (
+              {!nearbyCollections.length && !nearbyConfig?.candidates.length ? (
                 <div className="rounded-xl border border-dashed border-white/20 bg-white/[0.03] p-4 text-sm text-white/55">
-                  Добавьте первое место вручную: название, описание, фото и время пешком/на машине.
+                  Сначала создайте подборку, затем добавьте в нее места.
                 </div>
               ) : (
                 <div className="space-y-5">
                   {(() => {
-                    const groupDefs = [
-                      { key: 'life' as const, label: 'Жизнь рядом' },
-                      { key: 'leisure' as const, label: 'Досуг' },
-                      { key: 'family' as const, label: 'Для семьи и спорта' },
-                    ]
-                    const grouped = new Map<string, typeof nearbyConfig.candidates>()
-                    const ungrouped: typeof nearbyConfig.candidates = []
-                    for (const c of nearbyConfig.candidates) {
-                      if (c.group) {
-                        const arr = grouped.get(c.group) || []
-                        arr.push(c)
-                        grouped.set(c.group, arr)
-                      } else {
-                        ungrouped.push(c)
+                    const candidatesByCollection = new Map<string, ComplexNearbyPlace[]>()
+                    const unassigned: ComplexNearbyPlace[] = []
+                    for (const candidate of nearbyConfig.candidates) {
+                      const collectionKey = nearbyCollectionKey(candidate)
+                      if (collectionKey === '__none__') {
+                        unassigned.push(candidate)
+                        continue
                       }
+                      const arr = candidatesByCollection.get(collectionKey) || []
+                      arr.push(candidate)
+                      candidatesByCollection.set(collectionKey, arr)
                     }
 
                     const renderCandidate = (candidate: ComplexNearbyPlace) => {
-                      const categoryKey = nearbyCollectionKey(candidate)
-                      const categoryCandidates = nearbyConfig.candidates.filter((item) => nearbyCollectionKey(item) === categoryKey)
-                      const categoryIndex = categoryCandidates.findIndex((item) => item.id === candidate.id)
-                      const canMoveUp = categoryIndex > 0
-                      const canMoveDown = categoryIndex >= 0 && categoryIndex < categoryCandidates.length - 1
                       const imageVariants = dedupeUrls([candidate.image_url || '', ...(candidate.image_variants || [])]).slice(0, MAX_NEARBY_IMAGE_VARIANTS)
                       return (
                         <article
@@ -1423,29 +1403,9 @@ export default function AdminComplexSettingsPage() {
                                 )}
                               </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => moveNearbyCandidateInCollection(candidate.id, categoryKey, 'up')}
-                                disabled={!canMoveUp}
-                                title="Поднять место выше в подборке"
-                              >
-                                ↑
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => moveNearbyCandidateInCollection(candidate.id, categoryKey, 'down')}
-                                disabled={!canMoveDown}
-                                title="Опустить место ниже в подборке"
-                              >
-                                ↓
-                              </Button>
-                              <Button size="sm" variant="secondary" onClick={() => deleteNearbyCandidate(candidate.id)}>
-                                Удалить
-                              </Button>
-                            </div>
+                            <Button size="sm" variant="secondary" onClick={() => deleteNearbyCandidate(candidate.id)}>
+                              Удалить
+                            </Button>
                           </div>
 
                           <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2">
@@ -1519,20 +1479,6 @@ export default function AdminComplexSettingsPage() {
                             </label>
                           </div>
 
-                          <div className="mt-2">
-                            <Input
-                              value={candidate.category || ''}
-                              className="border-white/20 bg-white/5 text-white"
-                              placeholder="Подборка"
-                              onChange={(e) =>
-                                updateNearbyCandidate(candidate.id, {
-                                  category: e.target.value,
-                                  category_key: nearbyCategoryKey(e.target.value),
-                                })
-                              }
-                            />
-                          </div>
-
                           {imageVariants.length > 0 && (
                             <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
                               {imageVariants.map((src, index) => (
@@ -1560,26 +1506,23 @@ export default function AdminComplexSettingsPage() {
                       )
                     }
 
-                    const renderCategoryBlock = (categoryCandidates: ComplexNearbyPlace[], collectionIndex: number, collectionCount: number) => {
-                      if (!categoryCandidates.length) return null
-                      const [firstCandidate] = categoryCandidates
-                      const categoryLabel = firstCandidate.category || ''
-                      const categoryKey = nearbyCollectionKey(firstCandidate)
+                    const renderCollectionBlock = (collection: ComplexNearbyCollection, collectionIndex: number, collectionCount: number) => {
+                      const categoryCandidates = candidatesByCollection.get(collection.key) || []
                       const canMoveUp = collectionIndex > 0
                       const canMoveDown = collectionIndex < collectionCount - 1
                       return (
-                        <div key={firstCandidate.category_key || firstCandidate.id} className="space-y-2">
+                        <div key={collection.key} className="space-y-2 rounded-xl border border-white/10 bg-white/[0.02] p-3">
                           <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]">
                             <Input
-                              value={categoryLabel}
+                              value={collection.label}
                               className="border-white/20 bg-white/5 text-white"
                               placeholder="Подборка"
-                              onChange={(e) => renameNearbyCollection(categoryKey, e.target.value)}
+                              onChange={(e) => renameNearbyCollection(collection.key, e.target.value)}
                             />
                             <Button
                               size="sm"
                               variant="secondary"
-                              onClick={() => moveNearbyCollection(categoryKey, 'up')}
+                              onClick={() => moveNearbyCollection(collection.key, 'up')}
                               disabled={!canMoveUp}
                               title="Поднять подборку выше"
                             >
@@ -1588,56 +1531,42 @@ export default function AdminComplexSettingsPage() {
                             <Button
                               size="sm"
                               variant="secondary"
-                              onClick={() => moveNearbyCollection(categoryKey, 'down')}
+                              onClick={() => moveNearbyCollection(collection.key, 'down')}
                               disabled={!canMoveDown}
                               title="Опустить подборку ниже"
                             >
                               ↓
                             </Button>
-                            <Button size="sm" variant="secondary" onClick={() => addNearbyCandidate(categoryLabel)}>
+                            <Button size="sm" variant="secondary" onClick={() => addNearbyCandidate(collection)}>
                               + Место
                             </Button>
-                            <Button size="sm" variant="secondary" onClick={() => deleteNearbyCollection(categoryKey)}>
+                            <Button size="sm" variant="secondary" onClick={() => deleteNearbyCollection(collection.key)}>
                               Удалить
                             </Button>
                           </div>
-                          <div className="space-y-2">
-                            {categoryCandidates.map((candidate) => renderCandidate(candidate))}
-                          </div>
+                          {!categoryCandidates.length ? (
+                            <div className="rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-4 text-xs text-white/55">
+                              Подборка пустая. Нажмите «+ Место», чтобы добавить первую карточку.
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {categoryCandidates.map((candidate) => renderCandidate(candidate))}
+                            </div>
+                          )}
                         </div>
                       )
                     }
 
                     return (
                       <>
-                        {groupDefs.map(({ key, label }) => {
-                          const groupCandidates = grouped.get(key) || []
-                          if (!groupCandidates.length) return null
-                          const byCategory = new Map<string, ComplexNearbyPlace[]>()
-                          for (const c of groupCandidates) {
-                            const catKey = nearbyCollectionKey(c)
-                            const arr = byCategory.get(catKey) || []
-                            arr.push(c)
-                            byCategory.set(catKey, arr)
-                          }
-                          const categoryLists = Array.from(byCategory.values())
-                          return (
-                            <div key={key}>
-                              <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-white/55">
-                                <span>{label}</span>
-                                <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-white/45">{groupCandidates.length}</span>
-                              </div>
-                              <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                                {categoryLists.map((cats, categoryIndex) => renderCategoryBlock(cats, categoryIndex, categoryLists.length))}
-                              </div>
-                            </div>
-                          )
-                        })}
-                        {ungrouped.length > 0 && (
+                        <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                          {nearbyCollections.map((collection, index) => renderCollectionBlock(collection, index, nearbyCollections.length))}
+                        </div>
+                        {unassigned.length > 0 && (
                           <div>
-                            <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/45">Другие места</div>
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/45">Места без подборки</div>
                             <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                              {ungrouped.map(renderCandidate)}
+                              {unassigned.map(renderCandidate)}
                             </div>
                           </div>
                         )}

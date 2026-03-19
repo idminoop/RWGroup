@@ -223,6 +223,7 @@ export default function ComplexPage() {
       return {
         title: 'Места поблизости',
         subtitle: 'Пешком и на машине от жилого комплекса',
+        collections: [],
         items: [] as ComplexNearbyPlace[],
       }
     }
@@ -234,6 +235,7 @@ export default function ComplexPage() {
     return {
       title: nearby.title || 'Места поблизости',
       subtitle: nearby.subtitle || 'Пешком и на машине от жилого комплекса',
+      collections: Array.isArray(nearby.collections) ? nearby.collections : [],
       items: selected.slice(0, 20),
     }
   }, [landing?.nearby])
@@ -675,6 +677,7 @@ export default function ComplexPage() {
                   <NearbyPlaces
                     title={decodeEscapedUnicode(nearbySection.title)}
                     subtitle={decodeEscapedUnicode(nearbySection.subtitle)}
+                    collections={nearbySection.collections}
                     items={nearbySection.items}
                     originLat={c.geo_lat}
                     originLon={c.geo_lon}
@@ -724,4 +727,3 @@ export default function ComplexPage() {
     </SiteLayout>
   )
 }
-
