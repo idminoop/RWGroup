@@ -667,26 +667,6 @@ export default function ComplexPage() {
               </div>
             </section>
 
-            {nearbySection.items.length > 0 && (
-              <section className="mt-12">
-                <Suspense
-                  fallback={(
-                    <div className="h-[360px] animate-pulse rounded-3xl border border-white/10 bg-white/[0.03] sm:h-[460px]" />
-                  )}
-                >
-                  <NearbyPlaces
-                    title={decodeEscapedUnicode(nearbySection.title)}
-                    subtitle={decodeEscapedUnicode(nearbySection.subtitle)}
-                    collections={nearbySection.collections}
-                    items={nearbySection.items}
-                    originLat={c.geo_lat}
-                    originLon={c.geo_lon}
-                    surfaceColor={surface}
-                  />
-                </Suspense>
-              </section>
-            )}
-
             <section className="mt-12">
               <Suspense
                 fallback={(
@@ -711,6 +691,24 @@ export default function ComplexPage() {
                 />
               </Suspense>
             </section>
+
+            {nearbySection.items.length > 0 && (
+              <section className="mt-12">
+                <Suspense
+                  fallback={(
+                    <div className="h-[360px] animate-pulse rounded-3xl border border-white/10 bg-white/[0.03] sm:h-[460px]" />
+                  )}
+                >
+                  <NearbyPlaces
+                    title={decodeEscapedUnicode(nearbySection.title)}
+                    subtitle={decodeEscapedUnicode(nearbySection.subtitle)}
+                    collections={nearbySection.collections}
+                    items={nearbySection.items}
+                    surfaceColor={surface}
+                  />
+                </Suspense>
+              </section>
+            )}
 
           </div>
 

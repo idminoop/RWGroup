@@ -294,7 +294,7 @@ export default function ComplexMap({
             <YMaps query={mapsQuery}>
               <YandexMap
                 key={`${mapsQuery.apikey || 'no-key'}:${center[0]}-${center[1]}-${hasCoords ? 'coords' : 'default'}`}
-                state={{ center, zoom: hasCoords ? 12 : 11, controls: ['zoomControl'] }}
+                state={{ center, zoom: hasCoords ? 13 : 11, controls: ['zoomControl'] }}
                 width="100%"
                 height="100%"
                 modules={['geoObject.addon.hint', 'control.ZoomControl']}

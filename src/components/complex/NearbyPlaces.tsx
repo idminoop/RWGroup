@@ -166,6 +166,7 @@ function PlaceCard({
         <img
           src={item.image_url}
           alt={item.name}
+          draggable={false}
           loading="lazy"
           className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-[1.06]"
         />
@@ -208,7 +209,7 @@ function PlaceCard({
             href={routeUrl(originLat, originLon, item.lat, item.lon)}
             target="_blank"
             rel="noreferrer"
-            className="pointer-events-auto inline-flex items-center gap-1 rounded-full bg-sky-500/20 px-2 py-0.5 text-sky-200 backdrop-blur-sm transition hover:bg-sky-500/30"
+            className="hidden pointer-events-auto inline-flex items-center gap-1 rounded-full bg-sky-500/20 px-2 py-0.5 text-sky-200 backdrop-blur-sm transition hover:bg-sky-500/30"
             aria-label={`Маршрут до ${item.name}`}
           >
             <Navigation className="h-3 w-3" />
@@ -381,6 +382,7 @@ function CollectionCarousel({
       onPointerCancel={onPointerCancel}
       onClickCapture={onClickCapture}
       onMouseEnter={() => pauseAutoScroll(2600)}
+      onDragStart={(event) => event.preventDefault()}
     >
       <div className="flex min-w-max gap-4 px-1">
         {loopItems.map((item, index) => (
