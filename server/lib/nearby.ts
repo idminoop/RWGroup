@@ -729,6 +729,8 @@ async function fetchYandexCategory(
     .slice(0, 5)
 }
 
+const YANDEX_GEOCODER_URL = 'https://geocode-maps.yandex.ru/1.x/'
+
 async function geocodeDistrict(district: string): Promise<Coords | null> {
   const query = district.trim()
   if (!query) return null
@@ -738,6 +740,42 @@ async function geocodeDistrict(district: string): Promise<Coords | null> {
 
   const queryLc = query.toLowerCase()
   const cityLc = MOSCOW_LABEL.toLowerCase()
+  const queryWithCity = !queryLc.includes(cityLc) ? `${query}, ${MOSCOW_LABEL}` : query
+
+  // Try Yandex Geocoder first (works reliably on production servers)
+  try {
+    let apiKey = ''
+    try { apiKey = (readDb().home?.maps?.yandex_maps_api_key || '').trim() } catch {}
+    if (apiKey) {
+      const params = new URLSearchParams({
+        apikey: apiKey,
+        geocode: queryWithCity,
+        format: 'json',
+        results: '1',
+        lang: 'ru_RU',
+      })
+      const response = await withTimeout(`${YANDEX_GEOCODER_URL}?${params}`, { headers: { 'User-Agent': USER_AGENT } }, 5000)
+      if (response.ok) {
+        const json = await response.json() as {
+          response?: { GeoObjectCollection?: { featureMember?: Array<{ GeoObject?: { Point?: { pos?: string } } }> } }
+        }
+        const pos = json?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject?.Point?.pos
+        if (pos) {
+          const [lonStr, latStr] = pos.trim().split(' ')
+          const lat = parseFloat(latStr)
+          const lon = parseFloat(lonStr)
+          if (Number.isFinite(lat) && Number.isFinite(lon) && isWithinMoscowBounds({ lat, lon })) {
+            geocodeCache.set(query, { lat, lon })
+            return { lat, lon }
+          }
+        }
+      }
+    }
+  } catch {
+    // fall through to Nominatim
+  }
+
+  // Fallback: Nominatim (works on local dev, may be rate-limited on prod)
   const candidates = Array.from(
     new Set(
       [

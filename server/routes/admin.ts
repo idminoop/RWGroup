@@ -7,7 +7,7 @@ import {
   requireAdminAnyPermission,
   requireAdminPermission,
 } from '../middleware/adminAuth.js'
-import { getPublishStatus, publishDraft, withDb, withDbRead } from '../lib/storage.js'
+import { getPublishStatus, publishDraft, withDb, withDbRead, readDb } from '../lib/storage.js'
 import { newId, slugify } from '../lib/ids.js'
 import { resolveCollectionItems } from '../lib/collections.js'
 import {
@@ -510,6 +510,52 @@ router.post('/upload', upload.single('file'), (req: Request, res: Response) => {
 router.get('/home', (req: Request, res: Response) => {
   const data = withDbRead((db) => db.home)
   res.json({ success: true, data })
+})
+
+router.get('/yandex-key/check', requireAdminAnyPermission('home.read', 'home.write'), async (req: Request, res: Response) => {
+  const apiKey = (readDb().home?.maps?.yandex_maps_api_key || '').trim()
+  if (!apiKey) {
+    return res.json({ success: true, data: { has_key: false, geocoder: 'no_key', search: 'no_key' } })
+  }
+
+  async function testGeocoder(): Promise<'ok' | 'auth_error' | 'error'> {
+    try {
+      const params = new URLSearchParams({ apikey: apiKey, geocode: 'Москва', format: 'json', results: '1', lang: 'ru_RU' })
+      const response = await fetch(`https://geocode-maps.yandex.ru/1.x/?${params}`, {
+        signal: AbortSignal.timeout(6000),
+        headers: { 'User-Agent': 'RWGroupWebsite/1.0' },
+      })
+      if (response.status === 403 || response.status === 401) return 'auth_error'
+      if (!response.ok) return 'error'
+      const json = await response.json() as { response?: { GeoObjectCollection?: unknown } }
+      return json?.response?.GeoObjectCollection !== undefined ? 'ok' : 'error'
+    } catch { return 'error' }
+  }
+
+  async function testSearch(): Promise<'ok' | 'auth_error' | 'error'> {
+    try {
+      const params = new URLSearchParams({
+        text: 'кофейня',
+        ll: '37.617,55.755',
+        spn: '0.05,0.05',
+        results: '1',
+        lang: 'ru_RU',
+        type: 'biz',
+        apikey: apiKey,
+      })
+      const response = await fetch(`https://search-maps.yandex.ru/v1/?${params}`, {
+        signal: AbortSignal.timeout(6000),
+        headers: { 'User-Agent': 'RWGroupWebsite/1.0' },
+      })
+      if (response.status === 403 || response.status === 401) return 'auth_error'
+      if (!response.ok) return 'error'
+      const json = await response.json() as { features?: unknown[] }
+      return Array.isArray(json?.features) ? 'ok' : 'error'
+    } catch { return 'error' }
+  }
+
+  const [geocoder, search] = await Promise.all([testGeocoder(), testSearch()])
+  return res.json({ success: true, data: { has_key: true, geocoder, search } })
 })
 
 router.put('/home', requireAdminPermission('home.write'), (req: Request, res: Response) => {
