@@ -325,7 +325,7 @@ async function fetchYandexGeocode(
   options?: { timeoutMs?: number; moscowOnly?: boolean }
 ): Promise<{ point: { lat: number; lon: number } | null; debug: YandexGeocodeAttemptDebug }> {
   const startedAt = Date.now()
-  const timeoutMs = Math.max(1200, Math.min(6000, Math.floor(options?.timeoutMs ?? 3200)))
+  const timeoutMs = Math.max(2000, Math.min(9000, Math.floor(options?.timeoutMs ?? 6200)))
   const moscowOnly = options?.moscowOnly !== false
   const params = new URLSearchParams({
     apikey: apiKey,
@@ -717,15 +717,15 @@ router.get('/geocode', async (req: Request, res: Response) => {
       const db = readDb()
       const yandexKey = (db.home?.maps?.yandex_maps_api_key || '').trim()
       if (yandexKey) {
-        const yandexDeadlineAt = Date.now() + 7500
-        const yandexQueries = buildGeocodeQueryVariants(q, city).slice(0, 5)
+        const yandexDeadlineAt = Date.now() + 16000
+        const yandexQueries = buildGeocodeQueryVariants(q, city).slice(0, 3)
         geocodeDebug.yandex.attempted = yandexQueries.length > 0
 
         for (const query of yandexQueries) {
           const timeLeft = yandexDeadlineAt - Date.now()
-          if (timeLeft < 700) break
+          if (timeLeft < 1500) break
 
-          const timeoutMs = Math.min(3200, Math.max(1400, timeLeft))
+          const timeoutMs = Math.min(7000, Math.max(2200, timeLeft))
           console.log(`[geocode] trying Yandex Geocoder query="${query}" timeoutMs=${timeoutMs}`)
           const yandexResult = await fetchYandexGeocode(query, yandexKey, {
             timeoutMs,

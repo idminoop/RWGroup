@@ -701,7 +701,10 @@ export default function AdminComplexSettingsPage() {
             source: entry.finalSource,
             resultCount: entry.resultCount,
             durationMs: entry.durationMs,
-            yandexStatus: entry.yandex?.error || entry.yandex?.httpStatus || (entry.yandex?.attempted ? 'ok' : 'skip'),
+            yandexStatus: entry.yandex?.error
+              || entry.yandex?.httpStatus
+              || (entry.yandex?.fromCache ? 'cache' : (entry.yandex?.attempted ? 'ok' : 'skip')),
+            yandexFromCache: entry.yandex?.fromCache ? 'yes' : 'no',
             yandexRaw: entry.yandex?.rawCount ?? 0,
             yandexStrict: entry.yandex?.strictCount ?? 0,
             yandexFiltered: entry.yandex?.filteredCount ?? 0,

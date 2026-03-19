@@ -142,6 +142,11 @@ type OverpassCacheRecord = {
   expiresAt: number
 }
 
+type YandexCacheRecord = {
+  features: YandexFeature[]
+  expiresAt: number
+}
+
 type YandexFeature = {
   geometry: { coordinates: [number, number] }
   properties: {
@@ -169,8 +174,8 @@ const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
 const OSRM_BASE_URL = 'https://router.project-osrm.org'
 
 const USER_AGENT = 'RWGroupWebsite/1.0 (+nearby-generator)'
-const OVERPASS_TIMEOUT_MS = 2500
-const OVERPASS_CATEGORY_DEADLINE_MS = 4200
+const OVERPASS_TIMEOUT_MS = 4500
+const OVERPASS_CATEGORY_DEADLINE_MS = 9000
 const OVERPASS_CACHE_TTL_MS = 8 * 60 * 1000
 const OVERPASS_FAILURE_COOLDOWN_MS = 30 * 1000
 const OVERPASS_RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504])
@@ -201,6 +206,8 @@ const MIN_RATING = 4.0
 const MIN_REVIEWS = 15
 const MIN_RELAXED_RATING = 3.2
 const MIN_RELAXED_REVIEWS = 3
+const YANDEX_CACHE_TTL_MS = 8 * 60 * 1000
+const YANDEX_EMPTY_CACHE_TTL_MS = 90 * 1000
 
 const FALLBACK_WALK_M_PER_MIN = 75
 const FALLBACK_DRIVE_M_PER_MIN = 450
@@ -634,7 +641,7 @@ const overpassCache = new Map<string, OverpassCacheRecord>()
 const overpassInFlight = new Map<string, Promise<OverpassFetchResult>>()
 const overpassFailedUntil = new Map<string, number>()
 const geocodeCache = new Map<string, Coords | null>()
-const yandexSearchCache = new Map<string, YandexFeature[]>()
+const yandexSearchCache = new Map<string, YandexCacheRecord>()
 const commonsFileThumbCache = new Map<string, string | null>()
 const wikidataImageFileCache = new Map<string, string | null>()
 const wikidataCommonsCategoryCache = new Map<string, string | null>()
@@ -798,7 +805,8 @@ async function fetchYandexCategory(
 
   const cacheKey = `${origin.lat.toFixed(4)}:${origin.lon.toFixed(4)}:${category.key}:${Math.round(radiusMeters)}`
   const cached = yandexSearchCache.get(cacheKey)
-  const features = cached !== undefined ? cached : await (async () => {
+  const now = Date.now()
+  const features = cached && cached.expiresAt > now ? cached.features : await (async () => {
     const spnLat = (radiusMeters / 111000).toFixed(4)
     const spnLon = (radiusMeters / (111000 * Math.cos(toRad(origin.lat)))).toFixed(4)
     const params = new URLSearchParams({
@@ -817,22 +825,23 @@ async function fetchYandexCategory(
         debug.httpStatus = response.status
         debug.error = `HTTP ${response.status}`
         console.warn(`[nearby] Yandex search ${response.status} for category=${category.key}`)
-        yandexSearchCache.set(cacheKey, [])
         return []
       }
       const json = await response.json() as YandexSearchResponse
       const result = Array.isArray(json.features) ? json.features : []
-      yandexSearchCache.set(cacheKey, result)
+      yandexSearchCache.set(cacheKey, {
+        features: result,
+        expiresAt: Date.now() + (result.length > 0 ? YANDEX_CACHE_TTL_MS : YANDEX_EMPTY_CACHE_TTL_MS),
+      })
       return result
     } catch (err) {
       debug.error = err instanceof Error ? err.message : String(err)
       console.warn(`[nearby] Yandex fetch error for category=${category.key}:`, err)
-      yandexSearchCache.set(cacheKey, [])
       return []
     }
   })()
 
-  if (cached !== undefined) debug.fromCache = true
+  if (cached && cached.expiresAt > now) debug.fromCache = true
   debug.rawCount = features.length
 
   const candidates = features
@@ -1840,7 +1849,7 @@ async function resolvePlaceImagesForYandex(
 
 // Balance between speed and public Overpass rate limits.
 const OVERPASS_COLLECT_CONCURRENCY = 6
-const YANDEX_FALLBACK_TIMEOUT_MS = 3200
+const YANDEX_FALLBACK_TIMEOUT_MS = 9000
 const YANDEX_FALLBACK_QUERY_BY_CATEGORY: Partial<Record<string, string>> = {
   coffee_shop: 'кофейня',
   cafe: 'кафе',

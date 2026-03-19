@@ -450,6 +450,9 @@ async function nominatimSearch(
 
     const json = await response.json() as GeocodeApiResponse
     if (json?.debug) {
+      const yandexAttemptSummary = (json.debug.yandex?.attempts || []).map((entry) => (
+        `${entry.query}:${entry.status}:${Math.round(entry.durationMs)}ms`
+      ))
       geocodeTrace(options?.traceId || null, 'geocode_api:debug', {
         query,
         attempt: options?.attempt,
@@ -457,6 +460,7 @@ async function nominatimSearch(
         source: json.debug.source ?? 'none',
         totalMs: json.debug.totalMs ?? null,
         yandexHitQuery: json.debug.yandex?.hitQuery ?? null,
+        yandexAttemptSummary,
         yandexAttempts: json.debug.yandex?.attempts?.map((entry) => ({
           query: entry.query,
           status: entry.status,
