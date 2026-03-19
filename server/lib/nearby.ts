@@ -129,6 +129,11 @@ type CategoryFetchResult = {
   debug: NearbyCategoryDebug
 }
 
+type YandexRuntimeState = {
+  enabled: boolean
+  disabledReason?: 'missing_key' | 'auth_error'
+}
+
 type OverpassElement = {
   tags?: Record<string, string>
   lat?: number
@@ -168,8 +173,8 @@ type YandexSearchResponse = {
 }
 
 const OVERPASS_ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
 ]
 const YANDEX_SEARCH_URL = 'https://search-maps.yandex.ru/v1/'
@@ -177,10 +182,13 @@ const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
 const OSRM_BASE_URL = 'https://router.project-osrm.org'
 
 const USER_AGENT = 'RWGroupWebsite/1.0 (+nearby-generator)'
-const OVERPASS_TIMEOUT_MS = 4500
+const OVERPASS_TIMEOUT_MS = 6500
+const OVERPASS_MIN_ATTEMPT_TIMEOUT_MS = 1600
+const OVERPASS_ENDPOINT_SWITCH_BUFFER_MS = 220
 const OVERPASS_CATEGORY_DEADLINE_MS = 9000
 const OVERPASS_CACHE_TTL_MS = 8 * 60 * 1000
 const OVERPASS_FAILURE_COOLDOWN_MS = 30 * 1000
+const OVERPASS_ENDPOINT_COOLDOWN_MS = 90 * 1000
 const OVERPASS_RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504])
 const OVERPASS_RETRY_DELAY_MS = 250
 const OVERPASS_RESULT_LIMIT = 120
@@ -636,15 +644,24 @@ function overpassQuery(template: string, origin: Coords, radius: number): string
 }
 
 function endpointOrder(key: string): string[] {
-  let hash = 0
-  for (let i = 0; i < key.length; i += 1) hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0
-  const offset = Math.abs(hash) % OVERPASS_ENDPOINTS.length
-  return [...OVERPASS_ENDPOINTS.slice(offset), ...OVERPASS_ENDPOINTS.slice(0, offset)]
+  const rotate = (items: string[]): string[] => {
+    if (items.length <= 1) return [...items]
+    let hash = 0
+    for (let i = 0; i < key.length; i += 1) hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0
+    const offset = Math.abs(hash) % items.length
+    return [...items.slice(offset), ...items.slice(0, offset)]
+  }
+
+  const now = Date.now()
+  const active = OVERPASS_ENDPOINTS.filter((endpoint) => (overpassEndpointCooldownUntil.get(endpoint) || 0) <= now)
+  const coolingDown = OVERPASS_ENDPOINTS.filter((endpoint) => (overpassEndpointCooldownUntil.get(endpoint) || 0) > now)
+  return [...rotate(active), ...rotate(coolingDown)]
 }
 
 const overpassCache = new Map<string, OverpassCacheRecord>()
 const overpassInFlight = new Map<string, Promise<OverpassFetchResult>>()
 const overpassFailedUntil = new Map<string, number>()
+const overpassEndpointCooldownUntil = new Map<string, number>()
 const geocodeCache = new Map<string, Coords | null>()
 const yandexSearchCache = new Map<string, YandexCacheRecord>()
 const commonsFileThumbCache = new Map<string, string | null>()
@@ -693,6 +710,13 @@ async function requestOverpass(endpoint: string, query: string, timeoutMs = OVER
       }
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
+}
+
+function shouldCooldownOverpassEndpoint(status: number | undefined, error: unknown): boolean {
+  if (typeof status === 'number') return OVERPASS_RETRYABLE_STATUSES.has(status)
+  if (!(error instanceof Error)) return false
+  const message = error.message.toLowerCase()
+  return message.includes('aborted') || message.includes('timeout') || message.includes('timed out')
 }
 
 async function fetchOverpassCategory(
@@ -751,24 +775,34 @@ async function fetchOverpassCategory(
       if (Date.now() >= deadlineAt) break
       const query = overpassQuery(category.overpassQuery!, origin, radius)
       const endpoints = endpointOrder(key)
-      for (const endpoint of endpoints) {
+      for (let endpointIndex = 0; endpointIndex < endpoints.length; endpointIndex += 1) {
+        const endpoint = endpoints[endpointIndex]
         const timeLeft = deadlineAt - Date.now()
-        if (timeLeft <= 1200) break
+        if (timeLeft <= OVERPASS_MIN_ATTEMPT_TIMEOUT_MS + 120) break
+        const remainingEndpoints = Math.max(1, endpoints.length - endpointIndex)
+        const budgetForRemaining = timeLeft - OVERPASS_ENDPOINT_SWITCH_BUFFER_MS * Math.max(0, remainingEndpoints - 1)
+        const timeoutMs = Math.min(
+          OVERPASS_TIMEOUT_MS,
+          Math.max(OVERPASS_MIN_ATTEMPT_TIMEOUT_MS, Math.floor(budgetForRemaining / remainingEndpoints))
+        )
         try {
           debug.attempted = true
           debug.requestAttempts += 1
           debug.endpointsTried.push(endpoint)
-          const timeoutMs = Math.min(OVERPASS_TIMEOUT_MS, Math.max(1800, timeLeft))
           const results = await requestOverpass(endpoint, query, timeoutMs)
           const normalized = filterPoisByDistance(origin, results, radius)
           overpassCache.set(key, { results: normalized, expiresAt: Date.now() + OVERPASS_CACHE_TTL_MS })
           overpassFailedUntil.delete(key)
+          overpassEndpointCooldownUntil.delete(endpoint)
           debug.durationMs = Date.now() - startedAt
           return { results: normalized, debug }
         } catch (error) {
           const status = (error as { status?: number })?.status
           debug.lastStatus = status
           debug.error = error instanceof Error ? error.message : String(error)
+          if (shouldCooldownOverpassEndpoint(status, error)) {
+            overpassEndpointCooldownUntil.set(endpoint, Date.now() + OVERPASS_ENDPOINT_COOLDOWN_MS)
+          }
           const retryable = typeof status === 'number' ? OVERPASS_RETRYABLE_STATUSES.has(status) : true
           if (!retryable) {
             overpassFailedUntil.set(key, Date.now() + OVERPASS_FAILURE_COOLDOWN_MS)
@@ -776,8 +810,9 @@ async function fetchOverpassCategory(
             return { results: [], debug }
           }
           if (Date.now() >= deadlineAt) break
-          if (status === 429) await sleep(OVERPASS_RETRY_DELAY_MS * 2)
-          else await sleep(OVERPASS_RETRY_DELAY_MS)
+          const retryDelayMs = status === 429 ? OVERPASS_RETRY_DELAY_MS * 2 : OVERPASS_RETRY_DELAY_MS
+          if (deadlineAt - Date.now() <= retryDelayMs + 120) continue
+          await sleep(retryDelayMs)
         }
       }
     }
@@ -1903,11 +1938,32 @@ function defaultYandexFallbackQuery(categoryDef: CategoryDef): string {
     .trim()
 }
 
+function createSkippedYandexDebug(query: string | undefined, reason: string): YandexCategoryDebug {
+  return {
+    attempted: false,
+    fromCache: false,
+    durationMs: 0,
+    query,
+    rawCount: 0,
+    strictCount: 0,
+    filteredCount: 0,
+    error: reason,
+  }
+}
+
+function isYandexAuthError(debug: YandexCategoryDebug | undefined): boolean {
+  if (!debug) return false
+  if (debug.httpStatus === 401 || debug.httpStatus === 403) return true
+  if (typeof debug.error !== 'string') return false
+  return debug.error.includes('HTTP 401') || debug.error.includes('HTTP 403')
+}
+
 async function fetchCategoryWithLog(
   origin: Coords,
   categoryDef: CategoryDef,
   apiKey: string,
-  deadlineAt?: number
+  deadlineAt?: number,
+  yandexRuntime?: YandexRuntimeState
 ): Promise<CategoryFetchResult> {
   const t0 = Date.now()
   const categoryDebug: NearbyCategoryDebug = {
@@ -1919,8 +1975,20 @@ async function fetchCategoryWithLog(
     durationMs: 0,
   }
   if (categoryDef.source === 'yandex') {
+    if (yandexRuntime && !yandexRuntime.enabled) {
+      categoryDebug.yandex = createSkippedYandexDebug(
+        categoryDef.yandexQuery,
+        yandexRuntime.disabledReason === 'auth_error' ? 'skipped_auth_error' : 'skip'
+      )
+      categoryDebug.durationMs = Date.now() - t0
+      return { items: [], debug: categoryDebug }
+    }
     const yandexResult = await fetchYandexCategory(origin, categoryDef, SEARCH_RADIUS_METERS, apiKey, 9000, deadlineAt)
     categoryDebug.yandex = yandexResult.debug
+    if (isYandexAuthError(yandexResult.debug) && yandexRuntime) {
+      yandexRuntime.enabled = false
+      yandexRuntime.disabledReason = 'auth_error'
+    }
     categoryDebug.finalSource = yandexResult.items.length > 0 ? 'yandex' : 'none'
     categoryDebug.resultCount = yandexResult.items.length
     categoryDebug.durationMs = Date.now() - t0
@@ -1930,26 +1998,38 @@ async function fetchCategoryWithLog(
 
   const yandexFallbackQuery = defaultYandexFallbackQuery(categoryDef)
   if (apiKey && yandexFallbackQuery) {
-    const yandexCategoryDef: CategoryDef = {
-      ...categoryDef,
-      source: 'yandex',
-      yandexQuery: yandexFallbackQuery,
-    }
-    const yandexItems = await fetchYandexCategory(
-      origin,
-      yandexCategoryDef,
-      SEARCH_RADIUS_METERS,
-      apiKey,
-      YANDEX_FALLBACK_TIMEOUT_MS,
-      deadlineAt,
-    )
-    categoryDebug.yandex = yandexItems.debug
-    if (yandexItems.items.length > 0) {
-      categoryDebug.finalSource = 'yandex-fallback'
-      categoryDebug.resultCount = yandexItems.items.length
-      categoryDebug.durationMs = Date.now() - t0
-      console.log(`[nearby] category=${categoryDef.key} source=yandex-fallback found=${yandexItems.items.length} ms=${Date.now() - t0}`)
-      return { items: yandexItems.items, debug: categoryDebug }
+    const yandexAllowed = !yandexRuntime || yandexRuntime.enabled
+    if (yandexAllowed) {
+      const yandexCategoryDef: CategoryDef = {
+        ...categoryDef,
+        source: 'yandex',
+        yandexQuery: yandexFallbackQuery,
+      }
+      const yandexItems = await fetchYandexCategory(
+        origin,
+        yandexCategoryDef,
+        SEARCH_RADIUS_METERS,
+        apiKey,
+        YANDEX_FALLBACK_TIMEOUT_MS,
+        deadlineAt,
+      )
+      categoryDebug.yandex = yandexItems.debug
+      if (isYandexAuthError(yandexItems.debug) && yandexRuntime) {
+        yandexRuntime.enabled = false
+        yandexRuntime.disabledReason = 'auth_error'
+      }
+      if (yandexItems.items.length > 0) {
+        categoryDebug.finalSource = 'yandex-fallback'
+        categoryDebug.resultCount = yandexItems.items.length
+        categoryDebug.durationMs = Date.now() - t0
+        console.log(`[nearby] category=${categoryDef.key} source=yandex-fallback found=${yandexItems.items.length} ms=${Date.now() - t0}`)
+        return { items: yandexItems.items, debug: categoryDebug }
+      }
+    } else {
+      categoryDebug.yandex = createSkippedYandexDebug(
+        yandexFallbackQuery,
+        yandexRuntime?.disabledReason === 'auth_error' ? 'skipped_auth_error' : 'skip'
+      )
     }
   }
 
@@ -1981,12 +2061,17 @@ async function collectAllCandidates(
 ): Promise<{ items: PoiWithMeta[]; debug: NearbyCollectDebug }> {
   console.log(`[nearby] collectAllCandidates start lat=${origin.lat.toFixed(5)} lon=${origin.lon.toFixed(5)} categories=${CATEGORY_DEFS.length} concurrency=${OVERPASS_COLLECT_CONCURRENCY}`)
   const t0 = Date.now()
+  const normalizedApiKey = apiKey.trim()
+  const yandexRuntime: YandexRuntimeState = {
+    enabled: Boolean(normalizedApiKey),
+    disabledReason: normalizedApiKey ? undefined : 'missing_key',
+  }
 
   // Use limited concurrency to avoid Overpass rate-limiting (21 parallel → throttled)
   const resultsRaw = await mapWithConcurrency(
     CATEGORY_DEFS,
     OVERPASS_COLLECT_CONCURRENCY,
-    (categoryDef) => fetchCategoryWithLog(origin, categoryDef, apiKey, deadlineAt),
+    (categoryDef) => fetchCategoryWithLog(origin, categoryDef, normalizedApiKey, deadlineAt, yandexRuntime),
     () => (typeof deadlineAt !== 'number' ? true : Date.now() < deadlineAt)
   )
   const results = resultsRaw.filter((entry): entry is CategoryFetchResult => Boolean(entry))
