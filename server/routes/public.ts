@@ -91,6 +91,14 @@ type RankedCandidate = {
   displayName?: string
 }
 
+type YandexGeocodeAttemptDebug = {
+  query: string
+  durationMs: number
+  status: 'ok' | 'http_error' | 'empty' | 'out_of_bounds' | 'aborted' | 'error'
+  httpStatus?: number
+  error?: string
+}
+
 type CachedGeocodeResult = {
   lat: number
   lon: number
@@ -311,22 +319,45 @@ async function waitForNominatimSlot(deadlineAt: number): Promise<boolean> {
   return true
 }
 
-async function fetchYandexGeocode(query: string, apiKey: string): Promise<{ lat: number; lon: number } | null> {
+async function fetchYandexGeocode(
+  query: string,
+  apiKey: string,
+  options?: { timeoutMs?: number; moscowOnly?: boolean }
+): Promise<{ point: { lat: number; lon: number } | null; debug: YandexGeocodeAttemptDebug }> {
+  const startedAt = Date.now()
+  const timeoutMs = Math.max(1200, Math.min(6000, Math.floor(options?.timeoutMs ?? 3200)))
+  const moscowOnly = options?.moscowOnly !== false
   const params = new URLSearchParams({
     apikey: apiKey,
     geocode: query,
     format: 'json',
-    results: '1',
+    results: '4',
     lang: 'ru_RU',
   })
+  if (moscowOnly) {
+    params.set('bbox', `${MOSCOW_BOUNDS.minLon},${MOSCOW_BOUNDS.minLat}~${MOSCOW_BOUNDS.maxLon},${MOSCOW_BOUNDS.maxLat}`)
+    params.set('rspn', '1')
+  }
+
   try {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 5000)
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
     const response = await fetch(`${YANDEX_GEOCODER_URL}?${params}`, {
       headers: { 'User-Agent': 'RWGroupWebsite/1.0' },
       signal: controller.signal,
     }).finally(() => clearTimeout(timer))
-    if (!response.ok) return null
+    if (!response.ok) {
+      return {
+        point: null,
+        debug: {
+          query,
+          durationMs: Date.now() - startedAt,
+          status: 'http_error',
+          httpStatus: response.status,
+        },
+      }
+    }
+
     const json = await response.json() as {
       response?: {
         GeoObjectCollection?: {
@@ -334,17 +365,57 @@ async function fetchYandexGeocode(query: string, apiKey: string): Promise<{ lat:
         }
       }
     }
-    const pos = json?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject?.Point?.pos
-    if (!pos) return null
-    const [lonStr, latStr] = pos.trim().split(' ')
-    const lon = parseFloat(lonStr)
-    const lat = parseFloat(latStr)
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
-    if (lat < MOSCOW_BOUNDS.minLat || lat > MOSCOW_BOUNDS.maxLat) return null
-    if (lon < MOSCOW_BOUNDS.minLon || lon > MOSCOW_BOUNDS.maxLon) return null
-    return { lat, lon }
-  } catch {
-    return null
+    const featureMember = json?.response?.GeoObjectCollection?.featureMember || []
+    if (!featureMember.length) {
+      return {
+        point: null,
+        debug: {
+          query,
+          durationMs: Date.now() - startedAt,
+          status: 'empty',
+        },
+      }
+    }
+
+    let firstFinitePoint: { lat: number; lon: number } | null = null
+    for (const item of featureMember) {
+      const pos = item?.GeoObject?.Point?.pos
+      if (!pos) continue
+      const [lonStr, latStr] = pos.trim().split(' ')
+      const lon = parseFloat(lonStr)
+      const lat = parseFloat(latStr)
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue
+      if (!firstFinitePoint) firstFinitePoint = { lat, lon }
+      if (!moscowOnly || isWithinMoscowBounds(lat, lon)) {
+        return {
+          point: { lat, lon },
+          debug: {
+            query,
+            durationMs: Date.now() - startedAt,
+            status: 'ok',
+          },
+        }
+      }
+    }
+
+    return {
+      point: null,
+      debug: {
+        query,
+        durationMs: Date.now() - startedAt,
+        status: firstFinitePoint ? 'out_of_bounds' : 'empty',
+      },
+    }
+  } catch (error) {
+    return {
+      point: null,
+      debug: {
+        query,
+        durationMs: Date.now() - startedAt,
+        status: error instanceof DOMException && error.name === 'AbortError' ? 'aborted' : 'error',
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }
   }
 }
 
@@ -613,7 +684,32 @@ router.get('/geocode', async (req: Request, res: Response) => {
     const cached = geocodeResultCache.get(cacheKey)
     if (cached && cached.expiresAt > now) {
       console.log(`[geocode] cache hit → ${cached.data ? `lat=${cached.data.lat} lon=${cached.data.lon}` : 'null'}`)
-      return res.json({ success: true, data: cached.data })
+      return res.json({
+        success: true,
+        data: cached.data,
+        debug: {
+          source: 'cache',
+          totalMs: Date.now() - t0,
+        },
+      })
+    }
+
+    const geocodeDebug: {
+      source: 'cache' | 'yandex' | 'nominatim' | 'none'
+      yandex: { attempted: boolean; attempts: YandexGeocodeAttemptDebug[]; hitQuery?: string }
+      nominatim: { attempted: boolean; attempts: string[]; hadTransientError: boolean }
+      totalMs?: number
+    } = {
+      source: 'none',
+      yandex: {
+        attempted: false,
+        attempts: [],
+      },
+      nominatim: {
+        attempted: false,
+        attempts: [],
+        hadTransientError: false,
+      },
     }
 
     // ── Yandex Geocoder (primary, works reliably on prod servers) ──────────
@@ -621,18 +717,40 @@ router.get('/geocode', async (req: Request, res: Response) => {
       const db = readDb()
       const yandexKey = (db.home?.maps?.yandex_maps_api_key || '').trim()
       if (yandexKey) {
-        const cityPrefix = city && !q.toLowerCase().includes(city.toLowerCase()) ? `${q}, ${city}` : q
-        console.log(`[geocode] trying Yandex Geocoder query="${cityPrefix}"`)
-        const yandexResult = await fetchYandexGeocode(cityPrefix, yandexKey)
-        if (yandexResult) {
-          console.log(`[geocode] Yandex OK → lat=${yandexResult.lat} lon=${yandexResult.lon} ms=${Date.now() - t0}`)
-          geocodeResultCache.set(cacheKey, {
-            data: { lat: yandexResult.lat, lon: yandexResult.lon, score: 200 },
-            expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
+        const yandexDeadlineAt = Date.now() + 7500
+        const yandexQueries = buildGeocodeQueryVariants(q, city).slice(0, 5)
+        geocodeDebug.yandex.attempted = yandexQueries.length > 0
+
+        for (const query of yandexQueries) {
+          const timeLeft = yandexDeadlineAt - Date.now()
+          if (timeLeft < 700) break
+
+          const timeoutMs = Math.min(3200, Math.max(1400, timeLeft))
+          console.log(`[geocode] trying Yandex Geocoder query="${query}" timeoutMs=${timeoutMs}`)
+          const yandexResult = await fetchYandexGeocode(query, yandexKey, {
+            timeoutMs,
+            moscowOnly: moscowFirst,
           })
-          return res.json({ success: true, data: { lat: yandexResult.lat, lon: yandexResult.lon, score: 200 } })
+          geocodeDebug.yandex.attempts.push(yandexResult.debug)
+
+          if (yandexResult.point) {
+            geocodeDebug.source = 'yandex'
+            geocodeDebug.yandex.hitQuery = query
+            geocodeDebug.totalMs = Date.now() - t0
+            console.log(`[geocode] Yandex OK → lat=${yandexResult.point.lat} lon=${yandexResult.point.lon} ms=${Date.now() - t0} query="${query}"`)
+            geocodeResultCache.set(cacheKey, {
+              data: { lat: yandexResult.point.lat, lon: yandexResult.point.lon, score: 200 },
+              expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
+            })
+            return res.json({
+              success: true,
+              data: { lat: yandexResult.point.lat, lon: yandexResult.point.lon, score: 200 },
+              debug: geocodeDebug,
+            })
+          }
         }
-        console.warn(`[geocode] Yandex returned no result for query="${cityPrefix}"`)
+        const yandexSummary = geocodeDebug.yandex.attempts.map((attempt) => `${attempt.query}:${attempt.status}`).join(', ')
+        console.warn(`[geocode] Yandex no hit for query="${q}" attempts=[${yandexSummary}]`)
       } else {
         console.warn('[geocode] Yandex key not configured → skipping Yandex, falling back to Nominatim')
       }
@@ -642,14 +760,16 @@ router.get('/geocode', async (req: Request, res: Response) => {
 
     // ── Nominatim fallback ─────────────────────────────────────────────────
     console.log(`[geocode] trying Nominatim city="${city}" moscowFirst=${moscowFirst}`)
-    const candidateQueries = buildGeocodeQueryVariants(q, city).slice(0, 2)
+    const candidateQueries = buildGeocodeQueryVariants(q, city).slice(0, 4)
+    geocodeDebug.nominatim.attempted = candidateQueries.length > 0
     const deadlineAt = Date.now() + GEOCODE_ROUTE_MAX_MS
 
-    const paramsQueue: Array<{ params: URLSearchParams; query: string }> = []
+    const paramsQueue: Array<{ params: URLSearchParams; query: string; mode: 'bounded' | 'global' }> = []
     candidateQueries.forEach((candidate, index) => {
       if (moscowFirst) {
         paramsQueue.push({
           query: candidate,
+          mode: 'bounded',
           params: new URLSearchParams({
             q: candidate,
             format: 'json',
@@ -666,6 +786,7 @@ router.get('/geocode', async (req: Request, res: Response) => {
       if (shouldTryGlobalSearch) {
         paramsQueue.push({
           query: candidate,
+          mode: 'global',
           params: new URLSearchParams({
             q: candidate,
             format: 'json',
@@ -682,15 +803,18 @@ router.get('/geocode', async (req: Request, res: Response) => {
     let hadTransientError = false
 
     for (const attempt of paramsQueue) {
+      geocodeDebug.nominatim.attempts.push(`${attempt.query} [${attempt.mode}]`)
       if (Date.now() >= deadlineAt) {
         console.warn('[geocode] Nominatim deadline exceeded')
         hadTransientError = true
+        geocodeDebug.nominatim.hadTransientError = true
         break
       }
 
       const fetched = await fetchNominatimCandidates(attempt.params, deadlineAt)
       if (fetched.transientError) {
         hadTransientError = true
+        geocodeDebug.nominatim.hadTransientError = true
         console.warn(`[geocode] Nominatim transient error for query="${attempt.query}"`)
       }
       if (fetched.transientError && fetched.candidates.length === 0 && !best) break
@@ -707,11 +831,17 @@ router.get('/geocode', async (req: Request, res: Response) => {
 
       if (best && best.score >= STRONG_GEOCODE_SCORE) {
         console.log(`[geocode] Nominatim strong hit score=${best.score} lat=${best.lat} lon=${best.lon} ms=${Date.now() - t0}`)
+        geocodeDebug.source = 'nominatim'
+        geocodeDebug.totalMs = Date.now() - t0
         geocodeResultCache.set(cacheKey, {
           data: { lat: best.lat, lon: best.lon, score: best.score, display_name: best.displayName },
           expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
         })
-        return res.json({ success: true, data: { lat: best.lat, lon: best.lon, score: best.score, display_name: best.displayName } })
+        return res.json({
+          success: true,
+          data: { lat: best.lat, lon: best.lon, score: best.score, display_name: best.displayName },
+          debug: geocodeDebug,
+        })
       }
     }
 
@@ -720,15 +850,22 @@ router.get('/geocode', async (req: Request, res: Response) => {
       if (!hadTransientError) {
         geocodeResultCache.set(cacheKey, { data: null, expiresAt: Date.now() + GEOCODE_NEGATIVE_CACHE_TTL_MS })
       }
-      return res.json({ success: true, data: null })
+      geocodeDebug.totalMs = Date.now() - t0
+      return res.json({ success: true, data: null, debug: geocodeDebug })
     }
 
     console.log(`[geocode] Nominatim weak hit score=${best.score} lat=${best.lat} lon=${best.lon} ms=${Date.now() - t0}`)
+    geocodeDebug.source = 'nominatim'
+    geocodeDebug.totalMs = Date.now() - t0
     geocodeResultCache.set(cacheKey, {
       data: { lat: best.lat, lon: best.lon, score: best.score, display_name: best.displayName },
       expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
     })
-    return res.json({ success: true, data: { lat: best.lat, lon: best.lon, score: best.score, display_name: best.displayName } })
+    return res.json({
+      success: true,
+      data: { lat: best.lat, lon: best.lon, score: best.score, display_name: best.displayName },
+      debug: geocodeDebug,
+    })
   } catch (err) {
     console.error(`[geocode] unhandled error: ${err instanceof Error ? err.message : String(err)} ms=${Date.now() - t0}`)
     return res.json({ success: true, data: null })

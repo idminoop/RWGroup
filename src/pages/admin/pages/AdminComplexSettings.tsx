@@ -49,7 +49,9 @@ type NearbyCategoryDebugResponse = {
     durationMs: number
     query?: string
     rawCount: number
+    strictCount?: number
     filteredCount: number
+    relaxedQualityFallback?: boolean
     httpStatus?: number
     error?: string
   }
@@ -673,7 +675,9 @@ export default function AdminComplexSettingsPage() {
                 fromCache: entry.yandex.fromCache,
                 durationMs: entry.yandex.durationMs,
                 rawCount: entry.yandex.rawCount,
+                strictCount: entry.yandex.strictCount,
                 filteredCount: entry.yandex.filteredCount,
+                relaxedQualityFallback: entry.yandex.relaxedQualityFallback,
                 httpStatus: entry.yandex.httpStatus,
                 error: entry.yandex.error,
               }
@@ -691,6 +695,22 @@ export default function AdminComplexSettingsPage() {
             : undefined,
         }))
         adminTrace(traceId, 'generate:categories', { perCategory })
+        if (isAdminTraceEnabled()) {
+          const tableRows = perCategory.map((entry) => ({
+            key: entry.key,
+            source: entry.finalSource,
+            resultCount: entry.resultCount,
+            durationMs: entry.durationMs,
+            yandexStatus: entry.yandex?.error || entry.yandex?.httpStatus || (entry.yandex?.attempted ? 'ok' : 'skip'),
+            yandexRaw: entry.yandex?.rawCount ?? 0,
+            yandexStrict: entry.yandex?.strictCount ?? 0,
+            yandexFiltered: entry.yandex?.filteredCount ?? 0,
+            yandexRelaxed: entry.yandex?.relaxedQualityFallback ? 'yes' : 'no',
+            overpassStatus: entry.overpass?.error || entry.overpass?.lastStatus || (entry.overpass?.attempted ? 'ok' : 'skip'),
+            overpassAttempts: entry.overpass?.requestAttempts ?? 0,
+          }))
+          console.table(tableRows)
+        }
       }
 
       if (generated.no_api_key) setNearbyNoApiKey(true)

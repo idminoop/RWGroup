@@ -45,7 +45,9 @@ type YandexCategoryDebug = {
   durationMs: number
   query?: string
   rawCount: number
+  strictCount: number
   filteredCount: number
+  relaxedQualityFallback?: boolean
   httpStatus?: number
   error?: string
 }
@@ -167,12 +169,12 @@ const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
 const OSRM_BASE_URL = 'https://router.project-osrm.org'
 
 const USER_AGENT = 'RWGroupWebsite/1.0 (+nearby-generator)'
-const OVERPASS_TIMEOUT_MS = 4000
-const OVERPASS_CATEGORY_DEADLINE_MS = 7000
+const OVERPASS_TIMEOUT_MS = 2500
+const OVERPASS_CATEGORY_DEADLINE_MS = 4200
 const OVERPASS_CACHE_TTL_MS = 8 * 60 * 1000
 const OVERPASS_FAILURE_COOLDOWN_MS = 30 * 1000
 const OVERPASS_RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504])
-const OVERPASS_RETRY_DELAY_MS = 300
+const OVERPASS_RETRY_DELAY_MS = 250
 const OVERPASS_RESULT_LIMIT = 120
 const MOSCOW_BOUNDS = {
   minLat: 55.0,
@@ -197,6 +199,8 @@ const IMAGE_GEOSEARCH_WIDE_LIMIT = 12
 // Yandex quality thresholds
 const MIN_RATING = 4.0
 const MIN_REVIEWS = 15
+const MIN_RELAXED_RATING = 3.2
+const MIN_RELAXED_REVIEWS = 3
 
 const FALLBACK_WALK_M_PER_MIN = 75
 const FALLBACK_DRIVE_M_PER_MIN = 450
@@ -784,6 +788,7 @@ async function fetchYandexCategory(
     durationMs: 0,
     query: category.yandexQuery,
     rawCount: 0,
+    strictCount: 0,
     filteredCount: 0,
   }
   if (!category.yandexQuery || !apiKey.trim()) {
@@ -830,7 +835,7 @@ async function fetchYandexCategory(
   if (cached !== undefined) debug.fromCache = true
   debug.rawCount = features.length
 
-  const items = features
+  const candidates = features
     .map((feature) => {
       const [lon, lat] = feature.geometry.coordinates
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
@@ -839,10 +844,6 @@ async function fetchYandexCategory(
       if (normalizeName(name).length <= 1) return null
       const rating = meta?.rating?.score
       const reviews_count = meta?.rating?.count
-      // Quality filter: skip places without enough reviews or rating
-      if (rating !== undefined && reviews_count !== undefined) {
-        if (rating < MIN_RATING || reviews_count < MIN_REVIEWS) return null
-      }
       const dist = distanceKm(origin, { lat, lon })
       if (dist > (radiusMeters * 1.2) / 1000) return null
       return {
@@ -856,6 +857,26 @@ async function fetchYandexCategory(
       } satisfies PoiWithMeta
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
+
+  const strictCandidates = candidates.filter((item) => {
+    if (item.rating === undefined || item.reviews_count === undefined) return true
+    return item.rating >= MIN_RATING && item.reviews_count >= MIN_REVIEWS
+  })
+  debug.strictCount = strictCandidates.length
+
+  let finalCandidates = strictCandidates
+  if (!finalCandidates.length && candidates.length > 0) {
+    // If strict quality gate filtered everything, allow softer thresholds to avoid all-empty categories.
+    finalCandidates = candidates.filter((item) => {
+      if (item.rating === undefined || item.reviews_count === undefined) return true
+      return item.rating >= MIN_RELAXED_RATING && item.reviews_count >= MIN_RELAXED_REVIEWS
+    })
+    if (finalCandidates.length > 0) debug.relaxedQualityFallback = true
+  }
+
+  if (!finalCandidates.length) finalCandidates = candidates
+
+  const items = finalCandidates
     .sort((a, b) => {
       const scoreA = (a.rating !== undefined && a.reviews_count !== undefined)
         ? a.rating * Math.log(a.reviews_count + 1)
@@ -1819,23 +1840,37 @@ async function resolvePlaceImagesForYandex(
 
 // Balance between speed and public Overpass rate limits.
 const OVERPASS_COLLECT_CONCURRENCY = 6
-const YANDEX_FALLBACK_TIMEOUT_MS = 4500
+const YANDEX_FALLBACK_TIMEOUT_MS = 3200
 const YANDEX_FALLBACK_QUERY_BY_CATEGORY: Partial<Record<string, string>> = {
   coffee_shop: 'кофейня',
   cafe: 'кафе',
   restaurant: 'ресторан',
   bakery: 'пекарня',
   bar: 'бар',
+  park: 'парк',
+  waterfront: 'набережная',
+  viewpoint: 'смотровая площадка',
   museum: 'музей',
   theater: 'театр',
   cinema: 'кинотеатр',
   art_gallery: 'галерея',
+  landmark: 'достопримечательность',
   gym: 'фитнес клуб',
   yoga: 'йога студия',
   sports_complex: 'спортивный комплекс',
   shopping_mall: 'торговый центр',
   coworking: 'коворкинг',
+  playground: 'детская площадка',
   kids_center: 'детский центр',
+}
+
+function defaultYandexFallbackQuery(categoryDef: CategoryDef): string {
+  const fromMap = YANDEX_FALLBACK_QUERY_BY_CATEGORY[categoryDef.key]
+  if (fromMap && fromMap.trim()) return fromMap.trim()
+  return categoryDef.label
+    .replace(/\s*[/|]\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 async function fetchCategoryWithLog(
@@ -1862,7 +1897,7 @@ async function fetchCategoryWithLog(
     return { items: yandexResult.items, debug: categoryDebug }
   }
 
-  const yandexFallbackQuery = YANDEX_FALLBACK_QUERY_BY_CATEGORY[categoryDef.key]
+  const yandexFallbackQuery = defaultYandexFallbackQuery(categoryDef)
   if (apiKey && yandexFallbackQuery) {
     const yandexCategoryDef: CategoryDef = {
       ...categoryDef,

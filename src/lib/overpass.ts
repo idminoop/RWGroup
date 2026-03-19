@@ -314,6 +314,26 @@ type GeocodeApiResponse = {
     score?: number
     display_name?: string
   } | null
+  debug?: {
+    source?: 'cache' | 'yandex' | 'nominatim' | 'none'
+    totalMs?: number
+    yandex?: {
+      attempted?: boolean
+      hitQuery?: string
+      attempts?: Array<{
+        query: string
+        durationMs: number
+        status: string
+        httpStatus?: number
+        error?: string
+      }>
+    }
+    nominatim?: {
+      attempted?: boolean
+      attempts?: string[]
+      hadTransientError?: boolean
+    }
+  }
 }
 
 function uniqStrings(items: string[]): string[] {
@@ -429,6 +449,25 @@ async function nominatimSearch(
     }
 
     const json = await response.json() as GeocodeApiResponse
+    if (json?.debug) {
+      geocodeTrace(options?.traceId || null, 'geocode_api:debug', {
+        query,
+        attempt: options?.attempt,
+        phase: options?.phase,
+        source: json.debug.source ?? 'none',
+        totalMs: json.debug.totalMs ?? null,
+        yandexHitQuery: json.debug.yandex?.hitQuery ?? null,
+        yandexAttempts: json.debug.yandex?.attempts?.map((entry) => ({
+          query: entry.query,
+          status: entry.status,
+          durationMs: entry.durationMs,
+          httpStatus: entry.httpStatus,
+          error: entry.error,
+        })),
+        nominatimAttempts: json.debug.nominatim?.attempts ?? [],
+        nominatimTransient: json.debug.nominatim?.hadTransientError ?? false,
+      })
+    }
     const data = json?.data
     if (!data) {
       geocodeTrace(options?.traceId || null, 'nominatim:empty_data', {
@@ -436,6 +475,7 @@ async function nominatimSearch(
         query,
         attempt: options?.attempt,
         phase: options?.phase,
+        source: json?.debug?.source ?? null,
       })
       return null
     }
