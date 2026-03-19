@@ -16,6 +16,18 @@ type GroupConfig = {
   label: string
 }
 
+type CategoryBucket = {
+  key: string
+  label: string
+  items: ComplexNearbyPlace[]
+}
+
+type GroupBucket = {
+  key: NearbyGroup | 'ungrouped'
+  label?: string
+  categories: CategoryBucket[]
+}
+
 const GROUP_CONFIGS: GroupConfig[] = [
   { key: 'life', label: 'Жизнь рядом' },
   { key: 'leisure', label: 'Досуг' },
@@ -35,6 +47,71 @@ function routeUrl(originLat: number | undefined, originLon: number | undefined, 
     return `https://yandex.ru/maps/?rtext=${originLat},${originLon}~${lat},${lon}&rtt=auto`
   }
   return `https://yandex.ru/maps/?pt=${lon},${lat}&z=15`
+}
+
+function normalizeCategoryLabel(item: ComplexNearbyPlace): string {
+  const category = (item.category || '').trim()
+  if (category) return category
+  const categoryKey = (item.category_key || '').trim()
+  if (!categoryKey) return 'Подборка'
+  return categoryKey
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^./, (char) => char.toUpperCase())
+}
+
+function normalizeCategoryKey(item: ComplexNearbyPlace, fallbackLabel: string): string {
+  const key = (item.category_key || '').trim()
+  if (key) return key
+  return fallbackLabel
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9а-яё_]/gi, '')
+    .replace(/^_+|_+$/g, '') || 'manual'
+}
+
+function groupLabelByKey(key: NearbyGroup): string {
+  return GROUP_CONFIGS.find((item) => item.key === key)?.label || key
+}
+
+function buildBuckets(items: ComplexNearbyPlace[]): GroupBucket[] {
+  const groupMap = new Map<GroupBucket['key'], { label?: string; categories: Map<string, CategoryBucket> }>()
+
+  for (const item of items.slice(0, 20)) {
+    const groupKey: GroupBucket['key'] = item.group || 'ungrouped'
+    const groupLabel = item.group ? groupLabelByKey(item.group) : undefined
+    const categoryLabel = normalizeCategoryLabel(item)
+    const categoryKey = normalizeCategoryKey(item, categoryLabel)
+
+    if (!groupMap.has(groupKey)) {
+      groupMap.set(groupKey, { label: groupLabel, categories: new Map() })
+    }
+    const group = groupMap.get(groupKey)!
+    const scopedCategoryKey = `${groupKey}:${categoryKey}`
+    if (!group.categories.has(scopedCategoryKey)) {
+      group.categories.set(scopedCategoryKey, {
+        key: scopedCategoryKey,
+        label: categoryLabel,
+        items: [],
+      })
+    }
+    group.categories.get(scopedCategoryKey)!.items.push(item)
+  }
+
+  const orderedKeys: GroupBucket['key'][] = [
+    ...GROUP_CONFIGS.map((item) => item.key).filter((key) => groupMap.has(key)),
+    ...(groupMap.has('ungrouped') ? ['ungrouped' as const] : []),
+  ]
+
+  return orderedKeys.map((key) => {
+    const group = groupMap.get(key)!
+    return {
+      key,
+      label: group.label,
+      categories: Array.from(group.categories.values()),
+    }
+  })
 }
 
 function RatingBadge({ rating, count }: { rating: number; count?: number }) {
@@ -128,21 +205,8 @@ export default function NearbyPlaces({
 }: NearbyPlacesProps) {
   if (!items.length) return null
 
-  // Group items by group field; ungrouped items go into a fallback section
-  const groupedMap = new Map<NearbyGroup, ComplexNearbyPlace[]>()
-  const ungrouped: ComplexNearbyPlace[] = []
-
-  for (const item of items.slice(0, 20)) {
-    if (item.group) {
-      const arr = groupedMap.get(item.group) || []
-      arr.push(item)
-      groupedMap.set(item.group, arr)
-    } else {
-      ungrouped.push(item)
-    }
-  }
-
-  const hasGroups = groupedMap.size > 0
+  const buckets = buildBuckets(items)
+  const hasNamedGroups = buckets.some((bucket) => bucket.key !== 'ungrouped')
 
   return (
     <section className="rounded-3xl border border-white/10 p-4 md:p-8" style={{ backgroundColor: surfaceColor }}>
@@ -159,102 +223,45 @@ export default function NearbyPlaces({
         </span>
       </div>
 
-      {hasGroups ? (
-        // ── Grouped layout: 3 sections ────────────────────────────────
-        <div className="space-y-8">
-          {GROUP_CONFIGS.map((groupConfig) => {
-            const groupItems = groupedMap.get(groupConfig.key) || []
-            if (!groupItems.length) return null
-            return (
-              <div key={groupConfig.key}>
-                {/* Group header */}
-                <div className="mb-3 flex items-center gap-2">
-                  <span className="text-sm font-semibold uppercase tracking-widest text-white/70">
-                    {groupConfig.label}
-                  </span>
-                  <div className="h-px flex-1 bg-white/10" />
-                </div>
-
-                {/* Grid of cards */}
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                  {groupItems.map((item) => (
-                    <PlaceCard
-                      key={item.id}
-                      item={item}
-                      originLat={originLat}
-                      originLon={originLon}
-                    />
-                  ))}
-                </div>
+      <div className="space-y-8">
+        {buckets.map((bucket) => (
+          <div key={bucket.key} className="space-y-3">
+            {(bucket.key !== 'ungrouped' || hasNamedGroups) && bucket.label ? (
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-sm font-semibold uppercase tracking-widest text-white/70">
+                  {bucket.label}
+                </span>
+                <div className="h-px flex-1 bg-white/10" />
               </div>
-            )
-          })}
+            ) : null}
 
-          {/* Ungrouped fallback */}
-          {ungrouped.length > 0 && (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {ungrouped.map((item) => (
-                <PlaceCard
-                  key={item.id}
-                  item={item}
-                  originLat={originLat}
-                  originLon={originLon}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        // ── Legacy flat layout (no group data) ───────────────────────
-        <div className="-mx-1 overflow-x-auto pb-2">
-          <div className="flex min-w-max gap-3 px-1">
-            {items.slice(0, 20).map((item) => (
-              <article
-                key={item.id}
-                className="group relative h-[260px] w-[260px] shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-[#0a1a26] sm:w-[300px]"
-              >
-                {item.image_url ? (
-                  <img
-                    src={item.image_url}
-                    alt={item.name}
-                    loading="lazy"
-                    className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
-                  />
-                ) : (
-                  <div className="h-full w-full bg-white/5" />
-                )}
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#041019]/95 via-[#041019]/40 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 z-10 p-3 sm:p-4">
-                  <div className="line-clamp-2 text-base font-semibold text-white sm:text-lg">{item.name}</div>
-                  {item.description ? (
-                    <div className="mt-1 line-clamp-2 text-[11px] text-white/75 sm:text-xs">{item.description}</div>
-                  ) : null}
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-medium text-white/90 sm:text-xs">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/35 px-2.5 py-1">
-                      <Footprints className="h-3.5 w-3.5" />
-                      {formatMinutes(item.walk_minutes)}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {bucket.categories.map((category) => (
+                <div key={category.key} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 md:p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <h4 className="min-w-0 truncate text-xs font-semibold uppercase tracking-[0.14em] text-white/75">
+                      {category.label}
+                    </h4>
+                    <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] text-white/55">
+                      {category.items.length}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/35 px-2.5 py-1">
-                      <Car className="h-3.5 w-3.5" />
-                      {formatMinutes(item.drive_minutes)}
-                    </span>
-                    <a
-                      href={routeUrl(originLat, originLon, item.lat, item.lon)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/35 px-2.5 py-1 text-white/95 transition hover:bg-black/55"
-                      aria-label={`Маршрут до ${item.name}`}
-                    >
-                      <Navigation className="h-3.5 w-3.5" />
-                      Маршрут
-                    </a>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {category.items.map((item) => (
+                      <PlaceCard
+                        key={item.id}
+                        item={item}
+                        originLat={originLat}
+                        originLon={originLon}
+                      />
+                    ))}
                   </div>
                 </div>
-              </article>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
     </section>
   )
 }
