@@ -82,10 +82,10 @@ const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
 const OSRM_BASE_URL = 'https://router.project-osrm.org'
 
 const USER_AGENT = 'RWGroupWebsite/1.0 (+nearby-generator)'
-const OVERPASS_TIMEOUT_MS = 8000
-const OVERPASS_CATEGORY_DEADLINE_MS = 18000
+const OVERPASS_TIMEOUT_MS = 4000
+const OVERPASS_CATEGORY_DEADLINE_MS = 7000
 const OVERPASS_CACHE_TTL_MS = 8 * 60 * 1000
-const OVERPASS_FAILURE_COOLDOWN_MS = 70 * 1000
+const OVERPASS_FAILURE_COOLDOWN_MS = 30 * 1000
 const OVERPASS_RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504])
 const OVERPASS_RETRY_DELAY_MS = 300
 const OVERPASS_RESULT_LIMIT = 120
@@ -655,7 +655,8 @@ async function fetchYandexCategory(
   origin: Coords,
   category: CategoryDef,
   radiusMeters: number,
-  apiKey: string
+  apiKey: string,
+  timeoutMs = 9000
 ): Promise<PoiWithMeta[]> {
   if (!category.yandexQuery || !apiKey.trim()) return []
 
@@ -674,7 +675,7 @@ async function fetchYandexCategory(
       apikey: apiKey,
     })
     try {
-      const response = await withTimeout(`${YANDEX_SEARCH_URL}?${params}`, { headers: { 'User-Agent': USER_AGENT } }, 9000)
+      const response = await withTimeout(`${YANDEX_SEARCH_URL}?${params}`, { headers: { 'User-Agent': USER_AGENT } }, timeoutMs)
       if (!response.ok) {
         console.warn(`[nearby] Yandex search ${response.status} for category=${category.key}`)
         yandexSearchCache.set(cacheKey, [])
@@ -1674,8 +1675,26 @@ async function resolvePlaceImagesForYandex(
   return { imageUrl: fb.imageUrl, variants: fb.variants, fallback: true }
 }
 
-// Public Overpass instances are sensitive to burst load; moderate concurrency is more reliable.
-const OVERPASS_COLLECT_CONCURRENCY = 3
+// Balance between speed and public Overpass rate limits.
+const OVERPASS_COLLECT_CONCURRENCY = 6
+const YANDEX_FALLBACK_TIMEOUT_MS = 4500
+const YANDEX_FALLBACK_QUERY_BY_CATEGORY: Partial<Record<string, string>> = {
+  coffee_shop: 'кофейня',
+  cafe: 'кафе',
+  restaurant: 'ресторан',
+  bakery: 'пекарня',
+  bar: 'бар',
+  museum: 'музей',
+  theater: 'театр',
+  cinema: 'кинотеатр',
+  art_gallery: 'галерея',
+  gym: 'фитнес клуб',
+  yoga: 'йога студия',
+  sports_complex: 'спортивный комплекс',
+  shopping_mall: 'торговый центр',
+  coworking: 'коворкинг',
+  kids_center: 'детский центр',
+}
 
 async function fetchCategoryWithLog(
   origin: Coords,
@@ -1688,6 +1707,27 @@ async function fetchCategoryWithLog(
     console.log(`[nearby] category=${categoryDef.key} source=yandex found=${items.length} ms=${Date.now() - t0}`)
     return items
   }
+
+  const yandexFallbackQuery = YANDEX_FALLBACK_QUERY_BY_CATEGORY[categoryDef.key]
+  if (apiKey && yandexFallbackQuery) {
+    const yandexCategoryDef: CategoryDef = {
+      ...categoryDef,
+      source: 'yandex',
+      yandexQuery: yandexFallbackQuery,
+    }
+    const yandexItems = await fetchYandexCategory(
+      origin,
+      yandexCategoryDef,
+      SEARCH_RADIUS_METERS,
+      apiKey,
+      YANDEX_FALLBACK_TIMEOUT_MS,
+    )
+    if (yandexItems.length > 0) {
+      console.log(`[nearby] category=${categoryDef.key} source=yandex-fallback found=${yandexItems.length} ms=${Date.now() - t0}`)
+      return yandexItems
+    }
+  }
+
   const pois = await fetchOverpassCategory(origin, categoryDef, SEARCH_RADIUS_METERS)
   const items = pois
     .map((poi) => ({

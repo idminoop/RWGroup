@@ -56,12 +56,51 @@ type GeoPoint = {
 }
 
 const MAX_NEARBY_IMAGE_VARIANTS = 24
-const MAP_LOOKUP_TIMEOUT_MS = 35000
+const MAP_LOOKUP_TIMEOUT_MS = 50000
+const ADMIN_TRACE_STORAGE_KEY = 'rw_debug_admin_nearby'
+const ADMIN_TRACE_QUERY_PARAM = 'debugNearby'
+let adminTraceSeq = 0
 const MOSCOW_COORD_BOUNDS = {
   minLat: 54.9,
   maxLat: 56.3,
   minLon: 36.2,
   maxLon: 38.8,
+}
+
+function nowMs(): number {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') return performance.now()
+  return Date.now()
+}
+
+function isAdminTraceEnabled(): boolean {
+  if (typeof window === 'undefined') return false
+  const qs = new URLSearchParams(window.location.search || '')
+  if (qs.get(ADMIN_TRACE_QUERY_PARAM) === '1') return true
+  if (qs.get(ADMIN_TRACE_QUERY_PARAM) === '0') return false
+  if (window.localStorage.getItem(ADMIN_TRACE_STORAGE_KEY) === '1') return true
+  return window.location.pathname.startsWith('/admin')
+}
+
+function nextAdminTraceId(scope: 'map' | 'nearby' | 'photo'): string {
+  adminTraceSeq = (adminTraceSeq + 1) % 100000
+  return `${scope}-${String(adminTraceSeq).padStart(5, '0')}`
+}
+
+function adminTrace(id: string, stage: string, details?: Record<string, unknown>): void {
+  if (!isAdminTraceEnabled()) return
+  if (details) {
+    console.info(`[admin:${id}] ${stage}`, details)
+    return
+  }
+  console.info(`[admin:${id}] ${stage}`)
+}
+
+function adminTraceError(id: string, stage: string, error: unknown, details?: Record<string, unknown>): void {
+  if (!isAdminTraceEnabled()) return
+  const errorInfo = error instanceof Error
+    ? { name: error.name, message: error.message, stack: error.stack }
+    : { message: String(error) }
+  console.error(`[admin:${id}] ${stage}`, { ...(details || {}), error: errorInfo })
 }
 
 function isWithinMoscowCoords(point: GeoPoint): boolean {
@@ -444,15 +483,25 @@ export default function AdminComplexSettingsPage() {
 
   const resolveMapPoint = useCallback(async () => {
     if (!draftComplex) return
+    const traceId = nextAdminTraceId('map')
+    const startedAt = nowMs()
     const typedQuery = mapSearchQuery.trim()
     const query = typedQuery || buildMapSearchQuery(draftComplex)
+    adminTrace(traceId, 'resolve:start', {
+      complexId: draftComplex.id,
+      typedQuery,
+      fallbackQuery: typedQuery ? undefined : query,
+      hasExistingMapPoint: Boolean(mapPoint),
+    })
     if (!query) {
+      adminTrace(traceId, 'resolve:empty_query')
       setMapLookupError('Введите название и адрес ЖК, чтобы найти точку на карте.')
       return
     }
 
     const directPoint = parseCoordinateQuery(query)
     if (directPoint) {
+      adminTrace(traceId, 'resolve:direct_coordinates', { directPoint })
       setMapLookupError(null)
       setMapSearchQuery(`${directPoint.lat.toFixed(6)}, ${directPoint.lon.toFixed(6)}`)
       setComplexMapPoint({
@@ -468,16 +517,26 @@ export default function AdminComplexSettingsPage() {
     const timeout = window.setTimeout(() => controller.abort(), MAP_LOOKUP_TIMEOUT_MS)
     try {
       const useComplexNameBias = !looksLikeAddressQuery(query)
+      adminTrace(traceId, 'resolve:geocode_request', {
+        query,
+        city: 'Москва',
+        useComplexNameBias,
+        complexName: useComplexNameBias ? (draftComplex.title || undefined) : undefined,
+        timeoutMs: MAP_LOOKUP_TIMEOUT_MS,
+        maxQueries: 3,
+      })
       const result = await geocodeAddress(query, {
         city: 'Москва',
         complexName: useComplexNameBias ? (draftComplex.title || undefined) : undefined,
         signal: controller.signal,
-        maxQueries: 5,
+        maxQueries: 3,
       })
       if (!result) {
+        adminTrace(traceId, 'resolve:no_result', { durationMs: Number((nowMs() - startedAt).toFixed(1)) })
         setMapLookupError('Не удалось определить координаты автоматически. Укажите точку вручную на карте.')
         return
       }
+      adminTrace(traceId, 'resolve:success', { result, durationMs: Number((nowMs() - startedAt).toFixed(1)) })
       setMapSearchQuery(query)
       setComplexMapPoint({
         lat: Number(result.lat.toFixed(6)),
@@ -485,29 +544,59 @@ export default function AdminComplexSettingsPage() {
       })
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
+        adminTraceError(traceId, 'resolve:timeout', error, {
+          timeoutMs: MAP_LOOKUP_TIMEOUT_MS,
+          durationMs: Number((nowMs() - startedAt).toFixed(1)),
+          query,
+        })
         setMapLookupError('Map lookup timed out. Try a more specific address or set marker manually.')
       } else {
+        adminTraceError(traceId, 'resolve:error', error, {
+          durationMs: Number((nowMs() - startedAt).toFixed(1)),
+          query,
+        })
         setMapLookupError(error instanceof Error ? error.message : 'Ошибка определения координат.')
       }
     } finally {
       window.clearTimeout(timeout)
       setMapLookupLoading(false)
+      adminTrace(traceId, 'resolve:finish', { durationMs: Number((nowMs() - startedAt).toFixed(1)) })
     }
-  }, [draftComplex, mapSearchQuery])
+  }, [draftComplex, mapPoint, mapSearchQuery])
 
   const generateNearbyCandidates = useCallback(async () => {
     if (!draftComplex) return
+    const traceId = nextAdminTraceId('nearby')
+    const startedAt = nowMs()
     autoNearbyPhotoRequestedRef.current = new Set()
     setNearbyLoading(true)
     setNearbyError(null)
     setNearbyNoApiKey(false)
     try {
       const payload = mapPoint ? { origin_lat: mapPoint.lat, origin_lon: mapPoint.lon } : {}
+      adminTrace(traceId, 'generate:start', {
+        complexId: draftComplex.id,
+        payload,
+        hasMapPoint: Boolean(mapPoint),
+      })
       const generated = await apiPost<NearbyGenerateResponse>(
         `/api/admin/catalog/complex/${draftComplex.id}/nearby/generate`,
         payload,
         headers
       )
+      const byCategory = generated.candidates.reduce<Record<string, number>>((acc, item) => {
+        const key = (item.category_key || item.category || 'unknown').trim()
+        acc[key] = (acc[key] || 0) + 1
+        return acc
+      }, {})
+      adminTrace(traceId, 'generate:response', {
+        durationMs: Number((nowMs() - startedAt).toFixed(1)),
+        origin: generated.origin,
+        candidates: generated.candidates.length,
+        autoSelected: (generated.auto_selected_ids || []).length,
+        noApiKey: Boolean(generated.no_api_key),
+        byCategory,
+      })
 
       if (generated.no_api_key) setNearbyNoApiKey(true)
 
@@ -548,22 +637,39 @@ export default function AdminComplexSettingsPage() {
         })
       }
     } catch (e) {
+      adminTraceError(traceId, 'generate:error', e, {
+        durationMs: Number((nowMs() - startedAt).toFixed(1)),
+        mapPoint,
+      })
       setNearbyError(e instanceof Error ? e.message : 'Ошибка генерации мест поблизости')
     } finally {
       setNearbyLoading(false)
+      adminTrace(traceId, 'generate:finish', { durationMs: Number((nowMs() - startedAt).toFixed(1)) })
     }
   }, [draftComplex, draftLanding?.nearby, headers, mapPoint])
 
   const loadMoreNearbyPhotos = useCallback(async (candidate: ComplexNearbyPlace) => {
     if (!draftComplex) return
+    const traceId = nextAdminTraceId('photo')
+    const startedAt = nowMs()
     setNearbyPhotoLoadingById((prev) => ({ ...prev, [candidate.id]: true }))
     setNearbyError(null)
     try {
+      adminTrace(traceId, 'photo:start', {
+        complexId: draftComplex.id,
+        candidateId: candidate.id,
+        candidateName: candidate.name,
+        category: candidate.category || candidate.category_key || 'unknown',
+      })
       const data = await apiPost<NearbyPhotoVariantsResponse>(
         `/api/admin/catalog/complex/${draftComplex.id}/nearby/photo-variants`,
         { name: candidate.name, district: draftComplex.district, category: candidate.category, lat: candidate.lat, lon: candidate.lon },
         headers
       )
+      adminTrace(traceId, 'photo:response', {
+        durationMs: Number((nowMs() - startedAt).toFixed(1)),
+        urls: data.urls.length,
+      })
       const variants = dedupeUrls([...(candidate.image_variants || []), ...data.urls]).slice(0, MAX_NEARBY_IMAGE_VARIANTS)
       const hasRealVariant = variants.some((url) => url && url !== candidate.image_url)
       const nextImageUrl = candidate.image_custom
@@ -575,6 +681,10 @@ export default function AdminComplexSettingsPage() {
         image_fallback: candidate.image_custom ? candidate.image_fallback : (hasRealVariant ? false : candidate.image_fallback),
       })
     } catch (e) {
+      adminTraceError(traceId, 'photo:error', e, {
+        durationMs: Number((nowMs() - startedAt).toFixed(1)),
+        candidateId: candidate.id,
+      })
       setNearbyError(e instanceof Error ? e.message : 'Ошибка загрузки дополнительных фото')
     } finally {
       setNearbyPhotoLoadingById((prev) => {
@@ -582,6 +692,7 @@ export default function AdminComplexSettingsPage() {
         delete next[candidate.id]
         return next
       })
+      adminTrace(traceId, 'photo:finish', { durationMs: Number((nowMs() - startedAt).toFixed(1)) })
     }
   }, [draftComplex, headers])
 

@@ -13,6 +13,9 @@ const OVERPASS_RESULT_LIMIT = 90
 const RETRYABLE_HTTP_STATUSES = new Set([408, 429, 500, 502, 503, 504])
 const GEOCODE_CLIENT_CACHE_TTL_MS = 10 * 60 * 1000
 const GEOCODE_CLIENT_NEGATIVE_CACHE_TTL_MS = 30 * 1000
+const GEOCODE_TRACE_STORAGE_KEY = 'rw_debug_geocode'
+const GEOCODE_TRACE_QUERY_PARAM = 'debugGeocode'
+let geocodeTraceSeq = 0
 const ROAD_NAME_RX = /(?:\u0443\u043b(?:\u0438\u0446\u0430)?|\u043f\u0440\u043e\u0441\u043f\u0435\u043a\u0442|\u043f\u0440-\u0442|\u0448\u043e\u0441\u0441\u0435|\u0434\u043e\u0440\u043e\u0433\u0430|\u043f\u0440\u043e\u0435\u0437\u0434|\u0431\u0443\u043b\u044c\u0432\u0430\u0440|\u043d\u0430\u0431\u0435\u0440\u0435\u0436\u043d\u0430\u044f|street|road|avenue|highway)/i
 
 export type PoiResult = { name: string; lat: number; lon: number; tags?: Record<string, string> }
@@ -55,6 +58,42 @@ const CATEGORY_QUERIES: Record<string, string> = {
 const cache = new Map<string, CacheRecord>()
 const inflight = new Map<string, Promise<PoiResult[]>>()
 const failedUntil = new Map<string, number>()
+
+function geocodeNowMs(): number {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') return performance.now()
+  return Date.now()
+}
+
+function isGeocodeTraceEnabled(): boolean {
+  if (typeof window === 'undefined') return false
+  const qs = new URLSearchParams(window.location.search || '')
+  if (qs.get(GEOCODE_TRACE_QUERY_PARAM) === '1') return true
+  if (qs.get(GEOCODE_TRACE_QUERY_PARAM) === '0') return false
+  if (window.localStorage.getItem(GEOCODE_TRACE_STORAGE_KEY) === '1') return true
+  return window.location.pathname.startsWith('/admin')
+}
+
+function nextGeocodeTraceId(): string {
+  geocodeTraceSeq = (geocodeTraceSeq + 1) % 100000
+  return `geo-${String(geocodeTraceSeq).padStart(5, '0')}`
+}
+
+function geocodeTrace(traceId: string | null, stage: string, details?: Record<string, unknown>): void {
+  if (!traceId || !isGeocodeTraceEnabled()) return
+  if (details) {
+    console.info(`[geocode:${traceId}] ${stage}`, details)
+    return
+  }
+  console.info(`[geocode:${traceId}] ${stage}`)
+}
+
+function geocodeTraceError(traceId: string | null, stage: string, error: unknown, details?: Record<string, unknown>): void {
+  if (!traceId || !isGeocodeTraceEnabled()) return
+  const errorInfo = error instanceof Error
+    ? { name: error.name, message: error.message, stack: error.stack }
+    : { message: String(error) }
+  console.error(`[geocode:${traceId}] ${stage}`, { ...(details || {}), error: errorInfo })
+}
 
 function cacheKey(lat: number, lon: number, category: string, radiusMeters: number) {
   return `${lat.toFixed(4)}-${lon.toFixed(4)}-${category}-${Math.round(radiusMeters)}`
@@ -358,27 +397,82 @@ function normalizeAddress(raw: string): string[] {
 
 async function nominatimSearch(
   query: string,
-  options?: { city?: string; moscowFirst?: boolean; signal?: AbortSignal }
+  options?: { city?: string; moscowFirst?: boolean; signal?: AbortSignal; traceId?: string | null; attempt?: number; totalAttempts?: number; phase?: string }
 ): Promise<GeoCoords | null> {
+  const startedAt = geocodeNowMs()
+  geocodeTrace(options?.traceId || null, 'nominatim:request', {
+    query,
+    city: options?.city,
+    moscowFirst: options?.moscowFirst || false,
+    attempt: options?.attempt,
+    totalAttempts: options?.totalAttempts,
+    phase: options?.phase,
+  })
   const params = new URLSearchParams({ q: query })
   if (options?.city) params.set('city', options.city)
   if (options?.moscowFirst) params.set('moscowFirst', '1')
 
-  const response = await fetch(`${GEOCODE_API}?${params}`, {
-    signal: options?.signal,
-  })
-  if (!response.ok) return null
+  try {
+    const response = await fetch(`${GEOCODE_API}?${params}`, {
+      signal: options?.signal,
+    })
+    if (!response.ok) {
+      geocodeTrace(options?.traceId || null, 'nominatim:response_not_ok', {
+        status: response.status,
+        statusText: response.statusText,
+        durationMs: Number((geocodeNowMs() - startedAt).toFixed(1)),
+        query,
+        attempt: options?.attempt,
+        phase: options?.phase,
+      })
+      return null
+    }
 
-  const json = await response.json() as GeocodeApiResponse
-  const data = json?.data
-  if (!data) return null
+    const json = await response.json() as GeocodeApiResponse
+    const data = json?.data
+    if (!data) {
+      geocodeTrace(options?.traceId || null, 'nominatim:empty_data', {
+        durationMs: Number((geocodeNowMs() - startedAt).toFixed(1)),
+        query,
+        attempt: options?.attempt,
+        phase: options?.phase,
+      })
+      return null
+    }
 
-  if (!Number.isFinite(data.lat) || !Number.isFinite(data.lon)) return null
+    if (!Number.isFinite(data.lat) || !Number.isFinite(data.lon)) {
+      geocodeTrace(options?.traceId || null, 'nominatim:invalid_coords', {
+        durationMs: Number((geocodeNowMs() - startedAt).toFixed(1)),
+        query,
+        attempt: options?.attempt,
+        phase: options?.phase,
+      })
+      return null
+    }
 
-  return {
-    lat: data.lat,
-    lon: data.lon,
-    score: Number.isFinite(data.score) ? data.score : 0,
+    const result = {
+      lat: data.lat,
+      lon: data.lon,
+      score: Number.isFinite(data.score) ? data.score : 0,
+    }
+    geocodeTrace(options?.traceId || null, 'nominatim:success', {
+      durationMs: Number((geocodeNowMs() - startedAt).toFixed(1)),
+      query,
+      attempt: options?.attempt,
+      phase: options?.phase,
+      score: result.score,
+      lat: Number(result.lat.toFixed(6)),
+      lon: Number(result.lon.toFixed(6)),
+    })
+    return result
+  } catch (error) {
+    geocodeTraceError(options?.traceId || null, 'nominatim:error', error, {
+      durationMs: Number((geocodeNowMs() - startedAt).toFixed(1)),
+      query,
+      attempt: options?.attempt,
+      phase: options?.phase,
+    })
+    throw error
   }
 }
 
@@ -387,24 +481,54 @@ async function findBestGeocodeCandidate(
   options: { city?: string; moscowFirst?: boolean },
   minQueriesBeforeBreak = 1,
   signal?: AbortSignal,
-  maxQueries = queries.length
+  maxQueries = queries.length,
+  traceMeta?: { traceId: string | null; phase: 'address' | 'name' }
 ): Promise<GeoCoords | null> {
   const list = uniqStrings(queries).filter(Boolean)
   if (!list.length) return null
 
   let best: GeoCoords | null = null
   const maxAttempts = Math.max(1, Math.min(maxQueries, list.length))
+  geocodeTrace(traceMeta?.traceId || null, 'candidate_search:start', {
+    phase: traceMeta?.phase,
+    minQueriesBeforeBreak,
+    maxAttempts,
+    poolSize: list.length,
+  })
   for (let i = 0; i < maxAttempts; i += 1) {
+    const query = list[i]
+    const attemptStartedAt = geocodeNowMs()
     const result = await nominatimSearch(list[i], {
       ...options,
       signal,
+      traceId: traceMeta?.traceId || null,
+      attempt: i + 1,
+      totalAttempts: maxAttempts,
+      phase: traceMeta?.phase,
     })
     if (result && (!best || (result.score || 0) > (best.score || 0))) {
       best = result
     }
+    geocodeTrace(traceMeta?.traceId || null, 'candidate_search:attempt_done', {
+      phase: traceMeta?.phase,
+      attempt: i + 1,
+      maxAttempts,
+      query,
+      durationMs: Number((geocodeNowMs() - attemptStartedAt).toFixed(1)),
+      found: Boolean(result),
+      score: result?.score ?? null,
+      bestScore: best?.score ?? null,
+    })
     if (best && (best.score || 0) >= 175 && i + 1 >= minQueriesBeforeBreak) break
   }
 
+  geocodeTrace(traceMeta?.traceId || null, 'candidate_search:done', {
+    phase: traceMeta?.phase,
+    found: Boolean(best),
+    bestScore: best?.score ?? null,
+    lat: best ? Number(best.lat.toFixed(6)) : null,
+    lon: best ? Number(best.lon.toFixed(6)) : null,
+  })
   return best
 }
 
@@ -412,6 +536,8 @@ export async function geocodeAddress(
   address: string,
   options: string | GeocodeAddressOptions = 'Москва'
 ): Promise<GeoCoords | null> {
+  const traceId = isGeocodeTraceEnabled() ? nextGeocodeTraceId() : null
+  const startedAt = geocodeNowMs()
   const normalizedOptions: GeocodeAddressOptions =
     typeof options === 'string' ? { city: options } : options
 
@@ -425,8 +551,23 @@ export async function geocodeAddress(
   const strippedAddress = stripComplexNameFromAddress(rawAddress, complexName)
 
   const key = `${address}|${cityLabel}|${shouldInjectComplexName ? complexName : ''}|${addressLooksExplicit ? 'addr' : 'name'}`
+  geocodeTrace(traceId, 'address:start', {
+    address: rawAddress,
+    city: cityLabel,
+    hasComplexName: Boolean(complexName),
+    shouldInjectComplexName,
+    addressLooksExplicit,
+    maxQueriesRequested: normalizedOptions.maxQueries ?? 3,
+  })
   const cached = geocodeCache.get(key)
-  if (cached && cached.expiresAt > Date.now()) return cached.data
+  if (cached && cached.expiresAt > Date.now()) {
+    geocodeTrace(traceId, 'cache:hit', {
+      isNegative: !cached.data,
+      ttlMs: Math.max(0, cached.expiresAt - Date.now()),
+      durationMs: Number((geocodeNowMs() - startedAt).toFixed(1)),
+    })
+    return cached.data
+  }
   if (cached) geocodeCache.delete(key)
 
   const addressVariants = uniqStrings([
@@ -441,6 +582,9 @@ export async function geocodeAddress(
   const secondaryAddress = addressVariants[1] || ''
   const addressWithoutHouse = addressVariants[2] || ''
   if (!topAddress && !nameVariants[0]) {
+    geocodeTrace(traceId, 'address:empty_query_set', {
+      durationMs: Number((geocodeNowMs() - startedAt).toFixed(1)),
+    })
     geocodeCache.set(key, {
       data: null,
       expiresAt: Date.now() + GEOCODE_CLIENT_NEGATIVE_CACHE_TTL_MS,
@@ -467,12 +611,19 @@ export async function geocodeAddress(
       shouldInjectComplexName && complexName ? `${topAddress}, ${complexName}` : '',
       nameVariants[0] || '',
     ]).slice(0, 6)
+    geocodeTrace(traceId, 'address:queries', {
+      mode: 'address',
+      totalQueries: addressQueries.length,
+      queries: addressQueries,
+      minQueriesBeforeBreak: Math.min(2, addressQueries.length),
+    })
     best = await findBestGeocodeCandidate(
       addressQueries,
       searchOptions,
       Math.min(2, addressQueries.length),
       normalizedOptions.signal,
-      maxQueries
+      maxQueries,
+      { traceId, phase: 'address' }
     )
   } else {
     // For name-only lookup prioritize the clean ЖК title and city-aware forms first.
@@ -485,12 +636,33 @@ export async function geocodeAddress(
       topAddress && complexName ? `${topAddress}, ${complexName}` : '',
       topAddress && complexName ? `${complexName}, ${topAddress}` : '',
     ]).slice(0, 6)
-    best = await findBestGeocodeCandidate(nameFirstQueries, searchOptions, 1, normalizedOptions.signal, maxQueries)
+    geocodeTrace(traceId, 'address:queries', {
+      mode: 'name',
+      totalQueries: nameFirstQueries.length,
+      queries: nameFirstQueries,
+      minQueriesBeforeBreak: 1,
+    })
+    best = await findBestGeocodeCandidate(
+      nameFirstQueries,
+      searchOptions,
+      1,
+      normalizedOptions.signal,
+      maxQueries,
+      { traceId, phase: 'name' }
+    )
   }
 
   geocodeCache.set(key, {
     data: best,
     expiresAt: Date.now() + (best ? GEOCODE_CLIENT_CACHE_TTL_MS : GEOCODE_CLIENT_NEGATIVE_CACHE_TTL_MS),
+  })
+  geocodeTrace(traceId, 'address:done', {
+    durationMs: Number((geocodeNowMs() - startedAt).toFixed(1)),
+    found: Boolean(best),
+    score: best?.score ?? null,
+    lat: best ? Number(best.lat.toFixed(6)) : null,
+    lon: best ? Number(best.lon.toFixed(6)) : null,
+    cacheTtlMs: best ? GEOCODE_CLIENT_CACHE_TTL_MS : GEOCODE_CLIENT_NEGATIVE_CACHE_TTL_MS,
   })
   return best
 }

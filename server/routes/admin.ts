@@ -518,13 +518,38 @@ router.get('/yandex-key/check', requireAdminAnyPermission('home.read', 'home.wri
     return res.json({ success: true, data: { has_key: false, geocoder: 'no_key', search: 'no_key' } })
   }
 
+  const YANDEX_CHECK_TIMEOUT_MS = 10000
+  const YANDEX_CHECK_MAX_ATTEMPTS = 2
+  const YANDEX_CHECK_RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504])
+
+  async function fetchYandexWithRetry(url: string): Promise<globalThis.Response | null> {
+    for (let attempt = 1; attempt <= YANDEX_CHECK_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(YANDEX_CHECK_TIMEOUT_MS),
+          headers: { 'User-Agent': 'RWGroupWebsite/1.0' },
+        })
+        if (
+          response.ok ||
+          response.status === 401 ||
+          response.status === 403 ||
+          !YANDEX_CHECK_RETRYABLE_STATUSES.has(response.status) ||
+          attempt >= YANDEX_CHECK_MAX_ATTEMPTS
+        ) {
+          return response
+        }
+      } catch {
+        if (attempt >= YANDEX_CHECK_MAX_ATTEMPTS) return null
+      }
+    }
+    return null
+  }
+
   async function testGeocoder(): Promise<'ok' | 'auth_error' | 'error'> {
     try {
       const params = new URLSearchParams({ apikey: apiKey, geocode: 'Москва', format: 'json', results: '1', lang: 'ru_RU' })
-      const response = await fetch(`https://geocode-maps.yandex.ru/1.x/?${params}`, {
-        signal: AbortSignal.timeout(6000),
-        headers: { 'User-Agent': 'RWGroupWebsite/1.0' },
-      })
+      const response = await fetchYandexWithRetry(`https://geocode-maps.yandex.ru/1.x/?${params}`)
+      if (!response) return 'error'
       if (response.status === 403 || response.status === 401) return 'auth_error'
       if (!response.ok) return 'error'
       const json = await response.json() as { response?: { GeoObjectCollection?: unknown } }
@@ -543,10 +568,8 @@ router.get('/yandex-key/check', requireAdminAnyPermission('home.read', 'home.wri
         type: 'biz',
         apikey: apiKey,
       })
-      const response = await fetch(`https://search-maps.yandex.ru/v1/?${params}`, {
-        signal: AbortSignal.timeout(6000),
-        headers: { 'User-Agent': 'RWGroupWebsite/1.0' },
-      })
+      const response = await fetchYandexWithRetry(`https://search-maps.yandex.ru/v1/?${params}`)
+      if (!response) return 'error'
       if (response.status === 403 || response.status === 401) return 'auth_error'
       if (!response.ok) return 'error'
       const json = await response.json() as { features?: unknown[] }
@@ -1510,7 +1533,7 @@ router.post('/catalog/complex/:id/nearby/generate', requireAdminPermission('cata
     return
   }
 
-  const NEARBY_GENERATE_TIMEOUT_MS = 50000
+  const NEARBY_GENERATE_TIMEOUT_MS = 65000
   try {
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('generate_timeout')), NEARBY_GENERATE_TIMEOUT_MS)
