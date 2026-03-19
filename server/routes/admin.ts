@@ -1566,16 +1566,22 @@ router.post('/catalog/complex/:id/nearby/photo-variants', requireAdminPermission
     return
   }
 
+  const PHOTO_VARIANTS_TIMEOUT_MS = 45000
   try {
-    const urls = await searchNearbyPhotoVariants(
+    const urlsPromise = searchNearbyPhotoVariants(
       parsed.data.name,
       parsed.data.district || complex.district || '',
       parsed.data.category,
       hasLat && hasLon ? { lat: parsed.data.lat as number, lon: parsed.data.lon as number } : undefined
     )
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), PHOTO_VARIANTS_TIMEOUT_MS)
+    )
+    const urls = await Promise.race([urlsPromise, timeoutPromise])
     res.json({ success: true, data: { urls } })
   } catch (error) {
-    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Photo search failed' })
+    const isTimeout = error instanceof Error && error.message === 'timeout'
+    res.status(isTimeout ? 408 : 500).json({ success: false, error: isTimeout ? 'Поиск фото занял слишком много времени. Попробуйте ещё раз.' : error instanceof Error ? error.message : 'Photo search failed' })
   }
 })
 

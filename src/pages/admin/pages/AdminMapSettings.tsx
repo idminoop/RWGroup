@@ -125,7 +125,6 @@ export default function AdminMapSettingsPage() {
             ) : (
               <>
                 <StatusBadge status={checkResult.geocoder} label="Geocoder API (поиск координат по адресу)" />
-                <StatusBadge status={checkResult.search} label="Search API HTTP (опционально)" />
                 {checkResult.geocoder === 'ok' && (
                   <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
                     Ключ работает. Geocoder API доступен — поиск координат будет работать на продакшне.
