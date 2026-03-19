@@ -98,6 +98,7 @@ export type NearbyGroup = 'life' | 'leisure' | 'family'
 export interface ComplexNearbyPlace {
   id: string
   name: string
+  description?: string
   category?: string
   category_key?: string
   group?: NearbyGroup

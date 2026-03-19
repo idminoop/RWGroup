@@ -349,6 +349,7 @@ export function createLandingNearbyPlace(partial?: Partial<ComplexNearbyPlace>):
   return {
     id: partial?.id || makeId('nearby'),
     name: toText(partial?.name) || 'Место поблизости',
+    description: toText(partial?.description) || undefined,
     category: toText(partial?.category) || undefined,
     category_key: toText(partial?.category_key) || undefined,
     group: partial?.group || undefined,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -36,73 +36,6 @@ type ComplexListItem = Pick<Complex, 'id' | 'title' | 'status' | 'district' | 'p
 type ComplexDetailsResponse = {
   complex: Complex
   properties: Property[]
-}
-
-type NearbyCategoryDebugResponse = {
-  key: string
-  finalSource: 'yandex' | 'yandex-fallback' | 'overpass' | 'none'
-  resultCount: number
-  durationMs: number
-  yandex?: {
-    attempted: boolean
-    fromCache: boolean
-    durationMs: number
-    query?: string
-    rawCount: number
-    strictCount?: number
-    filteredCount: number
-    relaxedQualityFallback?: boolean
-    httpStatus?: number
-    error?: string
-  }
-  overpass?: {
-    attempted: boolean
-    fromCache: boolean
-    cooldownSkipped: boolean
-    durationMs: number
-    requestAttempts: number
-    endpointsTried: string[]
-    lastStatus?: number
-    error?: string
-  }
-}
-
-type NearbyGenerateDebugResponse = {
-  durationMs: number
-  collect: {
-    durationMs: number
-    mergedCount: number
-    dedupedCount: number
-    processedCategories: number
-    truncatedByDeadline: boolean
-    emptyCategories: string[]
-    categories: NearbyCategoryDebugResponse[]
-  }
-  routing: {
-    durationMs: number
-    destinations: number
-    walkStatus: 'ok' | 'failed' | 'skipped'
-    driveStatus: 'ok' | 'failed' | 'skipped'
-  }
-  filtering: {
-    routedCandidates: number
-    withinTravel: number
-    pool: number
-    picked: number
-  }
-}
-
-type NearbyGenerateResponse = {
-  origin: { lat: number; lon: number }
-  refreshed_at: string
-  candidates: ComplexNearbyPlace[]
-  auto_selected_ids?: string[]
-  no_api_key?: boolean
-  debug?: NearbyGenerateDebugResponse
-}
-
-type NearbyPhotoVariantsResponse = {
-  urls: string[]
 }
 
 type GeoPoint = {
@@ -261,6 +194,15 @@ function dedupeUrls(urls: string[]): string[] {
   return result
 }
 
+function nearbyCategoryKey(label: string): string {
+  const normalized = label
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9а-яё_]/gi, '')
+  return normalized || 'manual'
+}
+
 export default function AdminComplexSettingsPage() {
   const token = useUiStore((s) => s.adminToken)
   const headers = useMemo(() => ({ 'x-admin-token': token || '' }), [token])
@@ -287,15 +229,10 @@ export default function AdminComplexSettingsPage() {
   const [deletingPresetKey, setDeletingPresetKey] = useState<string | null>(null)
   const [newPresetTitle, setNewPresetTitle] = useState('')
   const [newPresetImage, setNewPresetImage] = useState('')
-  const [nearbyLoading, setNearbyLoading] = useState(false)
-  const [nearbyError, setNearbyError] = useState<string | null>(null)
-  const [nearbyNoApiKey, setNearbyNoApiKey] = useState(false)
-  const [nearbyPhotoLoadingById, setNearbyPhotoLoadingById] = useState<Record<string, boolean>>({})
-  const [autoNearbyGeneratedFor, setAutoNearbyGeneratedFor] = useState('')
+  const [newNearbyCollectionName, setNewNearbyCollectionName] = useState('')
   const [mapSearchQuery, setMapSearchQuery] = useState('')
   const [mapLookupLoading, setMapLookupLoading] = useState(false)
   const [mapLookupError, setMapLookupError] = useState<string | null>(null)
-  const autoNearbyPhotoRequestedRef = useRef<Set<string>>(new Set())
 
   const filteredComplexes = useMemo(() => {
     const q = pickerFilter.trim().toLowerCase()
@@ -318,7 +255,6 @@ export default function AdminComplexSettingsPage() {
     if (!draftLanding) return null
     return createLandingNearby(draftLanding.nearby)
   }, [draftLanding])
-  const nearbySelectedIds = useMemo(() => new Set(nearbyConfig?.selected_ids || []), [nearbyConfig?.selected_ids])
   const mapPoint = useMemo(() => normalizeGeoPoint(draftComplex?.geo_lat, draftComplex?.geo_lon), [draftComplex?.geo_lat, draftComplex?.geo_lon])
 
   const featurePresetOptions = useMemo(() => {
@@ -408,17 +344,12 @@ export default function AdminComplexSettingsPage() {
   useEffect(() => {
     if (!selectedId) {
       setLoadedHeroImage('')
-      autoNearbyPhotoRequestedRef.current = new Set()
       return
     }
     setDetailsLoading(true)
     setDetailsError(null)
-    setNearbyError(null)
     setMapSearchQuery('')
     setMapLookupError(null)
-    setNearbyPhotoLoadingById({})
-    setAutoNearbyGeneratedFor('')
-    autoNearbyPhotoRequestedRef.current = new Set()
     apiGet<ComplexDetailsResponse>(`/api/admin/catalog/complex/${selectedId}`, headers)
       .then((res) => {
         const minPrice = getMinPositive(res.properties.map((item) => item.status === 'active' ? item.price : undefined))
@@ -474,7 +405,13 @@ export default function AdminComplexSettingsPage() {
   const patchNearby = (updater: (value: ComplexLandingNearby) => ComplexLandingNearby) => {
     patchLanding((cfg) => ({
       ...cfg,
-      nearby: updater(createLandingNearby(cfg.nearby)),
+      nearby: (() => {
+        const nextNearby = updater(createLandingNearby(cfg.nearby))
+        return {
+          ...nextNearby,
+          selected_ids: nextNearby.candidates.map((item) => item.id).slice(0, 20),
+        }
+      })(),
     }))
   }
 
@@ -487,40 +424,63 @@ export default function AdminComplexSettingsPage() {
     }))
   }
 
-  const toggleNearbySelection = (id: string) => {
+  const addNearbyCandidate = (categoryLabel?: string) => {
+    const category = (categoryLabel || newNearbyCollectionName || 'Новая подборка').trim()
+    const point = mapPoint || { lat: 55.751244, lon: 37.618423 }
     patchNearby((nearby) => {
-      const selected = new Set(nearby.selected_ids)
-      if (selected.has(id)) selected.delete(id)
-      else selected.add(id)
+      const next = createLandingNearbyPlace({
+        id: `manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        name: 'Новое место',
+        description: '',
+        category,
+        category_key: nearbyCategoryKey(category),
+        lat: point.lat,
+        lon: point.lon,
+        walk_minutes: 10,
+        drive_minutes: 5,
+      })
+      const candidates = [next, ...nearby.candidates].slice(0, 20)
       return {
         ...nearby,
-        selected_ids: nearby.candidates.map((item) => item.id).filter((itemId) => selected.has(itemId)).slice(0, 20),
+        refreshed_at: new Date().toISOString(),
+        candidates,
+        selected_ids: candidates.map((item) => item.id).slice(0, 20),
+      }
+    })
+    setNewNearbyCollectionName('')
+  }
+
+  const deleteNearbyCandidate = (id: string) => {
+    patchNearby((nearby) => {
+      const candidates = nearby.candidates.filter((item) => item.id !== id)
+      return {
+        ...nearby,
+        refreshed_at: new Date().toISOString(),
+        candidates,
       }
     })
   }
 
-  const selectAllNearbyCandidates = () => {
+  const renameNearbyCollection = (categoryKey: string, nextCategoryLabel: string) => {
+    const nextCategory = nextCategoryLabel.trim()
+    if (!nextCategory) return
     patchNearby((nearby) => ({
       ...nearby,
-      selected_ids: nearby.candidates.map((item) => item.id).slice(0, 20),
+      candidates: nearby.candidates.map((item) => (
+        (item.category_key || '__none__') === categoryKey
+          ? createLandingNearbyPlace({ ...item, category: nextCategory, category_key: nearbyCategoryKey(nextCategory) })
+          : item
+      )),
     }))
   }
 
-  const clearNearbySelection = () => {
-    patchNearby((nearby) => ({ ...nearby, selected_ids: [] }))
-  }
-
-  const selectNearbyAlternative = (candidateId: string, categoryKey: string) => {
+  const deleteNearbyCollection = (categoryKey: string) => {
     patchNearby((nearby) => {
-      const selectedSet = new Set(nearby.selected_ids)
-      // Deselect any other candidate in the same category
-      nearby.candidates
-        .filter((c) => c.category_key === categoryKey && c.id !== candidateId)
-        .forEach((c) => selectedSet.delete(c.id))
-      selectedSet.add(candidateId)
+      const candidates = nearby.candidates.filter((item) => (item.category_key || '__none__') !== categoryKey)
       return {
         ...nearby,
-        selected_ids: nearby.candidates.map((c) => c.id).filter((id) => selectedSet.has(id)).slice(0, 20),
+        refreshed_at: new Date().toISOString(),
+        candidates,
       }
     })
   }
@@ -618,250 +578,6 @@ export default function AdminComplexSettingsPage() {
       adminTrace(traceId, 'resolve:finish', { durationMs: Number((nowMs() - startedAt).toFixed(1)) })
     }
   }, [draftComplex, mapPoint, mapSearchQuery])
-
-  const generateNearbyCandidates = useCallback(async () => {
-    if (!draftComplex) return
-    const traceId = nextAdminTraceId('nearby')
-    const startedAt = nowMs()
-    autoNearbyPhotoRequestedRef.current = new Set()
-    setNearbyLoading(true)
-    setNearbyError(null)
-    setNearbyNoApiKey(false)
-    try {
-      const payload = mapPoint ? { origin_lat: mapPoint.lat, origin_lon: mapPoint.lon } : {}
-      adminTrace(traceId, 'generate:start', {
-        complexId: draftComplex.id,
-        payload,
-        hasMapPoint: Boolean(mapPoint),
-      })
-      const generated = await apiPost<NearbyGenerateResponse>(
-        `/api/admin/catalog/complex/${draftComplex.id}/nearby/generate`,
-        payload,
-        headers
-      )
-      const byCategory = generated.candidates.reduce<Record<string, number>>((acc, item) => {
-        const key = (item.category_key || item.category || 'unknown').trim()
-        acc[key] = (acc[key] || 0) + 1
-        return acc
-      }, {})
-      const debugSummary = generated.debug
-        ? {
-            totalMs: generated.debug.durationMs,
-            collectMs: generated.debug.collect.durationMs,
-            routingMs: generated.debug.routing.durationMs,
-            mergedCount: generated.debug.collect.mergedCount,
-            dedupedCount: generated.debug.collect.dedupedCount,
-            processedCategories: generated.debug.collect.processedCategories,
-            truncatedByDeadline: generated.debug.collect.truncatedByDeadline,
-            emptyCategories: generated.debug.collect.emptyCategories,
-            walkStatus: generated.debug.routing.walkStatus,
-            driveStatus: generated.debug.routing.driveStatus,
-          }
-        : undefined
-      adminTrace(traceId, 'generate:response', {
-        durationMs: Number((nowMs() - startedAt).toFixed(1)),
-        origin: generated.origin,
-        candidates: generated.candidates.length,
-        autoSelected: (generated.auto_selected_ids || []).length,
-        noApiKey: Boolean(generated.no_api_key),
-        byCategory,
-        debugSummary,
-      })
-      if (generated.debug?.collect?.categories?.length) {
-        const perCategory = generated.debug.collect.categories.map((entry) => ({
-          key: entry.key,
-          finalSource: entry.finalSource,
-          resultCount: entry.resultCount,
-          durationMs: entry.durationMs,
-          yandex: entry.yandex
-            ? {
-                attempted: entry.yandex.attempted,
-                fromCache: entry.yandex.fromCache,
-                durationMs: entry.yandex.durationMs,
-                rawCount: entry.yandex.rawCount,
-                strictCount: entry.yandex.strictCount,
-                filteredCount: entry.yandex.filteredCount,
-                relaxedQualityFallback: entry.yandex.relaxedQualityFallback,
-                httpStatus: entry.yandex.httpStatus,
-                error: entry.yandex.error,
-              }
-            : undefined,
-          overpass: entry.overpass
-            ? {
-                attempted: entry.overpass.attempted,
-                fromCache: entry.overpass.fromCache,
-                cooldownSkipped: entry.overpass.cooldownSkipped,
-                durationMs: entry.overpass.durationMs,
-                requestAttempts: entry.overpass.requestAttempts,
-                lastStatus: entry.overpass.lastStatus,
-                error: entry.overpass.error,
-              }
-            : undefined,
-        }))
-        adminTrace(traceId, 'generate:categories', { perCategory })
-        if (isAdminTraceEnabled()) {
-          const tableRows = perCategory.map((entry) => ({
-            key: entry.key,
-            source: entry.finalSource,
-            resultCount: entry.resultCount,
-            durationMs: entry.durationMs,
-            yandexStatus: entry.yandex?.error
-              || entry.yandex?.httpStatus
-              || (entry.yandex?.fromCache ? 'cache' : (entry.yandex?.attempted ? 'ok' : 'skip')),
-            yandexFromCache: entry.yandex?.fromCache ? 'yes' : 'no',
-            yandexRaw: entry.yandex?.rawCount ?? 0,
-            yandexStrict: entry.yandex?.strictCount ?? 0,
-            yandexFiltered: entry.yandex?.filteredCount ?? 0,
-            yandexRelaxed: entry.yandex?.relaxedQualityFallback ? 'yes' : 'no',
-            overpassStatus: entry.overpass?.error || entry.overpass?.lastStatus || (entry.overpass?.attempted ? 'ok' : 'skip'),
-            overpassAttempts: entry.overpass?.requestAttempts ?? 0,
-          }))
-          console.table(tableRows)
-        }
-      }
-
-      if (generated.no_api_key) setNearbyNoApiKey(true)
-
-      const previous = createLandingNearby(draftLanding?.nearby)
-      const previousById = new Map(previous.candidates.map((item) => [item.id, item]))
-
-      const merged = generated.candidates.map((raw) => {
-        const next = createLandingNearbyPlace(raw)
-        const prev = previousById.get(next.id)
-        if (!prev?.image_custom || !prev.image_url) return next
-
-        const variants = dedupeUrls([prev.image_url, ...(prev.image_variants || []), ...(next.image_variants || [])]).slice(0, MAX_NEARBY_IMAGE_VARIANTS)
-        return createLandingNearbyPlace({
-          ...next,
-          image_url: prev.image_url,
-          image_custom: true,
-          image_fallback: false,
-          image_variants: variants,
-        })
-      })
-
-      const mergedIdSet = new Set(merged.map((item) => item.id))
-      const preservedSelected = previous.selected_ids.filter((id) => mergedIdSet.has(id))
-      // Use server-provided auto_selected_ids (best 1 per category) as default selection
-      const autoIds = (generated.auto_selected_ids || []).filter((id) => mergedIdSet.has(id))
-      const nextSelected = preservedSelected.length ? preservedSelected : (autoIds.length ? autoIds : merged.slice(0, 20).map((item) => item.id))
-
-      patchNearby((nearby) => ({
-        ...nearby,
-        refreshed_at: generated.refreshed_at,
-        candidates: merged,
-        selected_ids: nextSelected.slice(0, 20),
-      }))
-      if (!mapPoint && Number.isFinite(generated.origin.lat) && Number.isFinite(generated.origin.lon)) {
-        setComplexMapPoint({
-          lat: Number(generated.origin.lat.toFixed(6)),
-          lon: Number(generated.origin.lon.toFixed(6)),
-        })
-      }
-    } catch (e) {
-      adminTraceError(traceId, 'generate:error', e, {
-        durationMs: Number((nowMs() - startedAt).toFixed(1)),
-        mapPoint,
-      })
-      setNearbyError(e instanceof Error ? e.message : 'Ошибка генерации мест поблизости')
-    } finally {
-      setNearbyLoading(false)
-      adminTrace(traceId, 'generate:finish', { durationMs: Number((nowMs() - startedAt).toFixed(1)) })
-    }
-  }, [draftComplex, draftLanding?.nearby, headers, mapPoint])
-
-  const loadMoreNearbyPhotos = useCallback(async (candidate: ComplexNearbyPlace) => {
-    if (!draftComplex) return
-    const traceId = nextAdminTraceId('photo')
-    const startedAt = nowMs()
-    setNearbyPhotoLoadingById((prev) => ({ ...prev, [candidate.id]: true }))
-    setNearbyError(null)
-    try {
-      adminTrace(traceId, 'photo:start', {
-        complexId: draftComplex.id,
-        candidateId: candidate.id,
-        candidateName: candidate.name,
-        category: candidate.category || candidate.category_key || 'unknown',
-      })
-      const data = await apiPost<NearbyPhotoVariantsResponse>(
-        `/api/admin/catalog/complex/${draftComplex.id}/nearby/photo-variants`,
-        { name: candidate.name, district: draftComplex.district, category: candidate.category, lat: candidate.lat, lon: candidate.lon },
-        headers
-      )
-      adminTrace(traceId, 'photo:response', {
-        durationMs: Number((nowMs() - startedAt).toFixed(1)),
-        urls: data.urls.length,
-      })
-      const variants = dedupeUrls([...(candidate.image_variants || []), ...data.urls]).slice(0, MAX_NEARBY_IMAGE_VARIANTS)
-      const hasRealVariant = variants.some((url) => url && url !== candidate.image_url)
-      const nextImageUrl = candidate.image_custom
-        ? candidate.image_url
-        : (hasRealVariant ? (variants.find((url) => url && url !== candidate.image_url) || variants[0] || candidate.image_url) : candidate.image_url)
-      updateNearbyCandidate(candidate.id, {
-        image_variants: variants,
-        image_url: nextImageUrl,
-        image_fallback: candidate.image_custom ? candidate.image_fallback : (hasRealVariant ? false : candidate.image_fallback),
-      })
-    } catch (e) {
-      adminTraceError(traceId, 'photo:error', e, {
-        durationMs: Number((nowMs() - startedAt).toFixed(1)),
-        candidateId: candidate.id,
-      })
-      setNearbyError(e instanceof Error ? e.message : 'Ошибка загрузки дополнительных фото')
-    } finally {
-      setNearbyPhotoLoadingById((prev) => {
-        const next = { ...prev }
-        delete next[candidate.id]
-        return next
-      })
-      adminTrace(traceId, 'photo:finish', { durationMs: Number((nowMs() - startedAt).toFixed(1)) })
-    }
-  }, [draftComplex, headers])
-
-  useEffect(() => {
-    if (!draftComplex || !nearbyConfig?.candidates?.length) return
-
-    const targets = nearbyConfig.candidates
-      .filter((candidate) => (candidate.image_fallback || !candidate.image_url) && !autoNearbyPhotoRequestedRef.current.has(candidate.id))
-      .slice(0, 8)
-
-    if (!targets.length) return
-
-    targets.forEach((candidate) => autoNearbyPhotoRequestedRef.current.add(candidate.id))
-
-    let cancelled = false
-    const queue = [...targets]
-    const workers = Array.from({ length: 2 }, async () => {
-      while (!cancelled && queue.length > 0) {
-        const next = queue.shift()
-        if (!next) break
-        try {
-          await loadMoreNearbyPhotos(next)
-        } catch {
-          // keep current fallback image if lookup failed
-        }
-      }
-    })
-
-    Promise.all(workers).catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [draftComplex, nearbyConfig?.candidates, loadMoreNearbyPhotos])
-
-  useEffect(() => {
-    if (!selectedId || !draftComplex || !nearbyConfig) return
-    if (autoNearbyGeneratedFor === selectedId) return
-    if (!mapPoint) return
-
-    if (nearbyConfig.candidates.length > 0) {
-      setAutoNearbyGeneratedFor(selectedId)
-      return
-    }
-
-    setAutoNearbyGeneratedFor(selectedId)
-    generateNearbyCandidates().catch(() => {})
-  }, [autoNearbyGeneratedFor, draftComplex, generateNearbyCandidates, mapPoint, nearbyConfig, selectedId])
 
   const toggleFeaturePreset = (presetKey: string) => {
     patchLanding((cfg) => {
@@ -1502,17 +1218,11 @@ export default function AdminComplexSettingsPage() {
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-white">
-                  Места поблизости {nearbyConfig ? `(${nearbyConfig.selected_ids.length}/${nearbyConfig.candidates.length})` : ''}
+                  Места поблизости {nearbyConfig ? `(${nearbyConfig.candidates.length})` : ''}
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="secondary" onClick={selectAllNearbyCandidates} disabled={!nearbyConfig?.candidates.length}>
-                    Выбрать все
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={clearNearbySelection} disabled={!nearbyConfig?.selected_ids.length}>
-                    Очистить выбор
-                  </Button>
-                  <Button size="sm" onClick={generateNearbyCandidates} disabled={nearbyLoading}>
-                    {nearbyLoading ? 'Загрузка...' : 'Обновить места'}
+                  <Button size="sm" variant="secondary" onClick={() => addNearbyCandidate()}>
+                    + Добавить место
                   </Button>
                 </div>
               </div>
@@ -1536,22 +1246,31 @@ export default function AdminComplexSettingsPage() {
                 </div>
               </div>
 
+              <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                <Input
+                  value={newNearbyCollectionName}
+                  className="border-white/20 bg-white/5 text-white"
+                  placeholder="Название новой подборки"
+                  onChange={(e) => setNewNearbyCollectionName(e.target.value)}
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => addNearbyCandidate(newNearbyCollectionName)}
+                  disabled={!newNearbyCollectionName.trim()}
+                >
+                  + Создать подборку
+                </Button>
+              </div>
+
               <div className="flex flex-wrap items-center gap-3 text-xs text-white/60">
                 <span>Показываем до 20 карточек</span>
                 {nearbyConfig?.refreshed_at ? <span>Обновлено: {new Date(nearbyConfig.refreshed_at).toLocaleString('ru-RU')}</span> : null}
               </div>
 
-              {nearbyError ? <div className="text-xs text-rose-300">{nearbyError}</div> : null}
-              {nearbyNoApiKey ? (
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300">
-                  Яндекс API-ключ не настроен — доступны только парки и набережные (OSM). Для кофеен, ресторанов и других мест добавьте ключ Search API Яндекса в{' '}
-                  <a href="/admin/map-settings" target="_blank" className="underline">настройках карт</a>.
-                </div>
-              ) : null}
-
               {!nearbyConfig?.candidates.length ? (
                 <div className="rounded-xl border border-dashed border-white/20 bg-white/[0.03] p-4 text-sm text-white/55">
-                  Нажмите «Обновить места», чтобы найти места рядом с ЖК через OpenStreetMap (кофейни, рестораны, парки, театры, фитнес и др.). Работает бесплатно, без ключа API.
+                  Добавьте первое место вручную: название, описание, фото и время пешком/на машине.
                 </div>
               ) : (
                 <div className="space-y-5">
@@ -1574,15 +1293,11 @@ export default function AdminComplexSettingsPage() {
                     }
 
                     const renderCandidate = (candidate: ComplexNearbyPlace) => {
-                      const selected = nearbySelectedIds.has(candidate.id)
                       const imageVariants = dedupeUrls([candidate.image_url || '', ...(candidate.image_variants || [])]).slice(0, MAX_NEARBY_IMAGE_VARIANTS)
-                      const photoLoading = Boolean(nearbyPhotoLoadingById[candidate.id])
                       return (
                         <article
                           key={candidate.id}
-                          className={`min-w-0 overflow-hidden rounded-xl border p-3 ${
-                            selected ? 'border-amber-300/70 bg-amber-200/10' : 'border-white/10 bg-white/[0.03]'
-                          }`}
+                          className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] p-3"
                         >
                           <div className="relative h-36 overflow-hidden rounded-lg border border-white/10">
                             {candidate.image_url ? (
@@ -1607,6 +1322,9 @@ export default function AdminComplexSettingsPage() {
                           <div className="mt-2 flex min-w-0 items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
                               <div className="break-words text-sm font-semibold text-white">{candidate.name}</div>
+                              {candidate.description ? (
+                                <div className="mt-1 text-xs text-white/70">{candidate.description}</div>
+                              ) : null}
                               <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-white/55">
                                 <span>{Math.round(candidate.walk_minutes)} мин пешком · {Math.round(candidate.drive_minutes)} мин на машине</span>
                                 {candidate.rating !== undefined && (
@@ -1617,9 +1335,40 @@ export default function AdminComplexSettingsPage() {
                                 )}
                               </div>
                             </div>
-                            <Button size="sm" variant={selected ? 'secondary' : 'default'} onClick={() => toggleNearbySelection(candidate.id)}>
-                              {selected ? 'Убрать' : 'Добавить'}
+                            <Button size="sm" variant="secondary" onClick={() => deleteNearbyCandidate(candidate.id)}>
+                              Удалить
                             </Button>
+                          </div>
+
+                          <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2">
+                            <Input
+                              value={candidate.name}
+                              className="border-white/20 bg-white/5 text-white"
+                              placeholder="Название места"
+                              onChange={(e) => updateNearbyCandidate(candidate.id, { name: e.target.value })}
+                            />
+                            <Input
+                              value={candidate.description || ''}
+                              className="border-white/20 bg-white/5 text-white"
+                              placeholder="Описание"
+                              onChange={(e) => updateNearbyCandidate(candidate.id, { description: e.target.value })}
+                            />
+                            <Input
+                              type="number"
+                              min={1}
+                              value={candidate.walk_minutes}
+                              className="border-white/20 bg-white/5 text-white"
+                              placeholder="Пешком (мин)"
+                              onChange={(e) => updateNearbyCandidate(candidate.id, { walk_minutes: Number(e.target.value) || 1 })}
+                            />
+                            <Input
+                              type="number"
+                              min={1}
+                              value={candidate.drive_minutes}
+                              className="border-white/20 bg-white/5 text-white"
+                              placeholder="На машине (мин)"
+                              onChange={(e) => updateNearbyCandidate(candidate.id, { drive_minutes: Number(e.target.value) || 1 })}
+                            />
                           </div>
 
                           <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
@@ -1662,10 +1411,18 @@ export default function AdminComplexSettingsPage() {
                             </label>
                           </div>
 
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <Button size="sm" variant="secondary" onClick={() => loadMoreNearbyPhotos(candidate)} disabled={photoLoading}>
-                              {photoLoading ? 'Ищем...' : 'Загрузить еще фото'}
-                            </Button>
+                          <div className="mt-2">
+                            <Input
+                              value={candidate.category || ''}
+                              className="border-white/20 bg-white/5 text-white"
+                              placeholder="Подборка"
+                              onChange={(e) =>
+                                updateNearbyCandidate(candidate.id, {
+                                  category: e.target.value,
+                                  category_key: nearbyCategoryKey(e.target.value),
+                                })
+                              }
+                            />
                           </div>
 
                           {imageVariants.length > 0 && (
@@ -1697,47 +1454,28 @@ export default function AdminComplexSettingsPage() {
 
                     const renderCategoryBlock = (categoryCandidates: ComplexNearbyPlace[]) => {
                       if (!categoryCandidates.length) return null
-                      const selectedInCategory = categoryCandidates.find((c) => nearbySelectedIds.has(c.id))
-                      const mainCandidate = selectedInCategory || categoryCandidates[0]
-                      const alternatives = categoryCandidates.filter((c) => c.id !== mainCandidate.id)
-                      const categoryLabel = mainCandidate.category || ''
+                      const [firstCandidate] = categoryCandidates
+                      const categoryLabel = firstCandidate.category || ''
+                      const categoryKey = firstCandidate.category_key || '__none__'
                       return (
-                        <div key={mainCandidate.category_key || mainCandidate.id} className="space-y-2">
-                          {categoryLabel && (
-                            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/40">{categoryLabel}</div>
-                          )}
-                          {renderCandidate(mainCandidate)}
-                          {alternatives.length > 0 && (
-                            <div className="space-y-1.5 pl-2">
-                              <div className="text-[10px] uppercase tracking-widest text-white/35">Альтернативы</div>
-                              {alternatives.map((alt) => (
-                                <div key={alt.id} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-2">
-                                  <div className="h-10 w-14 shrink-0 overflow-hidden rounded border border-white/10">
-                                    {alt.image_url ? (
-                                      <img src={alt.image_url} alt={alt.name} className="h-full w-full object-cover" />
-                                    ) : (
-                                      <div className="flex h-full w-full items-center justify-center bg-white/5 text-base opacity-40">📍</div>
-                                    )}
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="truncate text-xs font-semibold text-white">{alt.name}</div>
-                                    <div className="flex flex-wrap items-center gap-2 text-[10px] text-white/50">
-                                      <span>{Math.round(alt.walk_minutes)} мин пешком</span>
-                                      {alt.rating !== undefined && (
-                                        <span className="text-amber-300">
-                                          ★ {alt.rating.toFixed(1)}
-                                          {alt.reviews_count ? ` · ${alt.reviews_count}` : ''}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <Button size="sm" variant="secondary" onClick={() => selectNearbyAlternative(alt.id, alt.category_key || '')}>
-                                    Выбрать
-                                  </Button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                        <div key={firstCandidate.category_key || firstCandidate.id} className="space-y-2">
+                          <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+                            <Input
+                              value={categoryLabel}
+                              className="border-white/20 bg-white/5 text-white"
+                              placeholder="Подборка"
+                              onChange={(e) => renameNearbyCollection(categoryKey, e.target.value)}
+                            />
+                            <Button size="sm" variant="secondary" onClick={() => addNearbyCandidate(categoryLabel)}>
+                              + Место
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => deleteNearbyCollection(categoryKey)}>
+                              Удалить
+                            </Button>
+                          </div>
+                          <div className="space-y-2">
+                            {categoryCandidates.map((candidate) => renderCandidate(candidate))}
+                          </div>
                         </div>
                       )
                     }

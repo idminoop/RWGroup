@@ -81,6 +81,11 @@ function PlaceCard({
         <div className="line-clamp-2 text-sm font-semibold leading-tight text-white sm:text-base">
           {item.name}
         </div>
+        {item.description ? (
+          <div className="mt-1 line-clamp-2 text-[11px] text-white/75 sm:text-xs">
+            {item.description}
+          </div>
+        ) : null}
 
         {item.rating !== undefined && (
           <div className="mt-1.5">
@@ -221,6 +226,9 @@ export default function NearbyPlaces({
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#041019]/95 via-[#041019]/40 to-transparent" />
                 <div className="absolute inset-x-0 bottom-0 z-10 p-3 sm:p-4">
                   <div className="line-clamp-2 text-base font-semibold text-white sm:text-lg">{item.name}</div>
+                  {item.description ? (
+                    <div className="mt-1 line-clamp-2 text-[11px] text-white/75 sm:text-xs">{item.description}</div>
+                  ) : null}
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-medium text-white/90 sm:text-xs">
                     <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/35 px-2.5 py-1">
                       <Footprints className="h-3.5 w-3.5" />

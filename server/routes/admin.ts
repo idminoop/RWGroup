@@ -23,7 +23,6 @@ import {
   toAdminUserPublic,
   verifyAdminPassword,
 } from '../lib/admin-users.js'
-import { generateNearbyPlacesForComplex, searchNearbyPhotoVariants } from '../lib/nearby.js'
 import { addAuditLog, appendAuditLog } from '../lib/audit.js'
 import { uploadImage } from '../lib/media-storage.js'
 import {
@@ -1508,118 +1507,17 @@ router.get('/catalog/complex/:id', (req: Request, res: Response) => {
 })
 
 router.post('/catalog/complex/:id/nearby/generate', requireAdminPermission('catalog.write'), async (req: Request, res: Response) => {
-  const id = req.params.id
-  const payloadSchema = z.object({
-    origin_lat: z.number().min(-90).max(90).optional(),
-    origin_lon: z.number().min(-180).max(180).optional(),
+  res.status(410).json({
+    success: false,
+    error: 'Автопоиск мест отключен. Используйте ручное редактирование раздела «Места поблизости».',
   })
-  const payloadParsed = payloadSchema.safeParse(req.body || {})
-  if (!payloadParsed.success) {
-    res.status(400).json({ success: false, error: 'Invalid payload' })
-    return
-  }
-
-  const hasOriginLat = typeof payloadParsed.data.origin_lat === 'number'
-  const hasOriginLon = typeof payloadParsed.data.origin_lon === 'number'
-  if ((hasOriginLat && !hasOriginLon) || (!hasOriginLat && hasOriginLon)) {
-    res.status(400).json({ success: false, error: 'Provide both origin_lat and origin_lon' })
-    return
-  }
-
-  const complex = withDbRead((db) => db.complexes.find((item) => item.id === id) || null)
-
-  if (!complex) {
-    res.status(404).json({ success: false, error: 'Not found' })
-    return
-  }
-
-  const NEARBY_GENERATE_TIMEOUT_MS = 55000
-  try {
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('generate_timeout')), NEARBY_GENERATE_TIMEOUT_MS)
-    )
-    const generated = await Promise.race([
-      generateNearbyPlacesForComplex(
-        complex,
-        hasOriginLat && hasOriginLon
-          ? { lat: payloadParsed.data.origin_lat as number, lon: payloadParsed.data.origin_lon as number }
-          : undefined,
-        { resolveImages: false, preciseRoutes: false, maxDurationMs: 50000 }
-      ),
-      timeoutPromise,
-    ])
-    if (!generated.origin) {
-      res.status(422).json({ success: false, error: generated.reason || 'Unable to resolve coordinates' })
-      return
-    }
-
-    res.json({
-      success: true,
-      data: {
-        origin: generated.origin,
-        refreshed_at: new Date().toISOString(),
-        candidates: generated.items,
-        auto_selected_ids: generated.autoSelectedIds,
-        no_api_key: generated.no_api_key || false,
-        debug: generated.debug,
-      },
-    })
-  } catch (error) {
-    const isTimeout = error instanceof Error && error.message === 'generate_timeout'
-    res.status(isTimeout ? 408 : 500).json({
-      success: false,
-      error: isTimeout
-        ? 'Поиск мест занял слишком долго (Overpass API медленно отвечает). Попробуйте ещё раз — результаты частично закешированы.'
-        : error instanceof Error ? error.message : 'Nearby generation failed',
-    })
-  }
 })
 
 router.post('/catalog/complex/:id/nearby/photo-variants', requireAdminPermission('catalog.write'), async (req: Request, res: Response) => {
-  const id = req.params.id
-  const schema = z.object({
-    name: z.string().min(2).max(180),
-    district: z.string().optional(),
-    category: z.string().max(80).optional(),
-    lat: z.number().min(-90).max(90).optional(),
-    lon: z.number().min(-180).max(180).optional(),
+  res.status(410).json({
+    success: false,
+    error: 'Автоподбор фото отключен. Добавляйте изображения вручную (URL или загрузка файла).',
   })
-  const parsed = schema.safeParse(req.body)
-  if (!parsed.success) {
-    res.status(400).json({ success: false, error: 'Invalid payload' })
-    return
-  }
-
-  const hasLat = typeof parsed.data.lat === 'number'
-  const hasLon = typeof parsed.data.lon === 'number'
-  if ((hasLat && !hasLon) || (!hasLat && hasLon)) {
-    res.status(400).json({ success: false, error: 'Provide both lat and lon' })
-    return
-  }
-
-  const complex = withDbRead((db) => db.complexes.find((item) => item.id === id) || null)
-  if (!complex) {
-    res.status(404).json({ success: false, error: 'Not found' })
-    return
-  }
-
-  const PHOTO_VARIANTS_TIMEOUT_MS = 45000
-  try {
-    const urlsPromise = searchNearbyPhotoVariants(
-      parsed.data.name,
-      parsed.data.district || complex.district || '',
-      parsed.data.category,
-      hasLat && hasLon ? { lat: parsed.data.lat as number, lon: parsed.data.lon as number } : undefined
-    )
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('timeout')), PHOTO_VARIANTS_TIMEOUT_MS)
-    )
-    const urls = await Promise.race([urlsPromise, timeoutPromise])
-    res.json({ success: true, data: { urls } })
-  } catch (error) {
-    const isTimeout = error instanceof Error && error.message === 'timeout'
-    res.status(isTimeout ? 408 : 500).json({ success: false, error: isTimeout ? 'Поиск фото занял слишком много времени. Попробуйте ещё раз.' : error instanceof Error ? error.message : 'Photo search failed' })
-  }
 })
 
 router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), (req: Request, res: Response) => {
@@ -1660,11 +1558,17 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
   const landingNearbyPlaceSchema = z.object({
     id: z.string().min(1),
     name: z.string().min(1),
+    description: z.string().optional(),
     category: z.string().optional(),
+    category_key: z.string().optional(),
+    group: z.enum(['life', 'leisure', 'family']).optional(),
+    emoji: z.string().optional(),
     lat: z.number(),
     lon: z.number(),
     walk_minutes: z.number(),
     drive_minutes: z.number(),
+    rating: z.number().optional(),
+    reviews_count: z.number().optional(),
     image_url: z.string().optional(),
     image_variants: z.array(z.string()).optional(),
     image_fallback: z.boolean().optional(),
