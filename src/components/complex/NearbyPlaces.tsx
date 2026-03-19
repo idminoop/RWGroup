@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState, type MouseEventHandler, type PointerEventHandler } from 'react'
 import { Car, Footprints, Navigation, Star } from 'lucide-react'
 import { Heading } from '@/components/ui/Typography'
 import type { ComplexNearbyCollection, ComplexNearbyPlace, NearbyGroup } from '../../../shared/types'
@@ -36,6 +37,8 @@ const GROUP_CONFIGS: GroupConfig[] = [
   { key: 'leisure', label: 'Досуг' },
   { key: 'family', label: 'Для семьи и спорта' },
 ]
+const CAROUSEL_SPEED_PX_PER_SEC = 20
+const CAROUSEL_INTERACTION_PAUSE_MS = 1400
 
 function formatMinutes(minutes: number): string {
   const value = Math.max(1, Math.round(minutes || 0))
@@ -217,6 +220,179 @@ function PlaceCard({
   )
 }
 
+function CollectionCarousel({
+  items,
+  originLat,
+  originLon,
+}: {
+  items: ComplexNearbyPlace[]
+  originLat?: number
+  originLon?: number
+}) {
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+  const autoPosRef = useRef(0)
+  const pauseUntilRef = useRef(0)
+  const dragStateRef = useRef({
+    active: false,
+    startX: 0,
+    startScrollLeft: 0,
+    pointerId: null as number | null,
+  })
+  const movedDuringDragRef = useRef(false)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const hasLoop = items.length > 1
+  const loopItems = hasLoop ? [...items, ...items] : items
+
+  const pauseAutoScroll = (ms: number = CAROUSEL_INTERACTION_PAUSE_MS) => {
+    pauseUntilRef.current = Math.max(pauseUntilRef.current, performance.now() + ms)
+  }
+
+  const normalizeLoopPosition = () => {
+    const viewport = viewportRef.current
+    if (!viewport || !hasLoop) return
+    const cycleWidth = viewport.scrollWidth / 2
+    if (cycleWidth <= 1) return
+    let next = viewport.scrollLeft
+    while (next >= cycleWidth) next -= cycleWidth
+    while (next < 0) next += cycleWidth
+    if (next !== viewport.scrollLeft) viewport.scrollLeft = next
+    autoPosRef.current = viewport.scrollLeft
+  }
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    viewport.scrollLeft = 0
+    autoPosRef.current = 0
+  }, [items.length, hasLoop])
+
+  useEffect(() => {
+    if (!hasLoop) return
+
+    let rafId = 0
+    let lastTime = performance.now()
+
+    const tick = (now: number) => {
+      const viewport = viewportRef.current
+      if (!viewport) {
+        rafId = window.requestAnimationFrame(tick)
+        return
+      }
+
+      const dt = now - lastTime
+      lastTime = now
+
+      const hasOverflow = viewport.scrollWidth > viewport.clientWidth + 1
+      const isPaused = now < pauseUntilRef.current || dragStateRef.current.active
+      if (hasOverflow && !isPaused) {
+        autoPosRef.current += (CAROUSEL_SPEED_PX_PER_SEC * dt) / 1000
+        viewport.scrollLeft = autoPosRef.current
+        normalizeLoopPosition()
+      } else {
+        autoPosRef.current = viewport.scrollLeft
+        normalizeLoopPosition()
+      }
+
+      rafId = window.requestAnimationFrame(tick)
+    }
+
+    rafId = window.requestAnimationFrame(tick)
+    return () => window.cancelAnimationFrame(rafId)
+  }, [hasLoop, loopItems.length])
+
+  const onPointerDown: PointerEventHandler<HTMLDivElement> = (event) => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    movedDuringDragRef.current = false
+    dragStateRef.current = {
+      active: true,
+      startX: event.clientX,
+      startScrollLeft: viewport.scrollLeft,
+      pointerId: event.pointerId,
+    }
+    setIsDragging(true)
+    pauseAutoScroll(2200)
+    autoPosRef.current = viewport.scrollLeft
+    if (event.currentTarget.setPointerCapture) {
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch {
+        // Ignore pointer capture edge cases.
+      }
+    }
+  }
+
+  const onPointerMove: PointerEventHandler<HTMLDivElement> = (event) => {
+    const viewport = viewportRef.current
+    if (!viewport || !dragStateRef.current.active) return
+    event.preventDefault()
+    const dx = event.clientX - dragStateRef.current.startX
+    if (Math.abs(dx) > 4) movedDuringDragRef.current = true
+    viewport.scrollLeft = dragStateRef.current.startScrollLeft - dx
+    normalizeLoopPosition()
+    autoPosRef.current = viewport.scrollLeft
+    pauseAutoScroll(2200)
+  }
+
+  const endPointerInteraction = (event?: { currentTarget: HTMLDivElement; pointerId: number }) => {
+    const viewport = viewportRef.current
+    if (viewport) {
+      normalizeLoopPosition()
+      autoPosRef.current = viewport.scrollLeft
+    }
+    dragStateRef.current.active = false
+    dragStateRef.current.pointerId = null
+    setIsDragging(false)
+    pauseAutoScroll(1200)
+    if (movedDuringDragRef.current) {
+      window.setTimeout(() => {
+        movedDuringDragRef.current = false
+      }, 0)
+    }
+    if (event && event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  const onPointerUp: PointerEventHandler<HTMLDivElement> = (event) => {
+    endPointerInteraction(event)
+  }
+
+  const onPointerCancel: PointerEventHandler<HTMLDivElement> = (event) => {
+    endPointerInteraction(event)
+  }
+
+  const onClickCapture: MouseEventHandler<HTMLDivElement> = (event) => {
+    if (!movedDuringDragRef.current) return
+    movedDuringDragRef.current = false
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  return (
+    <div
+      ref={viewportRef}
+      className={`-mx-1 overflow-x-auto pb-2 pt-0.5 select-none [&::-webkit-scrollbar]:hidden ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+      style={{ touchAction: 'pan-y', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onClickCapture={onClickCapture}
+      onMouseEnter={() => pauseAutoScroll(2600)}
+    >
+      <div className="flex min-w-max gap-3 px-1">
+        {loopItems.map((item, index) => (
+          <div key={`${item.id}_${index}`} className="w-[230px] shrink-0 sm:w-[260px] lg:w-[290px]">
+            <PlaceCard item={item} originLat={originLat} originLon={originLon} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function NearbyPlaces({
   title = 'Места поблизости',
   subtitle = 'Почему здесь хочется жить',
@@ -258,7 +434,7 @@ export default function NearbyPlaces({
               </div>
             ) : null}
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="space-y-4">
               {bucket.categories.map((category) => (
                 <div key={category.key} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 md:p-4">
                   <div className="mb-3 flex items-center justify-between gap-2">
@@ -269,16 +445,7 @@ export default function NearbyPlaces({
                       {category.items.length}
                     </span>
                   </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {category.items.map((item) => (
-                      <PlaceCard
-                        key={item.id}
-                        item={item}
-                        originLat={originLat}
-                        originLon={originLon}
-                      />
-                    ))}
-                  </div>
+                  <CollectionCarousel items={category.items} originLat={originLat} originLon={originLon} />
                 </div>
               ))}
             </div>
