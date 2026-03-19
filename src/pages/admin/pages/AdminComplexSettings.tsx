@@ -38,12 +38,63 @@ type ComplexDetailsResponse = {
   properties: Property[]
 }
 
+type NearbyCategoryDebugResponse = {
+  key: string
+  finalSource: 'yandex' | 'yandex-fallback' | 'overpass' | 'none'
+  resultCount: number
+  durationMs: number
+  yandex?: {
+    attempted: boolean
+    fromCache: boolean
+    durationMs: number
+    query?: string
+    rawCount: number
+    filteredCount: number
+    httpStatus?: number
+    error?: string
+  }
+  overpass?: {
+    attempted: boolean
+    fromCache: boolean
+    cooldownSkipped: boolean
+    durationMs: number
+    requestAttempts: number
+    endpointsTried: string[]
+    lastStatus?: number
+    error?: string
+  }
+}
+
+type NearbyGenerateDebugResponse = {
+  durationMs: number
+  collect: {
+    durationMs: number
+    mergedCount: number
+    dedupedCount: number
+    emptyCategories: string[]
+    categories: NearbyCategoryDebugResponse[]
+  }
+  routing: {
+    durationMs: number
+    destinations: number
+    walkStatus: 'ok' | 'failed' | 'skipped'
+    driveStatus: 'ok' | 'failed' | 'skipped'
+  }
+  filtering: {
+    routedCandidates: number
+    withinTravel: number
+    pool: number
+    picked: number
+  }
+}
+
 type NearbyGenerateResponse = {
   origin: { lat: number; lon: number }
   refreshed_at: string
   candidates: ComplexNearbyPlace[]
   auto_selected_ids?: string[]
   no_api_key?: boolean
+  debug?: NearbyGenerateDebugResponse
 }
 
 type NearbyPhotoVariantsResponse = {
@@ -589,6 +640,18 @@ export default function AdminComplexSettingsPage() {
         acc[key] = (acc[key] || 0) + 1
         return acc
       }, {})
+      const debugSummary = generated.debug
+        ? {
+            totalMs: generated.debug.durationMs,
+            collectMs: generated.debug.collect.durationMs,
+            routingMs: generated.debug.routing.durationMs,
+            mergedCount: generated.debug.collect.mergedCount,
+            dedupedCount: generated.debug.collect.dedupedCount,
+            emptyCategories: generated.debug.collect.emptyCategories,
+            walkStatus: generated.debug.routing.walkStatus,
+            driveStatus: generated.debug.routing.driveStatus,
+          }
+        : undefined
       adminTrace(traceId, 'generate:response', {
         durationMs: Number((nowMs() - startedAt).toFixed(1)),
         origin: generated.origin,
@@ -596,7 +659,39 @@ export default function AdminComplexSettingsPage() {
         autoSelected: (generated.auto_selected_ids || []).length,
         noApiKey: Boolean(generated.no_api_key),
         byCategory,
+        debugSummary,
       })
+      if (generated.debug?.collect?.categories?.length) {
+        const perCategory = generated.debug.collect.categories.map((entry) => ({
+          key: entry.key,
+          finalSource: entry.finalSource,
+          resultCount: entry.resultCount,
+          durationMs: entry.durationMs,
+          yandex: entry.yandex
+            ? {
+                attempted: entry.yandex.attempted,
+                fromCache: entry.yandex.fromCache,
+                durationMs: entry.yandex.durationMs,
+                rawCount: entry.yandex.rawCount,
+                filteredCount: entry.yandex.filteredCount,
+                httpStatus: entry.yandex.httpStatus,
+                error: entry.yandex.error,
+              }
+            : undefined,
+          overpass: entry.overpass
+            ? {
+                attempted: entry.overpass.attempted,
+                fromCache: entry.overpass.fromCache,
+                cooldownSkipped: entry.overpass.cooldownSkipped,
+                durationMs: entry.overpass.durationMs,
+                requestAttempts: entry.overpass.requestAttempts,
+                lastStatus: entry.overpass.lastStatus,
+                error: entry.overpass.error,
+              }
+            : undefined,
+        }))
+        adminTrace(traceId, 'generate:categories', { perCategory })
+      }
 
       if (generated.no_api_key) setNearbyNoApiKey(true)
 

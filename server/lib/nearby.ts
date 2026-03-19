@@ -39,6 +39,91 @@ type GenerateNearbyOptions = {
   preciseRoutes?: boolean
 }
 
+type YandexCategoryDebug = {
+  attempted: boolean
+  fromCache: boolean
+  durationMs: number
+  query?: string
+  rawCount: number
+  filteredCount: number
+  httpStatus?: number
+  error?: string
+}
+
+type OverpassCategoryDebug = {
+  attempted: boolean
+  fromCache: boolean
+  cooldownSkipped: boolean
+  durationMs: number
+  requestAttempts: number
+  endpointsTried: string[]
+  lastStatus?: number
+  error?: string
+}
+
+export type NearbyCategoryDebug = {
+  key: string
+  label: string
+  group: NearbyGroup
+  finalSource: 'yandex' | 'yandex-fallback' | 'overpass' | 'none'
+  resultCount: number
+  durationMs: number
+  yandex?: YandexCategoryDebug
+  overpass?: OverpassCategoryDebug
+}
+
+export type NearbyCollectDebug = {
+  durationMs: number
+  mergedCount: number
+  dedupedCount: number
+  emptyCategories: string[]
+  categories: NearbyCategoryDebug[]
+}
+
+export type NearbyGenerateDebug = {
+  durationMs: number
+  resolveImages: boolean
+  preciseRoutes: boolean
+  noApiKey: boolean
+  collect: NearbyCollectDebug
+  routing: {
+    durationMs: number
+    destinations: number
+    walkStatus: 'ok' | 'failed' | 'skipped'
+    driveStatus: 'ok' | 'failed' | 'skipped'
+  }
+  filtering: {
+    routedCandidates: number
+    withinTravel: number
+    pool: number
+    picked: number
+  }
+}
+
+export type NearbyGenerateResult = {
+  origin: Coords | null
+  items: ComplexNearbyPlace[]
+  autoSelectedIds: string[]
+  reason?: string
+  no_api_key?: boolean
+  debug?: NearbyGenerateDebug
+}
+
+type OverpassFetchResult = {
+  results: Array<{ name: string; lat: number; lon: number; tags?: Record<string, string> }>
+  debug: OverpassCategoryDebug
+}
+
+type YandexFetchResult = {
+  items: PoiWithMeta[]
+  debug: YandexCategoryDebug
+}
+
+type CategoryFetchResult = {
+  items: PoiWithMeta[]
+  debug: NearbyCategoryDebug
+}
+
 type OverpassElement = {
   tags?: Record<string, string>
   lat?: number
@@ -542,7 +627,7 @@ function endpointOrder(key: string): string[] {
 }
 
 const overpassCache = new Map<string, OverpassCacheRecord>()
-const overpassInFlight = new Map<string, Promise<Array<{ name: string; lat: number; lon: number; tags?: Record<string, string> }>>>()
+const overpassInFlight = new Map<string, Promise<OverpassFetchResult>>()
 const overpassFailedUntil = new Map<string, number>()
 const geocodeCache = new Map<string, Coords | null>()
 const yandexSearchCache = new Map<string, YandexFeature[]>()
@@ -594,22 +679,48 @@ async function requestOverpass(endpoint: string, query: string, timeoutMs = OVER
     .filter((item): item is NonNullable<typeof item> => item !== null)
 }
 
-async function fetchOverpassCategory(origin: Coords, category: CategoryDef, radiusMeters: number): Promise<Array<{ name: string; lat: number; lon: number; tags?: Record<string, string> }>> {
-  if (!category.overpassQuery) return []
+async function fetchOverpassCategory(origin: Coords, category: CategoryDef, radiusMeters: number): Promise<OverpassFetchResult> {
+  const startedAt = Date.now()
+  const debugBase: OverpassCategoryDebug = {
+    attempted: false,
+    fromCache: false,
+    cooldownSkipped: false,
+    durationMs: 0,
+    requestAttempts: 0,
+    endpointsTried: [],
+  }
+  if (!category.overpassQuery) {
+    return { results: [], debug: { ...debugBase, durationMs: Date.now() - startedAt } }
+  }
+
   const key = overpassKey(origin, category.key, radiusMeters)
   const now = Date.now()
 
   const cached = overpassCache.get(key)
-  if (cached && cached.expiresAt > now) return cached.results
+  if (cached && cached.expiresAt > now) {
+    return {
+      results: cached.results,
+      debug: {
+        ...debugBase,
+        fromCache: true,
+        durationMs: Date.now() - startedAt,
+      },
+    }
+  }
 
   const pending = overpassInFlight.get(key)
   if (pending) return pending
 
-  const request = (async () => {
+  const request = (async (): Promise<OverpassFetchResult> => {
+    const debug: OverpassCategoryDebug = { ...debugBase }
     const cooldownUntil = overpassFailedUntil.get(key)
-    if (typeof cooldownUntil === 'number' && cooldownUntil > Date.now()) return []
-    const deadlineAt = Date.now() + OVERPASS_CATEGORY_DEADLINE_MS
+    if (typeof cooldownUntil === 'number' && cooldownUntil > Date.now()) {
+      debug.cooldownSkipped = true
+      debug.durationMs = Date.now() - startedAt
+      return { results: [], debug }
+    }
 
+    const deadlineAt = Date.now() + OVERPASS_CATEGORY_DEADLINE_MS
     const radii = [radiusMeters]
     if (radiusMeters > 1400) radii.push(Math.max(900, Math.round(radiusMeters * 0.65)))
 
@@ -621,18 +732,25 @@ async function fetchOverpassCategory(origin: Coords, category: CategoryDef, radi
         const timeLeft = deadlineAt - Date.now()
         if (timeLeft <= 1200) break
         try {
+          debug.attempted = true
+          debug.requestAttempts += 1
+          debug.endpointsTried.push(endpoint)
           const timeoutMs = Math.min(OVERPASS_TIMEOUT_MS, Math.max(1800, timeLeft))
           const results = await requestOverpass(endpoint, query, timeoutMs)
           const normalized = filterPoisByDistance(origin, results, radius)
           overpassCache.set(key, { results: normalized, expiresAt: Date.now() + OVERPASS_CACHE_TTL_MS })
           overpassFailedUntil.delete(key)
-          return normalized
+          debug.durationMs = Date.now() - startedAt
+          return { results: normalized, debug }
         } catch (error) {
           const status = (error as { status?: number })?.status
+          debug.lastStatus = status
+          debug.error = error instanceof Error ? error.message : String(error)
           const retryable = typeof status === 'number' ? OVERPASS_RETRYABLE_STATUSES.has(status) : true
           if (!retryable) {
             overpassFailedUntil.set(key, Date.now() + OVERPASS_FAILURE_COOLDOWN_MS)
-            return []
+            debug.durationMs = Date.now() - startedAt
+            return { results: [], debug }
           }
           if (Date.now() >= deadlineAt) break
           if (status === 429) await sleep(OVERPASS_RETRY_DELAY_MS * 2)
@@ -642,7 +760,8 @@ async function fetchOverpassCategory(origin: Coords, category: CategoryDef, radi
     }
 
     overpassFailedUntil.set(key, Date.now() + OVERPASS_FAILURE_COOLDOWN_MS)
-    return []
+    debug.durationMs = Date.now() - startedAt
+    return { results: [], debug }
   })().finally(() => {
     overpassInFlight.delete(key)
   })
@@ -657,8 +776,20 @@ async function fetchYandexCategory(
   radiusMeters: number,
   apiKey: string,
   timeoutMs = 9000
-): Promise<PoiWithMeta[]> {
-  if (!category.yandexQuery || !apiKey.trim()) return []
+): Promise<YandexFetchResult> {
+  const startedAt = Date.now()
+  const debug: YandexCategoryDebug = {
+    attempted: false,
+    fromCache: false,
+    durationMs: 0,
+    query: category.yandexQuery,
+    rawCount: 0,
+    filteredCount: 0,
+  }
+  if (!category.yandexQuery || !apiKey.trim()) {
+    debug.durationMs = Date.now() - startedAt
+    return { items: [], debug }
+  }
 
   const cacheKey = `${origin.lat.toFixed(4)}:${origin.lon.toFixed(4)}:${category.key}:${Math.round(radiusMeters)}`
   const cached = yandexSearchCache.get(cacheKey)
@@ -675,8 +806,11 @@ async function fetchYandexCategory(
       apikey: apiKey,
     })
     try {
+      debug.attempted = true
       const response = await withTimeout(`${YANDEX_SEARCH_URL}?${params}`, { headers: { 'User-Agent': USER_AGENT } }, timeoutMs)
       if (!response.ok) {
+        debug.httpStatus = response.status
+        debug.error = `HTTP ${response.status}`
         console.warn(`[nearby] Yandex search ${response.status} for category=${category.key}`)
         yandexSearchCache.set(cacheKey, [])
         return []
@@ -686,13 +820,17 @@ async function fetchYandexCategory(
       yandexSearchCache.set(cacheKey, result)
       return result
     } catch (err) {
+      debug.error = err instanceof Error ? err.message : String(err)
       console.warn(`[nearby] Yandex fetch error for category=${category.key}:`, err)
       yandexSearchCache.set(cacheKey, [])
       return []
     }
   })()
 
-  return features
+  if (cached !== undefined) debug.fromCache = true
+  debug.rawCount = features.length
+
+  const items = features
     .map((feature) => {
       const [lon, lat] = feature.geometry.coordinates
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
@@ -728,6 +866,10 @@ async function fetchYandexCategory(
       return scoreB - scoreA || a.distanceKm - b.distanceKm
     })
     .slice(0, 5)
+
+  debug.filteredCount = items.length
+  debug.durationMs = Date.now() - startedAt
+  return { items, debug }
 }
 
 const YANDEX_GEOCODER_URL = 'https://geocode-maps.yandex.ru/1.x/'
@@ -1700,12 +1842,24 @@ async function fetchCategoryWithLog(
   origin: Coords,
   categoryDef: CategoryDef,
   apiKey: string
-): Promise<PoiWithMeta[]> {
+): Promise<CategoryFetchResult> {
   const t0 = Date.now()
+  const categoryDebug: NearbyCategoryDebug = {
+    key: categoryDef.key,
+    label: categoryDef.label,
+    group: categoryDef.group,
+    finalSource: 'none',
+    resultCount: 0,
+    durationMs: 0,
+  }
   if (categoryDef.source === 'yandex') {
-    const items = await fetchYandexCategory(origin, categoryDef, SEARCH_RADIUS_METERS, apiKey)
-    console.log(`[nearby] category=${categoryDef.key} source=yandex found=${items.length} ms=${Date.now() - t0}`)
-    return items
+    const yandexResult = await fetchYandexCategory(origin, categoryDef, SEARCH_RADIUS_METERS, apiKey)
+    categoryDebug.yandex = yandexResult.debug
+    categoryDebug.finalSource = yandexResult.items.length > 0 ? 'yandex' : 'none'
+    categoryDebug.resultCount = yandexResult.items.length
+    categoryDebug.durationMs = Date.now() - t0
+    console.log(`[nearby] category=${categoryDef.key} source=yandex found=${yandexResult.items.length} ms=${Date.now() - t0}`)
+    return { items: yandexResult.items, debug: categoryDebug }
   }
 
   const yandexFallbackQuery = YANDEX_FALLBACK_QUERY_BY_CATEGORY[categoryDef.key]
@@ -1722,14 +1876,19 @@ async function fetchCategoryWithLog(
       apiKey,
       YANDEX_FALLBACK_TIMEOUT_MS,
     )
-    if (yandexItems.length > 0) {
-      console.log(`[nearby] category=${categoryDef.key} source=yandex-fallback found=${yandexItems.length} ms=${Date.now() - t0}`)
-      return yandexItems
+    categoryDebug.yandex = yandexItems.debug
+    if (yandexItems.items.length > 0) {
+      categoryDebug.finalSource = 'yandex-fallback'
+      categoryDebug.resultCount = yandexItems.items.length
+      categoryDebug.durationMs = Date.now() - t0
+      console.log(`[nearby] category=${categoryDef.key} source=yandex-fallback found=${yandexItems.items.length} ms=${Date.now() - t0}`)
+      return { items: yandexItems.items, debug: categoryDebug }
     }
   }
 
-  const pois = await fetchOverpassCategory(origin, categoryDef, SEARCH_RADIUS_METERS)
-  const items = pois
+  const overpassResult = await fetchOverpassCategory(origin, categoryDef, SEARCH_RADIUS_METERS)
+  categoryDebug.overpass = overpassResult.debug
+  const items = overpassResult.results
     .map((poi) => ({
       name: poi.name || categoryDef.label,
       lat: poi.lat,
@@ -1741,11 +1900,14 @@ async function fetchCategoryWithLog(
     .sort((a, b) => a.distanceKm - b.distanceKm)
     .slice(0, 5)
   const status = items.length === 0 ? 'EMPTY' : 'ok'
+  categoryDebug.finalSource = items.length > 0 ? 'overpass' : 'none'
+  categoryDebug.resultCount = items.length
+  categoryDebug.durationMs = Date.now() - t0
   console.log(`[nearby] category=${categoryDef.key} source=overpass found=${items.length} status=${status} ms=${Date.now() - t0}`)
-  return items
+  return { items, debug: categoryDebug }
 }
 
-async function collectAllCandidates(origin: Coords, apiKey: string): Promise<PoiWithMeta[]> {
+async function collectAllCandidates(origin: Coords, apiKey: string): Promise<{ items: PoiWithMeta[]; debug: NearbyCollectDebug }> {
   console.log(`[nearby] collectAllCandidates start lat=${origin.lat.toFixed(5)} lon=${origin.lon.toFixed(5)} categories=${CATEGORY_DEFS.length} concurrency=${OVERPASS_COLLECT_CONCURRENCY}`)
   const t0 = Date.now()
 
@@ -1756,7 +1918,7 @@ async function collectAllCandidates(origin: Coords, apiKey: string): Promise<Poi
     (categoryDef) => fetchCategoryWithLog(origin, categoryDef, apiKey)
   )
 
-  const merged = results.flat()
+  const merged = results.flatMap((entry) => entry.items)
   // Deduplicate by name+position
   const deduped: PoiWithMeta[] = []
   const seen = new Set<string>()
@@ -1767,20 +1929,33 @@ async function collectAllCandidates(origin: Coords, apiKey: string): Promise<Poi
     deduped.push(item)
   }
 
-  const emptyCats = CATEGORY_DEFS.filter((_, i) => results[i].length === 0).map((c) => c.key)
+  const categoryDebug = results.map((entry) => entry.debug)
+  const emptyCats = categoryDebug.filter((entry) => entry.resultCount === 0).map((entry) => entry.key)
   console.log(`[nearby] collectAllCandidates done total=${deduped.length} ms=${Date.now() - t0}`)
   if (emptyCats.length > 0) {
     console.warn(`[nearby] EMPTY categories (${emptyCats.length}): ${emptyCats.join(', ')}`)
   }
 
-  return deduped
+  return {
+    items: deduped,
+    debug: {
+      durationMs: Date.now() - t0,
+      mergedCount: merged.length,
+      dedupedCount: deduped.length,
+      emptyCategories: emptyCats,
+      categories: categoryDebug,
+    },
+  }
 }
 
 export async function generateNearbyPlacesForComplex(
   complex: Complex,
   originOverride?: Coords,
   options: GenerateNearbyOptions = {}
-): Promise<{ origin: Coords | null; items: ComplexNearbyPlace[]; autoSelectedIds: string[]; reason?: string; no_api_key?: boolean }> {
+): Promise<NearbyGenerateResult> {
+  const generateStartedAt = Date.now()
+  const resolveImages = options.resolveImages !== false
+  const preciseRoutes = options.preciseRoutes !== false
   const origin = normalizeCoords(originOverride) || await resolveComplexCoords(complex)
   if (!origin) {
     return { origin: null, items: [], autoSelectedIds: [], reason: 'Unable to resolve complex coordinates' }
@@ -1796,27 +1971,61 @@ export async function generateNearbyPlacesForComplex(
   }
 
   const noApiKey = !apiKey
-  console.log(`[nearby] generate start complex="${complex.title || complex.id}" origin=${origin.lat.toFixed(5)},${origin.lon.toFixed(5)} resolveImages=${options.resolveImages !== false} preciseRoutes=${options.preciseRoutes !== false} apiKey=${apiKey ? 'set' : 'MISSING'}`)
+  console.log(`[nearby] generate start complex="${complex.title || complex.id}" origin=${origin.lat.toFixed(5)},${origin.lon.toFixed(5)} resolveImages=${resolveImages} preciseRoutes=${preciseRoutes} apiKey=${apiKey ? 'set' : 'MISSING'}`)
 
-  const candidates = await collectAllCandidates(origin, apiKey)
+  const collectResult = await collectAllCandidates(origin, apiKey)
+  const candidates = collectResult.items
   if (!candidates.length) {
     console.warn('[nearby] generate result: 0 candidates — check Overpass connectivity or coordinates')
-    return { origin, items: [], autoSelectedIds: [], no_api_key: noApiKey }
+    return {
+      origin,
+      items: [],
+      autoSelectedIds: [],
+      no_api_key: noApiKey,
+      debug: {
+        durationMs: Date.now() - generateStartedAt,
+        resolveImages,
+        preciseRoutes,
+        noApiKey,
+        collect: collectResult.debug,
+        routing: {
+          durationMs: 0,
+          destinations: 0,
+          walkStatus: 'skipped',
+          driveStatus: 'skipped',
+        },
+        filtering: {
+          routedCandidates: 0,
+          withinTravel: 0,
+          pool: 0,
+          picked: 0,
+        },
+      },
+    }
   }
 
-  const preciseRoutes = options.preciseRoutes !== false
   const destinations = candidates.map((item) => ({ lat: item.lat, lon: item.lon }))
   const walk: Array<number | null> = []
   const drive: Array<number | null> = []
+  const routingStartedAt = Date.now()
+  let walkStatus: 'ok' | 'failed' | 'skipped' = preciseRoutes ? 'failed' : 'skipped'
+  let driveStatus: 'ok' | 'failed' | 'skipped' = preciseRoutes ? 'failed' : 'skipped'
 
   if (preciseRoutes) {
     const [walkResult, driveResult] = await Promise.allSettled([
       osrmTableBatched('walking', origin, destinations),
       osrmTableBatched('driving', origin, destinations),
     ])
-    if (walkResult.status === 'fulfilled') walk.push(...walkResult.value)
-    if (driveResult.status === 'fulfilled') drive.push(...driveResult.value)
+    if (walkResult.status === 'fulfilled') {
+      walk.push(...walkResult.value)
+      walkStatus = 'ok'
+    }
+    if (driveResult.status === 'fulfilled') {
+      drive.push(...driveResult.value)
+      driveStatus = 'ok'
+    }
   }
+  const routingDurationMs = Date.now() - routingStartedAt
 
   const routedCandidates = candidates.map((item, index) => ({
     ...item,
@@ -1829,7 +2038,25 @@ export async function generateNearbyPlacesForComplex(
 
   // Pick up to 3 candidates per category (sorted: best first within each category)
   const picked = pickAllCandidates(pool, 3)
-  const resolveImages = options.resolveImages !== false
+  const baseDebug: NearbyGenerateDebug = {
+    durationMs: 0,
+    resolveImages,
+    preciseRoutes,
+    noApiKey,
+    collect: collectResult.debug,
+    routing: {
+      durationMs: routingDurationMs,
+      destinations: destinations.length,
+      walkStatus,
+      driveStatus,
+    },
+    filtering: {
+      routedCandidates: routedCandidates.length,
+      withinTravel: withinTravel.length,
+      pool: pool.length,
+      picked: picked.length,
+    },
+  }
 
   const toComplexNearbyPlace = (item: RoutedPoi, image: { imageUrl: string; variants: string[]; fallback: boolean }): ComplexNearbyPlace => ({
     id: placeId(item.name, item.lat, item.lon),
@@ -1862,7 +2089,16 @@ export async function generateNearbyPlacesForComplex(
         return true
       })
       .map((item) => item.id)
-    return { origin, items, autoSelectedIds, no_api_key: noApiKey }
+    return {
+      origin,
+      items,
+      autoSelectedIds,
+      no_api_key: noApiKey,
+      debug: {
+        ...baseDebug,
+        durationMs: Date.now() - generateStartedAt,
+      },
+    }
   }
 
   // For resolveImages path, only resolve images for the best 1 per category (auto-selected)
@@ -1905,7 +2141,16 @@ export async function generateNearbyPlacesForComplex(
   })
 
   const autoSelectedIds = resolvedItems.map((item) => item.id)
-  return { origin, items, autoSelectedIds, no_api_key: noApiKey }
+  return {
+    origin,
+    items,
+    autoSelectedIds,
+    no_api_key: noApiKey,
+    debug: {
+      ...baseDebug,
+      durationMs: Date.now() - generateStartedAt,
+    },
+  }
 }
 
 export async function searchNearbyPhotoVariants(name: string, district?: string, category?: string, point?: Coords): Promise<string[]> {
