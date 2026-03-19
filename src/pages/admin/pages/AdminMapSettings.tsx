@@ -112,8 +112,8 @@ export default function AdminMapSettingsPage() {
           className="border-white/20 bg-white/10 text-white placeholder:text-white/40"
         />
         <div className="space-y-1 text-xs text-slate-400">
-          <div>Один ключ закрывает три сервиса: <strong className="text-slate-300">JavaScript API</strong> (карта ЖК), <strong className="text-slate-300">Geocoder API</strong> (поиск координат), <strong className="text-slate-300">Search API HTTP</strong> (места поблизости).</div>
-          <div>Создайте ключ в кабинете разработчика Яндекса и включите все три сервиса сразу.</div>
+          <div>Ключ нужен для двух сервисов: <strong className="text-slate-300">JavaScript API</strong> (карта ЖК на сайте) и <strong className="text-slate-300">Geocoder API</strong> (поиск координат ЖК по адресу в админке).</div>
+          <div>Поиск мест поблизости работает через <strong className="text-slate-300">Overpass API (OpenStreetMap)</strong> — бесплатно, без ключа.</div>
         </div>
 
         {checkResult && (
@@ -124,18 +124,18 @@ export default function AdminMapSettingsPage() {
               </div>
             ) : (
               <>
-                <StatusBadge status={checkResult.geocoder} label="Geocoder API (поиск координат)" />
-                <StatusBadge status={checkResult.search} label="Search API HTTP (места поблизости)" />
-                {allOk && (
+                <StatusBadge status={checkResult.geocoder} label="Geocoder API (поиск координат по адресу)" />
+                <StatusBadge status={checkResult.search} label="Search API HTTP (опционально)" />
+                {checkResult.geocoder === 'ok' && (
                   <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
-                    Ключ работает корректно. Оба сервиса доступны.
+                    Ключ работает. Geocoder API доступен — поиск координат будет работать на продакшне.
                   </div>
                 )}
-                {!allOk && checkResult.has_key && (
+                {checkResult.geocoder !== 'ok' && checkResult.has_key && (
                   <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-                    {checkResult.geocoder === 'auth_error' || checkResult.search === 'auth_error'
-                      ? 'Ключ не принят. Проверьте, что для ключа включены нужные сервисы в кабинете разработчика Яндекса.'
-                      : 'Один из сервисов недоступен. Возможно, временная ошибка — попробуйте ещё раз.'}
+                    {checkResult.geocoder === 'auth_error'
+                      ? 'Ключ не принят (403). Убедитесь, что для ключа включён Geocoder API (HTTP Геокодер) в кабинете разработчика Яндекса.'
+                      : 'Geocoder API недоступен. Возможно, временная ошибка — попробуйте ещё раз.'}
                   </div>
                 )}
               </>

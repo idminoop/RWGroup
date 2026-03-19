@@ -116,7 +116,7 @@ const MIN_REVIEWS = 15
 const FALLBACK_WALK_M_PER_MIN = 75
 const FALLBACK_DRIVE_M_PER_MIN = 450
 
-// 21 categories in 3 groups
+// 21 categories in 3 groups — all via free Overpass API (OpenStreetMap)
 const CATEGORY_DEFS: CategoryDef[] = [
   // ── Group: life (Жизнь рядом) ──────────────────────────────────────────
   {
@@ -124,8 +124,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Кофейня',
     group: 'life',
     emoji: '☕',
-    source: 'yandex',
-    yandexQuery: 'кофейня',
+    source: 'overpass',
+    overpassQuery: 'node["amenity"="cafe"](around:{RADIUS},{LAT},{LON});way["amenity"="cafe"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1400&q=80',
@@ -136,8 +136,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Кафе',
     group: 'life',
     emoji: '🍽️',
-    source: 'yandex',
-    yandexQuery: 'кафе',
+    source: 'overpass',
+    overpassQuery: 'node["amenity"="fast_food"](around:{RADIUS},{LAT},{LON});way["amenity"="fast_food"](around:{RADIUS},{LAT},{LON});node["amenity"="bistro"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1521017432531-fbd92d768814?auto=format&fit=crop&w=1400&q=80',
@@ -148,8 +148,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Ресторан',
     group: 'life',
     emoji: '🍷',
-    source: 'yandex',
-    yandexQuery: 'ресторан',
+    source: 'overpass',
+    overpassQuery: 'node["amenity"="restaurant"](around:{RADIUS},{LAT},{LON});way["amenity"="restaurant"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1424847651672-bf20a4b0982b?auto=format&fit=crop&w=1400&q=80',
@@ -160,8 +160,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Пекарня',
     group: 'life',
     emoji: '🥐',
-    source: 'yandex',
-    yandexQuery: 'пекарня',
+    source: 'overpass',
+    overpassQuery: 'node["shop"="bakery"](around:{RADIUS},{LAT},{LON});way["shop"="bakery"](around:{RADIUS},{LAT},{LON});node["amenity"="cafe"]["cuisine"="bakery"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1517433670267-08bbd4be890f?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1568254183919-78a4f43a2877?auto=format&fit=crop&w=1400&q=80',
@@ -172,8 +172,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Бар',
     group: 'life',
     emoji: '🍺',
-    source: 'yandex',
-    yandexQuery: 'бар',
+    source: 'overpass',
+    overpassQuery: 'node["amenity"="bar"](around:{RADIUS},{LAT},{LON});way["amenity"="bar"](around:{RADIUS},{LAT},{LON});node["amenity"="pub"](around:{RADIUS},{LAT},{LON});way["amenity"="pub"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1543007631-283050bb3e8c?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?auto=format&fit=crop&w=1400&q=80',
@@ -222,8 +222,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Музей',
     group: 'leisure',
     emoji: '🏛️',
-    source: 'yandex',
-    yandexQuery: 'музей',
+    source: 'overpass',
+    overpassQuery: 'node["tourism"="museum"](around:{RADIUS},{LAT},{LON});way["tourism"="museum"](around:{RADIUS},{LAT},{LON});relation["tourism"="museum"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1518998053901-5348d3961a04?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1577083552431-6e5fd01988f1?auto=format&fit=crop&w=1400&q=80',
@@ -234,8 +234,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Театр',
     group: 'leisure',
     emoji: '🎭',
-    source: 'yandex',
-    yandexQuery: 'театр',
+    source: 'overpass',
+    overpassQuery: 'node["amenity"="theatre"](around:{RADIUS},{LAT},{LON});way["amenity"="theatre"](around:{RADIUS},{LAT},{LON});relation["amenity"="theatre"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1503095396549-807759245b35?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1400&q=80',
@@ -246,8 +246,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Кинотеатр',
     group: 'leisure',
     emoji: '🎬',
-    source: 'yandex',
-    yandexQuery: 'кинотеатр',
+    source: 'overpass',
+    overpassQuery: 'node["amenity"="cinema"](around:{RADIUS},{LAT},{LON});way["amenity"="cinema"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=1400&q=80',
@@ -258,8 +258,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Галерея',
     group: 'leisure',
     emoji: '🖼️',
-    source: 'yandex',
-    yandexQuery: 'художественная галерея',
+    source: 'overpass',
+    overpassQuery: 'node["tourism"="gallery"](around:{RADIUS},{LAT},{LON});way["tourism"="gallery"](around:{RADIUS},{LAT},{LON});node["tourism"="artwork"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1531243269054-5ebf6f34081e?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1565799557187-2d87e04ae98b?auto=format&fit=crop&w=1400&q=80',
@@ -284,8 +284,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Фитнес-клуб',
     group: 'family',
     emoji: '💪',
-    source: 'yandex',
-    yandexQuery: 'фитнес-клуб',
+    source: 'overpass',
+    overpassQuery: 'node["leisure"="fitness_centre"](around:{RADIUS},{LAT},{LON});way["leisure"="fitness_centre"](around:{RADIUS},{LAT},{LON});node["leisure"="fitness_station"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1486286701208-1d58e9338013?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=1400&q=80',
@@ -293,11 +293,11 @@ const CATEGORY_DEFS: CategoryDef[] = [
   },
   {
     key: 'yoga',
-    label: 'Йога',
+    label: 'Йога / танцы',
     group: 'family',
     emoji: '🧘',
-    source: 'yandex',
-    yandexQuery: 'студия йоги',
+    source: 'overpass',
+    overpassQuery: 'node["sport"="yoga"](around:{RADIUS},{LAT},{LON});way["sport"="yoga"](around:{RADIUS},{LAT},{LON});node["sport"="dance"](around:{RADIUS},{LAT},{LON});way["sport"="dance"](around:{RADIUS},{LAT},{LON});node["leisure"="dance"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1400&q=80',
@@ -308,8 +308,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Спорткомплекс',
     group: 'family',
     emoji: '⚽',
-    source: 'yandex',
-    yandexQuery: 'спортивный комплекс',
+    source: 'overpass',
+    overpassQuery: 'node["leisure"="sports_centre"](around:{RADIUS},{LAT},{LON});way["leisure"="sports_centre"](around:{RADIUS},{LAT},{LON});relation["leisure"="sports_centre"](around:{RADIUS},{LAT},{LON});node["leisure"="stadium"](around:{RADIUS},{LAT},{LON});way["leisure"="stadium"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1571019613914-85f342c6a11e?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1400&q=80',
@@ -320,8 +320,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Торговый центр',
     group: 'family',
     emoji: '🛍️',
-    source: 'yandex',
-    yandexQuery: 'торговый центр',
+    source: 'overpass',
+    overpassQuery: 'node["shop"="mall"](around:{RADIUS},{LAT},{LON});way["shop"="mall"](around:{RADIUS},{LAT},{LON});relation["shop"="mall"](around:{RADIUS},{LAT},{LON});node["shop"="department_store"](around:{RADIUS},{LAT},{LON});way["shop"="department_store"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1519567241046-7f570eee3ce6?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&w=1400&q=80',
@@ -332,8 +332,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Коворкинг',
     group: 'family',
     emoji: '💻',
-    source: 'yandex',
-    yandexQuery: 'коворкинг',
+    source: 'overpass',
+    overpassQuery: 'node["amenity"="coworking_space"](around:{RADIUS},{LAT},{LON});way["amenity"="coworking_space"](around:{RADIUS},{LAT},{LON});node["office"="coworking"](around:{RADIUS},{LAT},{LON});way["office"="coworking"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=1400&q=80',
@@ -356,8 +356,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     label: 'Детский центр',
     group: 'family',
     emoji: '👶',
-    source: 'yandex',
-    yandexQuery: 'детский развивающий центр',
+    source: 'overpass',
+    overpassQuery: 'node["amenity"="childcare"](around:{RADIUS},{LAT},{LON});way["amenity"="childcare"](around:{RADIUS},{LAT},{LON});node["amenity"="kindergarten"](around:{RADIUS},{LAT},{LON});way["amenity"="kindergarten"](around:{RADIUS},{LAT},{LON});node["leisure"="amusement_arcade"](around:{RADIUS},{LAT},{LON});',
     fallbackImages: [
       'https://images.unsplash.com/photo-1526634332515-d56c5fd16991?auto=format&fit=crop&w=1400&q=80',
       'https://images.unsplash.com/photo-1567748157439-651aca2ff064?auto=format&fit=crop&w=1400&q=80',

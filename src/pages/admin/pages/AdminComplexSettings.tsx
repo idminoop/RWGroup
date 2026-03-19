@@ -1318,7 +1318,7 @@ export default function AdminComplexSettingsPage() {
 
               {!nearbyConfig?.candidates.length ? (
                 <div className="rounded-xl border border-dashed border-white/20 bg-white/[0.03] p-4 text-sm text-white/55">
-                  Нажмите «Обновить места», чтобы найти лучшие места рядом с ЖК через Яндекс (кофейни, парки, театры, фитнес и др.).
+                  Нажмите «Обновить места», чтобы найти места рядом с ЖК через OpenStreetMap (кофейни, рестораны, парки, театры, фитнес и др.). Работает бесплатно, без ключа API.
                 </div>
               ) : (
                 <div className="space-y-5">
