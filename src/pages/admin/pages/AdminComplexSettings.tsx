@@ -73,6 +73,8 @@ type NearbyGenerateDebugResponse = {
     durationMs: number
     mergedCount: number
     dedupedCount: number
+    processedCategories: number
+    truncatedByDeadline: boolean
     emptyCategories: string[]
     categories: NearbyCategoryDebugResponse[]
   }
@@ -649,6 +651,8 @@ export default function AdminComplexSettingsPage() {
             routingMs: generated.debug.routing.durationMs,
             mergedCount: generated.debug.collect.mergedCount,
             dedupedCount: generated.debug.collect.dedupedCount,
+            processedCategories: generated.debug.collect.processedCategories,
+            truncatedByDeadline: generated.debug.collect.truncatedByDeadline,
             emptyCategories: generated.debug.collect.emptyCategories,
             walkStatus: generated.debug.routing.walkStatus,
             driveStatus: generated.debug.routing.driveStatus,

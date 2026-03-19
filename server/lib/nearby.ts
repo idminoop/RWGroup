@@ -37,6 +37,7 @@ type RoutedPoi = PoiWithMeta & {
 type GenerateNearbyOptions = {
   resolveImages?: boolean
   preciseRoutes?: boolean
+  maxDurationMs?: number
 }
 
 type YandexCategoryDebug = {
@@ -78,6 +79,8 @@ export type NearbyCollectDebug = {
   durationMs: number
   mergedCount: number
   dedupedCount: number
+  processedCategories: number
+  truncatedByDeadline: boolean
   emptyCategories: string[]
   categories: NearbyCategoryDebug[]
 }
@@ -560,7 +563,8 @@ function pickAllCandidates(
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
-  worker: (item: T, index: number) => Promise<R>
+  worker: (item: T, index: number) => Promise<R>,
+  shouldContinue?: () => boolean
 ): Promise<R[]> {
   if (!items.length) return []
   const out: R[] = new Array(items.length)
@@ -570,6 +574,7 @@ async function mapWithConcurrency<T, R>(
   await Promise.all(
     Array.from({ length: workers }, async () => {
       while (cursor < items.length) {
+        if (shouldContinue && !shouldContinue()) break
         const index = cursor
         cursor += 1
         out[index] = await worker(items[index], index)
@@ -690,7 +695,12 @@ async function requestOverpass(endpoint: string, query: string, timeoutMs = OVER
     .filter((item): item is NonNullable<typeof item> => item !== null)
 }
 
-async function fetchOverpassCategory(origin: Coords, category: CategoryDef, radiusMeters: number): Promise<OverpassFetchResult> {
+async function fetchOverpassCategory(
+  origin: Coords,
+  category: CategoryDef,
+  radiusMeters: number,
+  globalDeadlineAt?: number
+): Promise<OverpassFetchResult> {
   const startedAt = Date.now()
   const debugBase: OverpassCategoryDebug = {
     attempted: false,
@@ -731,7 +741,9 @@ async function fetchOverpassCategory(origin: Coords, category: CategoryDef, radi
       return { results: [], debug }
     }
 
-    const deadlineAt = Date.now() + OVERPASS_CATEGORY_DEADLINE_MS
+    const deadlineAt = typeof globalDeadlineAt === 'number'
+      ? Math.min(Date.now() + OVERPASS_CATEGORY_DEADLINE_MS, globalDeadlineAt)
+      : Date.now() + OVERPASS_CATEGORY_DEADLINE_MS
     const radii = [radiusMeters]
     if (radiusMeters > 1400) radii.push(Math.max(900, Math.round(radiusMeters * 0.65)))
 
@@ -786,7 +798,8 @@ async function fetchYandexCategory(
   category: CategoryDef,
   radiusMeters: number,
   apiKey: string,
-  timeoutMs = 9000
+  timeoutMs = 9000,
+  deadlineAt?: number
 ): Promise<YandexFetchResult> {
   const startedAt = Date.now()
   const debug: YandexCategoryDebug = {
@@ -807,6 +820,14 @@ async function fetchYandexCategory(
   const cached = yandexSearchCache.get(cacheKey)
   const now = Date.now()
   const features = cached && cached.expiresAt > now ? cached.features : await (async () => {
+    const timeLeftToDeadline = typeof deadlineAt === 'number' ? deadlineAt - Date.now() : null
+    if (timeLeftToDeadline !== null && timeLeftToDeadline <= 700) {
+      debug.error = 'deadline_exceeded'
+      return []
+    }
+    const effectiveTimeoutMs = timeLeftToDeadline !== null
+      ? Math.min(timeoutMs, Math.max(900, timeLeftToDeadline - 150))
+      : timeoutMs
     const spnLat = (radiusMeters / 111000).toFixed(4)
     const spnLon = (radiusMeters / (111000 * Math.cos(toRad(origin.lat)))).toFixed(4)
     const params = new URLSearchParams({
@@ -820,7 +841,7 @@ async function fetchYandexCategory(
     })
     try {
       debug.attempted = true
-      const response = await withTimeout(`${YANDEX_SEARCH_URL}?${params}`, { headers: { 'User-Agent': USER_AGENT } }, timeoutMs)
+      const response = await withTimeout(`${YANDEX_SEARCH_URL}?${params}`, { headers: { 'User-Agent': USER_AGENT } }, effectiveTimeoutMs)
       if (!response.ok) {
         debug.httpStatus = response.status
         debug.error = `HTTP ${response.status}`
@@ -1885,7 +1906,8 @@ function defaultYandexFallbackQuery(categoryDef: CategoryDef): string {
 async function fetchCategoryWithLog(
   origin: Coords,
   categoryDef: CategoryDef,
-  apiKey: string
+  apiKey: string,
+  deadlineAt?: number
 ): Promise<CategoryFetchResult> {
   const t0 = Date.now()
   const categoryDebug: NearbyCategoryDebug = {
@@ -1897,7 +1919,7 @@ async function fetchCategoryWithLog(
     durationMs: 0,
   }
   if (categoryDef.source === 'yandex') {
-    const yandexResult = await fetchYandexCategory(origin, categoryDef, SEARCH_RADIUS_METERS, apiKey)
+    const yandexResult = await fetchYandexCategory(origin, categoryDef, SEARCH_RADIUS_METERS, apiKey, 9000, deadlineAt)
     categoryDebug.yandex = yandexResult.debug
     categoryDebug.finalSource = yandexResult.items.length > 0 ? 'yandex' : 'none'
     categoryDebug.resultCount = yandexResult.items.length
@@ -1919,6 +1941,7 @@ async function fetchCategoryWithLog(
       SEARCH_RADIUS_METERS,
       apiKey,
       YANDEX_FALLBACK_TIMEOUT_MS,
+      deadlineAt,
     )
     categoryDebug.yandex = yandexItems.debug
     if (yandexItems.items.length > 0) {
@@ -1930,7 +1953,7 @@ async function fetchCategoryWithLog(
     }
   }
 
-  const overpassResult = await fetchOverpassCategory(origin, categoryDef, SEARCH_RADIUS_METERS)
+  const overpassResult = await fetchOverpassCategory(origin, categoryDef, SEARCH_RADIUS_METERS, deadlineAt)
   categoryDebug.overpass = overpassResult.debug
   const items = overpassResult.results
     .map((poi) => ({
@@ -1951,16 +1974,22 @@ async function fetchCategoryWithLog(
   return { items, debug: categoryDebug }
 }
 
-async function collectAllCandidates(origin: Coords, apiKey: string): Promise<{ items: PoiWithMeta[]; debug: NearbyCollectDebug }> {
+async function collectAllCandidates(
+  origin: Coords,
+  apiKey: string,
+  deadlineAt?: number
+): Promise<{ items: PoiWithMeta[]; debug: NearbyCollectDebug }> {
   console.log(`[nearby] collectAllCandidates start lat=${origin.lat.toFixed(5)} lon=${origin.lon.toFixed(5)} categories=${CATEGORY_DEFS.length} concurrency=${OVERPASS_COLLECT_CONCURRENCY}`)
   const t0 = Date.now()
 
   // Use limited concurrency to avoid Overpass rate-limiting (21 parallel → throttled)
-  const results = await mapWithConcurrency(
+  const resultsRaw = await mapWithConcurrency(
     CATEGORY_DEFS,
     OVERPASS_COLLECT_CONCURRENCY,
-    (categoryDef) => fetchCategoryWithLog(origin, categoryDef, apiKey)
+    (categoryDef) => fetchCategoryWithLog(origin, categoryDef, apiKey, deadlineAt),
+    () => (typeof deadlineAt !== 'number' ? true : Date.now() < deadlineAt)
   )
+  const results = resultsRaw.filter((entry): entry is CategoryFetchResult => Boolean(entry))
 
   const merged = results.flatMap((entry) => entry.items)
   // Deduplicate by name+position
@@ -1974,8 +2003,12 @@ async function collectAllCandidates(origin: Coords, apiKey: string): Promise<{ i
   }
 
   const categoryDebug = results.map((entry) => entry.debug)
+  const truncatedByDeadline = categoryDebug.length < CATEGORY_DEFS.length
   const emptyCats = categoryDebug.filter((entry) => entry.resultCount === 0).map((entry) => entry.key)
   console.log(`[nearby] collectAllCandidates done total=${deduped.length} ms=${Date.now() - t0}`)
+  if (truncatedByDeadline) {
+    console.warn(`[nearby] collectAllCandidates truncated by deadline processed=${categoryDebug.length}/${CATEGORY_DEFS.length}`)
+  }
   if (emptyCats.length > 0) {
     console.warn(`[nearby] EMPTY categories (${emptyCats.length}): ${emptyCats.join(', ')}`)
   }
@@ -1986,6 +2019,8 @@ async function collectAllCandidates(origin: Coords, apiKey: string): Promise<{ i
       durationMs: Date.now() - t0,
       mergedCount: merged.length,
       dedupedCount: deduped.length,
+      processedCategories: categoryDebug.length,
+      truncatedByDeadline,
       emptyCategories: emptyCats,
       categories: categoryDebug,
     },
@@ -1998,6 +2033,8 @@ export async function generateNearbyPlacesForComplex(
   options: GenerateNearbyOptions = {}
 ): Promise<NearbyGenerateResult> {
   const generateStartedAt = Date.now()
+  const maxDurationMs = Math.max(15000, Math.min(Math.floor(options.maxDurationMs ?? 50000), 56000))
+  const deadlineAt = generateStartedAt + maxDurationMs
   const resolveImages = options.resolveImages !== false
   const preciseRoutes = options.preciseRoutes !== false
   const origin = normalizeCoords(originOverride) || await resolveComplexCoords(complex)
@@ -2017,7 +2054,7 @@ export async function generateNearbyPlacesForComplex(
   const noApiKey = !apiKey
   console.log(`[nearby] generate start complex="${complex.title || complex.id}" origin=${origin.lat.toFixed(5)},${origin.lon.toFixed(5)} resolveImages=${resolveImages} preciseRoutes=${preciseRoutes} apiKey=${apiKey ? 'set' : 'MISSING'}`)
 
-  const collectResult = await collectAllCandidates(origin, apiKey)
+  const collectResult = await collectAllCandidates(origin, apiKey, deadlineAt - 300)
   const candidates = collectResult.items
   if (!candidates.length) {
     console.warn('[nearby] generate result: 0 candidates — check Overpass connectivity or coordinates')

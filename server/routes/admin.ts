@@ -1533,7 +1533,7 @@ router.post('/catalog/complex/:id/nearby/generate', requireAdminPermission('cata
     return
   }
 
-  const NEARBY_GENERATE_TIMEOUT_MS = 65000
+  const NEARBY_GENERATE_TIMEOUT_MS = 55000
   try {
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('generate_timeout')), NEARBY_GENERATE_TIMEOUT_MS)
@@ -1544,7 +1544,7 @@ router.post('/catalog/complex/:id/nearby/generate', requireAdminPermission('cata
         hasOriginLat && hasOriginLon
           ? { lat: payloadParsed.data.origin_lat as number, lon: payloadParsed.data.origin_lon as number }
           : undefined,
-        { resolveImages: false, preciseRoutes: false }
+        { resolveImages: false, preciseRoutes: false, maxDurationMs: 50000 }
       ),
       timeoutPromise,
     ])
