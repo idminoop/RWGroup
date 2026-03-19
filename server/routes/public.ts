@@ -593,10 +593,13 @@ router.get('/collection/:idOrSlug', (req: Request, res: Response) => {
   res.json({ success: true, data })
 })
 
-// Proxy for Nominatim geocoding (CORS workaround)
+// Proxy for geocoding: Yandex first, Nominatim fallback
 router.get('/geocode', async (req: Request, res: Response) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : ''
   if (!q) return res.json({ success: true, data: null })
+
+  const t0 = Date.now()
+  console.log(`[geocode] query="${q}"`)
 
   try {
     const city = typeof req.query.city === 'string' ? req.query.city.trim() : ''
@@ -606,30 +609,39 @@ router.get('/geocode', async (req: Request, res: Response) => {
     const moscowFirst = moscowByFlag || moscowByCity
     const cacheKey = `${q}|${city}|${moscowFirst ? '1' : '0'}`
 
-    // Try Yandex Geocoder first (reliable on production servers)
+    const now = Date.now()
+    const cached = geocodeResultCache.get(cacheKey)
+    if (cached && cached.expiresAt > now) {
+      console.log(`[geocode] cache hit → ${cached.data ? `lat=${cached.data.lat} lon=${cached.data.lon}` : 'null'}`)
+      return res.json({ success: true, data: cached.data })
+    }
+
+    // ── Yandex Geocoder (primary, works reliably on prod servers) ──────────
     try {
       const db = readDb()
       const yandexKey = (db.home?.maps?.yandex_maps_api_key || '').trim()
       if (yandexKey) {
         const cityPrefix = city && !q.toLowerCase().includes(city.toLowerCase()) ? `${q}, ${city}` : q
+        console.log(`[geocode] trying Yandex Geocoder query="${cityPrefix}"`)
         const yandexResult = await fetchYandexGeocode(cityPrefix, yandexKey)
         if (yandexResult) {
+          console.log(`[geocode] Yandex OK → lat=${yandexResult.lat} lon=${yandexResult.lon} ms=${Date.now() - t0}`)
           geocodeResultCache.set(cacheKey, {
             data: { lat: yandexResult.lat, lon: yandexResult.lon, score: 200 },
             expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
           })
           return res.json({ success: true, data: { lat: yandexResult.lat, lon: yandexResult.lon, score: 200 } })
         }
+        console.warn(`[geocode] Yandex returned no result for query="${cityPrefix}"`)
+      } else {
+        console.warn('[geocode] Yandex key not configured → skipping Yandex, falling back to Nominatim')
       }
-    } catch {
-      // fall through to Nominatim
-    }
-    const now = Date.now()
-    const cached = geocodeResultCache.get(cacheKey)
-    if (cached && cached.expiresAt > now) {
-      return res.json({ success: true, data: cached.data })
+    } catch (yErr) {
+      console.error(`[geocode] Yandex error: ${yErr instanceof Error ? yErr.message : String(yErr)} → falling back to Nominatim`)
     }
 
+    // ── Nominatim fallback ─────────────────────────────────────────────────
+    console.log(`[geocode] trying Nominatim city="${city}" moscowFirst=${moscowFirst}`)
     const candidateQueries = buildGeocodeQueryVariants(q, city).slice(0, 2)
     const deadlineAt = Date.now() + GEOCODE_ROUTE_MAX_MS
 
@@ -671,12 +683,16 @@ router.get('/geocode', async (req: Request, res: Response) => {
 
     for (const attempt of paramsQueue) {
       if (Date.now() >= deadlineAt) {
+        console.warn('[geocode] Nominatim deadline exceeded')
         hadTransientError = true
         break
       }
 
       const fetched = await fetchNominatimCandidates(attempt.params, deadlineAt)
-      if (fetched.transientError) hadTransientError = true
+      if (fetched.transientError) {
+        hadTransientError = true
+        console.warn(`[geocode] Nominatim transient error for query="${attempt.query}"`)
+      }
       if (fetched.transientError && fetched.candidates.length === 0 && !best) break
 
       for (const candidate of fetched.candidates) {
@@ -690,56 +706,31 @@ router.get('/geocode', async (req: Request, res: Response) => {
       }
 
       if (best && best.score >= STRONG_GEOCODE_SCORE) {
+        console.log(`[geocode] Nominatim strong hit score=${best.score} lat=${best.lat} lon=${best.lon} ms=${Date.now() - t0}`)
         geocodeResultCache.set(cacheKey, {
-          data: {
-            lat: best.lat,
-            lon: best.lon,
-            score: best.score,
-            display_name: best.displayName,
-          },
+          data: { lat: best.lat, lon: best.lon, score: best.score, display_name: best.displayName },
           expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
         })
-        return res.json({
-          success: true,
-          data: {
-            lat: best.lat,
-            lon: best.lon,
-            score: best.score,
-            display_name: best.displayName,
-          },
-        })
+        return res.json({ success: true, data: { lat: best.lat, lon: best.lon, score: best.score, display_name: best.displayName } })
       }
     }
 
     if (!best) {
+      console.warn(`[geocode] RESULT: not found q="${q}" hadTransientError=${hadTransientError} ms=${Date.now() - t0}`)
       if (!hadTransientError) {
-        geocodeResultCache.set(cacheKey, {
-          data: null,
-          expiresAt: Date.now() + GEOCODE_NEGATIVE_CACHE_TTL_MS,
-        })
+        geocodeResultCache.set(cacheKey, { data: null, expiresAt: Date.now() + GEOCODE_NEGATIVE_CACHE_TTL_MS })
       }
       return res.json({ success: true, data: null })
     }
 
+    console.log(`[geocode] Nominatim weak hit score=${best.score} lat=${best.lat} lon=${best.lon} ms=${Date.now() - t0}`)
     geocodeResultCache.set(cacheKey, {
-      data: {
-        lat: best.lat,
-        lon: best.lon,
-        score: best.score,
-        display_name: best.displayName,
-      },
+      data: { lat: best.lat, lon: best.lon, score: best.score, display_name: best.displayName },
       expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
     })
-    return res.json({
-      success: true,
-      data: {
-        lat: best.lat,
-        lon: best.lon,
-        score: best.score,
-        display_name: best.displayName,
-      },
-    })
-  } catch {
+    return res.json({ success: true, data: { lat: best.lat, lon: best.lon, score: best.score, display_name: best.displayName } })
+  } catch (err) {
+    console.error(`[geocode] unhandled error: ${err instanceof Error ? err.message : String(err)} ms=${Date.now() - t0}`)
     return res.json({ success: true, data: null })
   }
 })
