@@ -1510,14 +1510,21 @@ router.post('/catalog/complex/:id/nearby/generate', requireAdminPermission('cata
     return
   }
 
+  const NEARBY_GENERATE_TIMEOUT_MS = 50000
   try {
-    const generated = await generateNearbyPlacesForComplex(
-      complex,
-      hasOriginLat && hasOriginLon
-        ? { lat: payloadParsed.data.origin_lat as number, lon: payloadParsed.data.origin_lon as number }
-        : undefined,
-      { resolveImages: false, preciseRoutes: false }
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('generate_timeout')), NEARBY_GENERATE_TIMEOUT_MS)
     )
+    const generated = await Promise.race([
+      generateNearbyPlacesForComplex(
+        complex,
+        hasOriginLat && hasOriginLon
+          ? { lat: payloadParsed.data.origin_lat as number, lon: payloadParsed.data.origin_lon as number }
+          : undefined,
+        { resolveImages: false, preciseRoutes: false }
+      ),
+      timeoutPromise,
+    ])
     if (!generated.origin) {
       res.status(422).json({ success: false, error: generated.reason || 'Unable to resolve coordinates' })
       return
@@ -1534,7 +1541,13 @@ router.post('/catalog/complex/:id/nearby/generate', requireAdminPermission('cata
       },
     })
   } catch (error) {
-    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Nearby generation failed' })
+    const isTimeout = error instanceof Error && error.message === 'generate_timeout'
+    res.status(isTimeout ? 408 : 500).json({
+      success: false,
+      error: isTimeout
+        ? 'Поиск мест занял слишком долго (Overpass API медленно отвечает). Попробуйте ещё раз — результаты частично закешированы.'
+        : error instanceof Error ? error.message : 'Nearby generation failed',
+    })
   }
 })
 
