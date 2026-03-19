@@ -161,13 +161,13 @@ function PlaceCard({
   originLon?: number
 }) {
   return (
-    <article className="group relative overflow-hidden rounded-2xl border border-white/10 bg-[#0a1a26] aspect-[4/5]">
+    <article className="group relative aspect-[4/5] overflow-hidden rounded-2xl bg-[#0a1a26] shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
       {item.image_url ? (
         <img
           src={item.image_url}
           alt={item.name}
           loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+          className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-[1.06]"
         />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center bg-white/5">
@@ -176,15 +176,15 @@ function PlaceCard({
       )}
 
       {/* Gradient overlay */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#02050b]/95 via-[#02050b]/35 to-transparent" />
 
       {/* Content bottom */}
-      <div className="absolute inset-x-0 bottom-0 z-10 p-3">
-        <div className="line-clamp-2 text-sm font-semibold leading-tight text-white sm:text-base">
+      <div className="absolute inset-x-0 bottom-0 z-10 p-3 sm:p-3.5">
+        <div className="line-clamp-2 text-sm font-semibold leading-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)] sm:text-base">
           {item.name}
         </div>
         {item.description ? (
-          <div className="mt-1 line-clamp-2 text-[11px] text-white/75 sm:text-xs">
+          <div className="mt-1 line-clamp-2 text-[11px] text-white/80 drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)] sm:text-xs">
             {item.description}
           </div>
         ) : null}
@@ -196,11 +196,11 @@ function PlaceCard({
         )}
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-white/85 sm:text-xs">
-          <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-black/40 px-2 py-0.5">
+          <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-0.5 backdrop-blur-sm">
             <Footprints className="h-3 w-3" />
             {formatMinutes(item.walk_minutes)}
           </span>
-          <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-black/40 px-2 py-0.5">
+          <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-0.5 backdrop-blur-sm">
             <Car className="h-3 w-3" />
             {formatMinutes(item.drive_minutes)}
           </span>
@@ -208,7 +208,7 @@ function PlaceCard({
             href={routeUrl(originLat, originLon, item.lat, item.lon)}
             target="_blank"
             rel="noreferrer"
-            className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-sky-500/40 bg-sky-500/15 px-2 py-0.5 text-sky-300 transition hover:bg-sky-500/25"
+            className="pointer-events-auto inline-flex items-center gap-1 rounded-full bg-sky-500/20 px-2 py-0.5 text-sky-200 backdrop-blur-sm transition hover:bg-sky-500/30"
             aria-label={`Маршрут до ${item.name}`}
           >
             <Navigation className="h-3 w-3" />
@@ -382,7 +382,7 @@ function CollectionCarousel({
       onClickCapture={onClickCapture}
       onMouseEnter={() => pauseAutoScroll(2600)}
     >
-      <div className="flex min-w-max gap-3 px-1">
+      <div className="flex min-w-max gap-4 px-1">
         {loopItems.map((item, index) => (
           <div key={`${item.id}_${index}`} className="w-[230px] shrink-0 sm:w-[260px] lg:w-[290px]">
             <PlaceCard item={item} originLat={originLat} originLon={originLon} />
@@ -434,14 +434,14 @@ export default function NearbyPlaces({
               </div>
             ) : null}
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               {bucket.categories.map((category) => (
-                <div key={category.key} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 md:p-4">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <h4 className="min-w-0 truncate text-xs font-semibold uppercase tracking-[0.14em] text-white/75">
+                <div key={category.key} className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="min-w-0 truncate text-xs font-semibold uppercase tracking-[0.16em] text-white/80">
                       {category.label}
                     </h4>
-                    <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] text-white/55">
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/65">
                       {category.items.length}
                     </span>
                   </div>
