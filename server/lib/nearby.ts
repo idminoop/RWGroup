@@ -82,10 +82,10 @@ const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
 const OSRM_BASE_URL = 'https://router.project-osrm.org'
 
 const USER_AGENT = 'RWGroupWebsite/1.0 (+nearby-generator)'
-const OVERPASS_TIMEOUT_MS = 4000
-const OVERPASS_CATEGORY_DEADLINE_MS = 7000
+const OVERPASS_TIMEOUT_MS = 8000
+const OVERPASS_CATEGORY_DEADLINE_MS = 18000
 const OVERPASS_CACHE_TTL_MS = 8 * 60 * 1000
-const OVERPASS_FAILURE_COOLDOWN_MS = 30 * 1000
+const OVERPASS_FAILURE_COOLDOWN_MS = 70 * 1000
 const OVERPASS_RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504])
 const OVERPASS_RETRY_DELAY_MS = 300
 const OVERPASS_RESULT_LIMIT = 120
@@ -1674,8 +1674,8 @@ async function resolvePlaceImagesForYandex(
   return { imageUrl: fb.imageUrl, variants: fb.variants, fallback: true }
 }
 
-// Max concurrent Overpass requests — balance between speed and Overpass rate-limits
-const OVERPASS_COLLECT_CONCURRENCY = 6
+// Public Overpass instances are sensitive to burst load; moderate concurrency is more reliable.
+const OVERPASS_COLLECT_CONCURRENCY = 3
 
 async function fetchCategoryWithLog(
   origin: Coords,

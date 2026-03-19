@@ -472,7 +472,7 @@ export default function AdminComplexSettingsPage() {
         city: 'Москва',
         complexName: useComplexNameBias ? (draftComplex.title || undefined) : undefined,
         signal: controller.signal,
-        maxQueries: 2,
+        maxQueries: 5,
       })
       if (!result) {
         setMapLookupError('Не удалось определить координаты автоматически. Укажите точку вручную на карте.')

@@ -475,14 +475,16 @@ export async function geocodeAddress(
       maxQueries
     )
   } else {
+    // For name-only lookup prioritize the clean ЖК title and city-aware forms first.
     const nameFirstQueries = uniqStrings([
-      topAddress && complexName ? `${complexName}, ${topAddress}` : '',
-      topAddress && complexName ? `${topAddress}, ${complexName}` : '',
+      nameVariants[0] || '',
+      nameVariants[1] || '',
       topAddress && cityLabel ? `${topAddress}, ${cityLabel}` : '',
       topAddress,
       secondaryAddress,
-      nameVariants[0] || '',
-    ]).slice(0, 5)
+      topAddress && complexName ? `${topAddress}, ${complexName}` : '',
+      topAddress && complexName ? `${complexName}, ${topAddress}` : '',
+    ]).slice(0, 6)
     best = await findBestGeocodeCandidate(nameFirstQueries, searchOptions, 1, normalizedOptions.signal, maxQueries)
   }
 
