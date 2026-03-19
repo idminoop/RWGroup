@@ -1674,26 +1674,46 @@ async function resolvePlaceImagesForYandex(
   return { imageUrl: fb.imageUrl, variants: fb.variants, fallback: true }
 }
 
+// Max concurrent Overpass requests — public Overpass servers rate-limit parallel connections
+const OVERPASS_COLLECT_CONCURRENCY = 3
+
+async function fetchCategoryWithLog(
+  origin: Coords,
+  categoryDef: CategoryDef,
+  apiKey: string
+): Promise<PoiWithMeta[]> {
+  const t0 = Date.now()
+  if (categoryDef.source === 'yandex') {
+    const items = await fetchYandexCategory(origin, categoryDef, SEARCH_RADIUS_METERS, apiKey)
+    console.log(`[nearby] category=${categoryDef.key} source=yandex found=${items.length} ms=${Date.now() - t0}`)
+    return items
+  }
+  const pois = await fetchOverpassCategory(origin, categoryDef, SEARCH_RADIUS_METERS)
+  const items = pois
+    .map((poi) => ({
+      name: poi.name || categoryDef.label,
+      lat: poi.lat,
+      lon: poi.lon,
+      tags: poi.tags,
+      categoryDef,
+      distanceKm: distanceKm(origin, { lat: poi.lat, lon: poi.lon }),
+    } satisfies PoiWithMeta))
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, 5)
+  const status = items.length === 0 ? 'EMPTY' : 'ok'
+  console.log(`[nearby] category=${categoryDef.key} source=overpass found=${items.length} status=${status} ms=${Date.now() - t0}`)
+  return items
+}
+
 async function collectAllCandidates(origin: Coords, apiKey: string): Promise<PoiWithMeta[]> {
-  const results = await Promise.all(
-    CATEGORY_DEFS.map(async (categoryDef) => {
-      if (categoryDef.source === 'yandex') {
-        return fetchYandexCategory(origin, categoryDef, SEARCH_RADIUS_METERS, apiKey)
-      }
-      // Overpass for nature categories
-      const pois = await fetchOverpassCategory(origin, categoryDef, SEARCH_RADIUS_METERS)
-      return pois
-        .map((poi) => ({
-          name: poi.name || categoryDef.label,
-          lat: poi.lat,
-          lon: poi.lon,
-          tags: poi.tags,
-          categoryDef,
-          distanceKm: distanceKm(origin, { lat: poi.lat, lon: poi.lon }),
-        } satisfies PoiWithMeta))
-        .sort((a, b) => a.distanceKm - b.distanceKm)
-        .slice(0, 5)
-    })
+  console.log(`[nearby] collectAllCandidates start lat=${origin.lat.toFixed(5)} lon=${origin.lon.toFixed(5)} categories=${CATEGORY_DEFS.length} concurrency=${OVERPASS_COLLECT_CONCURRENCY}`)
+  const t0 = Date.now()
+
+  // Use limited concurrency to avoid Overpass rate-limiting (21 parallel → throttled)
+  const results = await mapWithConcurrency(
+    CATEGORY_DEFS,
+    OVERPASS_COLLECT_CONCURRENCY,
+    (categoryDef) => fetchCategoryWithLog(origin, categoryDef, apiKey)
   )
 
   const merged = results.flat()
@@ -1706,6 +1726,13 @@ async function collectAllCandidates(origin: Coords, apiKey: string): Promise<Poi
     seen.add(key)
     deduped.push(item)
   }
+
+  const emptyCats = CATEGORY_DEFS.filter((_, i) => results[i].length === 0).map((c) => c.key)
+  console.log(`[nearby] collectAllCandidates done total=${deduped.length} ms=${Date.now() - t0}`)
+  if (emptyCats.length > 0) {
+    console.warn(`[nearby] EMPTY categories (${emptyCats.length}): ${emptyCats.join(', ')}`)
+  }
+
   return deduped
 }
 
@@ -1729,12 +1756,13 @@ export async function generateNearbyPlacesForComplex(
   }
 
   const noApiKey = !apiKey
-  if (noApiKey) {
-    console.warn('[nearby] No Yandex API key configured — using OSM-only mode (limited categories)')
-  }
+  console.log(`[nearby] generate start complex="${complex.title || complex.id}" origin=${origin.lat.toFixed(5)},${origin.lon.toFixed(5)} resolveImages=${options.resolveImages !== false} preciseRoutes=${options.preciseRoutes !== false} apiKey=${apiKey ? 'set' : 'MISSING'}`)
 
   const candidates = await collectAllCandidates(origin, apiKey)
-  if (!candidates.length) return { origin, items: [], autoSelectedIds: [], no_api_key: noApiKey }
+  if (!candidates.length) {
+    console.warn('[nearby] generate result: 0 candidates — check Overpass connectivity or coordinates')
+    return { origin, items: [], autoSelectedIds: [], no_api_key: noApiKey }
+  }
 
   const preciseRoutes = options.preciseRoutes !== false
   const destinations = candidates.map((item) => ({ lat: item.lat, lon: item.lon }))
