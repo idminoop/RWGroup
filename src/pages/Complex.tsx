@@ -23,7 +23,6 @@ const ComplexMap = lazy(() => import('@/components/complex/ComplexMap'))
 const NearbyPlaces = lazy(() => import('@/components/complex/NearbyPlaces'))
 
 const UI = {
-  complex: 'Жилой комплекс',
   preview: 'Черновик',
   photos: 'фото',
   ctaFallback: 'Старт продаж',
@@ -39,6 +38,18 @@ function toFiniteNumber(value: unknown): number | undefined {
     if (Number.isFinite(parsed)) return parsed
   }
   return undefined
+}
+
+function normalizeFactCardColSpan(value: unknown): 1 | 2 | 3 {
+  const parsed = toFiniteNumber(value)
+  if (parsed === 2 || parsed === 3) return parsed
+  return 1
+}
+
+function normalizeFactCardRowSpan(value: unknown): 1 | 2 {
+  const parsed = toFiniteNumber(value)
+  if (parsed === 2) return 2
+  return 1
 }
 
 function decodeEscapedUnicode(value: unknown): string {
@@ -216,7 +227,6 @@ export default function ComplexPage() {
   }, [landing?.feature_ticker])
 
   const photoFacts = useMemo(() => landing?.facts.slice(6) || [], [landing?.facts])
-  const photoFactsRemainder = photoFacts.length % 3
   const nearbySection = useMemo(() => {
     const nearby = landing?.nearby
     if (!nearby || nearby.enabled === false) {
@@ -436,7 +446,6 @@ export default function ComplexPage() {
 
             <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-6xl px-4 pb-8 md:pb-12">
               <div className="mb-5 flex flex-wrap items-center gap-2">
-                <Badge variant="secondary">{UI.complex}</Badge>
                 {previewDraftMode && <Badge variant="warning">{UI.preview}</Badge>}
               </div>
 
@@ -510,21 +519,23 @@ export default function ComplexPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {photoFacts.map((fact, index) => {
-                    const isLast = index === photoFacts.length - 1
-                    const isSecondLast = index === photoFacts.length - 2
-                    const spanClass =
-                      photoFactsRemainder === 1 && isLast
-                        ? 'xl:col-span-3'
-                        : photoFactsRemainder === 2 && isSecondLast
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 xl:auto-rows-[200px] xl:grid-flow-dense">
+                  {photoFacts.map((fact) => {
+                    const colSpan = normalizeFactCardColSpan(fact.card_col_span)
+                    const rowSpan = normalizeFactCardRowSpan(fact.card_row_span)
+                    const colSpanClass =
+                      colSpan === 3
+                        ? 'sm:col-span-2 xl:col-span-3'
+                        : colSpan === 2
                           ? 'xl:col-span-2'
                           : ''
+                    const rowSpanClass = rowSpan === 2 ? 'xl:row-span-2' : ''
+                    const heightClass = rowSpan === 2 ? 'h-[260px] sm:h-[320px] xl:h-auto' : 'h-[200px] sm:h-[220px] xl:h-auto'
 
                     return (
                     <article
                       key={fact.id}
-                      className={`relative h-[200px] overflow-hidden rounded-2xl border border-white/10 bg-[#0d1e2a] ${spanClass}`}
+                      className={`relative overflow-hidden rounded-2xl border border-white/10 bg-[#0d1e2a] ${heightClass} ${colSpanClass} ${rowSpanClass}`}
                     >
                       {fact.image ? (
                         <img src={fact.image} alt={fact.title} className="absolute inset-0 h-full w-full object-cover opacity-70" />

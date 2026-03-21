@@ -37,83 +37,11 @@ export type LandingFeaturePreset = {
   image: string
 }
 
-export const LANDING_FEATURE_PRESETS: LandingFeaturePreset[] = [
-  {
-    key: 'panoramic',
-    title: 'Панорамное остекление',
-    image: 'https://images.unsplash.com/photo-1493666438817-866a91353ca9?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    key: 'concierge',
-    title: 'Консьерж-сервис',
-    image: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    key: 'market',
-    title: 'Маркет',
-    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    key: 'restaurant',
-    title: 'Ресторан',
-    image: 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    key: 'beauty',
-    title: 'Салон красоты',
-    image: 'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    key: 'lounge',
-    title: 'Лаунж-пространство',
-    image: 'https://images.unsplash.com/photo-1617104551722-3b2d51366416?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    key: 'cafe',
-    title: 'Кафе',
-    image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    key: 'coworking',
-    title: 'Коворкинг',
-    image: 'https://images.unsplash.com/photo-1497215842964-222b430dc094?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    key: 'kids',
-    title: 'Детские площадки',
-    image: 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    key: 'parking',
-    title: 'Подземный паркинг',
-    image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    key: 'yard',
-    title: 'Приватная территория',
-    image: 'https://images.unsplash.com/photo-1523217582562-09d0def993a6?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    key: 'pet',
-    title: 'Площадка для питомцев',
-    image: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=600&q=80',
-  },
-]
+export const LANDING_FEATURE_PRESETS: LandingFeaturePreset[] = []
 
-const DEFAULT_FEATURES = LANDING_FEATURE_PRESETS.slice(0, 8).map((item) => item.title)
+const DEFAULT_FEATURES: string[] = []
 
-const FEATURE_KEYWORDS: Array<{ title: string; rx: RegExp }> = [
-  { title: 'Панорамное остекление', rx: /панорам|вид|terrace|террас/i },
-  { title: 'Консьерж-сервис', rx: /консьерж|concierge/i },
-  { title: 'Маркет', rx: /маркет|магазин|retail/i },
-  { title: 'Ресторан', rx: /ресторан|бар|dining/i },
-  { title: 'Салон красоты', rx: /салон|spa|красот/i },
-  { title: 'Лаунж-пространство', rx: /лаунж|lounge|клуб/i },
-  { title: 'Кафе', rx: /кафе|coffee/i },
-  { title: 'Коворкинг', rx: /коворкинг|coworking/i },
-  { title: 'Подземный паркинг', rx: /паркинг|parking/i },
-  { title: 'Детские площадки', rx: /детск|kids|playground/i },
-]
+const FEATURE_KEYWORDS: Array<{ title: string; rx: RegExp }> = []
 
 function makeId(prefix = 'cfg'): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`
@@ -140,6 +68,18 @@ function toFiniteNumber(value: unknown): number | undefined {
     if (Number.isFinite(parsed)) return parsed
   }
   return undefined
+}
+
+function normalizeFactCardColSpan(value: unknown): 1 | 2 | 3 {
+  const parsed = toFiniteNumber(value)
+  if (parsed === 2 || parsed === 3) return parsed
+  return 1
+}
+
+function normalizeFactCardRowSpan(value: unknown): 1 | 2 {
+  const parsed = toFiniteNumber(value)
+  if (parsed === 2) return 2
+  return 1
 }
 
 function isLikelyPlanImage(url?: string): boolean {
@@ -302,8 +242,8 @@ function getFeaturePresetByTitle(title?: string): LandingFeaturePreset | undefin
 }
 
 export function inferFeaturePresetKey(feature: Pick<ComplexLandingFeature, 'title' | 'image' | 'preset_key'>): string | undefined {
-  const byKey = getFeaturePresetByKey(feature.preset_key)
-  if (byKey) return byKey.key
+  const rawKey = toText(feature.preset_key)
+  if (rawKey) return rawKey
 
   const byTitle = getFeaturePresetByTitle(feature.title)
   if (byTitle) return byTitle.key
@@ -312,9 +252,6 @@ export function inferFeaturePresetKey(feature: Pick<ComplexLandingFeature, 'titl
     const byImage = LANDING_FEATURE_PRESETS.find((item) => item.image === feature.image)
     if (byImage) return byImage.key
   }
-
-  const rawKey = toText(feature.preset_key)
-  if (rawKey) return rawKey
 
   return undefined
 }
@@ -333,6 +270,8 @@ export function createLandingFact(partial?: Partial<ComplexLandingFact>): Comple
     value: toText(partial?.value) || 'По запросу',
     subtitle: toText(partial?.subtitle) || undefined,
     image: toText(partial?.image) || undefined,
+    card_col_span: normalizeFactCardColSpan(partial?.card_col_span),
+    card_row_span: normalizeFactCardRowSpan(partial?.card_row_span),
   }
 }
 
@@ -456,14 +395,6 @@ export function createLandingNearby(partial?: Partial<ComplexLandingNearby>): Co
   }
 }
 
-function buildAutoTags(complex: Complex): ComplexLandingTag[] {
-  return uniq([
-    complex.class || '',
-    complex.district || '',
-    complex.metro?.[0] ? `м. ${complex.metro[0]}` : '',
-  ]).map((label) => createLandingTag({ label }))
-}
-
 function buildAutoFacts(complex: Complex, properties: Property[]): ComplexLandingFact[] {
   const activeLots = properties.filter((item) => item.status === 'active')
   const maxFloor = activeLots.reduce((max, item) => Math.max(max, item.floors_total || 0), 0)
@@ -529,7 +460,7 @@ export function buildAutoLandingConfig(complex: Complex, properties: Property[])
     surface_color: DEFAULT_SURFACE,
     hero_image: complex.images?.[0],
     cta_label: 'Старт продаж',
-    tags: buildAutoTags(complex),
+    tags: [],
     facts: buildAutoFacts(complex, properties),
     feature_ticker: [],
     plans: {
@@ -579,7 +510,7 @@ function fromLegacyLanding(
     surface_color: toText(legacyValue.surface_color) || fallback.surface_color,
     hero_image: toText(legacyValue.hero_image) || toText(gallery?.image) || toText(complex.images?.[0]) || fallback.hero_image,
     cta_label: toText(cta?.title) || fallback.cta_label,
-    tags: tags.length ? tags : fallback.tags,
+    tags,
     facts: facts.length ? facts : fallback.facts,
     feature_ticker: features.length ? features : fallback.feature_ticker,
     plans: {
@@ -602,8 +533,17 @@ export function normalizeLandingConfig(
     return fromLegacyLanding(candidate, complex, properties, auto)
   }
 
+  const hasExplicitTags = Array.isArray(candidate.tags)
   const tags = safeArray<Partial<ComplexLandingTag>>(candidate.tags)
-    .map((item) => createLandingTag(item))
+    .map((item) => {
+      const label = toText(item?.label)
+      if (!label) return null
+      return {
+        id: toText(item?.id) || makeId('tag'),
+        label,
+      } as ComplexLandingTag
+    })
+    .filter((item): item is ComplexLandingTag => Boolean(item))
     .slice(0, 12)
 
   const facts = safeArray<Partial<ComplexLandingFact>>(candidate.facts)
@@ -639,7 +579,7 @@ export function normalizeLandingConfig(
     hero_image: toText(candidate.hero_image) || auto.hero_image,
     preview_photo_label: toText(candidate.preview_photo_label) || auto.preview_photo_label,
     cta_label: toText(candidate.cta_label) || auto.cta_label,
-    tags: tags.length ? tags : auto.tags,
+    tags: hasExplicitTags ? tags : auto.tags,
     facts: facts.length ? facts : auto.facts,
     feature_ticker: features.length ? features : auto.feature_ticker,
     plans: {

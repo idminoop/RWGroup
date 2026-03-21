@@ -72,6 +72,8 @@ export interface ComplexLandingFact {
   value: string
   subtitle?: string
   image?: string
+  card_col_span?: 1 | 2 | 3
+  card_row_span?: 1 | 2
 }
 
 export interface ComplexLandingFeature {

@@ -294,7 +294,7 @@ export default function AdminComplexSettingsPage() {
     const byKey = new Map(featurePresetOptions.map((preset) => [preset.key, preset]))
     const existingByKey = new Map<string, ComplexLandingConfig['feature_ticker'][number]>()
     for (const item of items || []) {
-      const key = inferFeaturePresetKey(item) || item.preset_key
+      const key = item.preset_key || inferFeaturePresetKey(item)
       if (!key || !byKey.has(key) || existingByKey.has(key)) continue
       existingByKey.set(key, item)
     }
@@ -315,7 +315,7 @@ export default function AdminComplexSettingsPage() {
   const selectedFeaturePresetKeys = useMemo(() => {
     const keys = new Set<string>()
     for (const feature of draftLanding?.feature_ticker || []) {
-      const key = inferFeaturePresetKey(feature) || feature.preset_key
+      const key = feature.preset_key || inferFeaturePresetKey(feature)
       if (key && featurePresetKeySet.has(key)) keys.add(key)
     }
     return keys
@@ -662,7 +662,7 @@ export default function AdminComplexSettingsPage() {
       const selectedKeys = new Set<string>()
       const existingByKey = new Map<string, ComplexLandingConfig['feature_ticker'][number]>()
       for (const item of normalized) {
-        const key = inferFeaturePresetKey(item) || item.preset_key
+        const key = item.preset_key || inferFeaturePresetKey(item)
         if (!key) continue
         selectedKeys.add(key)
         existingByKey.set(key, item)
@@ -732,7 +732,7 @@ export default function AdminComplexSettingsPage() {
       }
       patchLanding((cfg) => ({
         ...cfg,
-        feature_ticker: cfg.feature_ticker.filter((item) => (inferFeaturePresetKey(item) || item.preset_key) !== key),
+        feature_ticker: cfg.feature_ticker.filter((item) => (item.preset_key || inferFeaturePresetKey(item)) !== key),
       }))
     } catch (e) {
       setPresetError(e instanceof Error ? e.message : 'Ошибка удаления пресета')
@@ -1078,6 +1078,31 @@ export default function AdminComplexSettingsPage() {
                               }}
                             />
                           </label>
+                        </div>
+                        <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-xs text-white/60">Растяжение по ширине</label>
+                            <Select
+                              value={String(fact.card_col_span || 1)}
+                              className="h-9 border-white/20 bg-white/5 text-white"
+                              onChange={(e) => patchFact(fact.id, { card_col_span: Number(e.target.value) as 1 | 2 | 3 })}
+                            >
+                              <option value="1">1/3 (обычная)</option>
+                              <option value="2">2/3 (широкая)</option>
+                              <option value="3">Вся строка</option>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs text-white/60">Растяжение по высоте</label>
+                            <Select
+                              value={String(fact.card_row_span || 1)}
+                              className="h-9 border-white/20 bg-white/5 text-white"
+                              onChange={(e) => patchFact(fact.id, { card_row_span: Number(e.target.value) as 1 | 2 })}
+                            >
+                              <option value="1">Обычная высота</option>
+                              <option value="2">Высокая (x2)</option>
+                            </Select>
+                          </div>
                         </div>
                         <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
                           {FACT_IMAGE_PRESETS.map((preset, idx) => (

@@ -37,6 +37,58 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
+const LEGACY_BUILT_IN_LANDING_FEATURE_KEYS = new Set([
+  'panoramic',
+  'concierge',
+  'market',
+  'restaurant',
+  'beauty',
+  'lounge',
+  'cafe',
+  'coworking',
+  'kids',
+  'parking',
+  'yard',
+  'pet',
+])
+
+function normalizePresetKey(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  return value.trim().toLowerCase()
+}
+
+function purgeLegacyBuiltInLandingFeatures(db: DbShape): boolean {
+  let changed = false
+
+  if (Array.isArray(db.hidden_landing_feature_preset_keys)) {
+    const nextHidden = db.hidden_landing_feature_preset_keys.filter(
+      (key) => !LEGACY_BUILT_IN_LANDING_FEATURE_KEYS.has(normalizePresetKey(key)),
+    )
+    if (nextHidden.length !== db.hidden_landing_feature_preset_keys.length) {
+      db.hidden_landing_feature_preset_keys = nextHidden
+      changed = true
+    }
+  }
+
+  for (const complex of db.complexes) {
+    const landing = complex.landing
+    if (!landing || !Array.isArray(landing.feature_ticker) || !landing.feature_ticker.length) continue
+
+    const nextTicker = landing.feature_ticker.filter((feature) => {
+      const key = normalizePresetKey((feature as { preset_key?: unknown })?.preset_key)
+      return !LEGACY_BUILT_IN_LANDING_FEATURE_KEYS.has(key)
+    })
+
+    if (nextTicker.length !== landing.feature_ticker.length) {
+      landing.feature_ticker = nextTicker
+      complex.updated_at = nowIso()
+      changed = true
+    }
+  }
+
+  return changed
+}
+
 function createEmptyDbState(): DbShape {
   const now = nowIso()
   return {
@@ -230,6 +282,17 @@ export async function initializeStorage(): Promise<void> {
     })
     publishedAt = meta.publishedAt || publishedAt || nowIso()
     console.log('[storage] Created missing published snapshot from draft state')
+  }
+
+  if (draftDbCache && publishedDbCache) {
+    const draftChanged = purgeLegacyBuiltInLandingFeatures(draftDbCache)
+    const publishedChanged = purgeLegacyBuiltInLandingFeatures(publishedDbCache)
+    if (draftChanged || publishedChanged) {
+      const meta = await repo.saveState(draftDbCache, publishedDbCache)
+      draftUpdatedAt = meta.draftUpdatedAt || draftUpdatedAt || nowIso()
+      publishedAt = meta.publishedAt || publishedAt || nowIso()
+      console.log('[storage] Removed legacy built-in landing feature presets from state')
+    }
   }
 
   initialized = true

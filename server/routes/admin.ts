@@ -1534,6 +1534,8 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
     value: z.string().optional(),
     subtitle: z.string().optional(),
     image: z.string().optional(),
+    card_col_span: z.number().int().min(1).max(3).optional(),
+    card_row_span: z.number().int().min(1).max(2).optional(),
   })
 
   const landingFeatureSchema = z.object({
