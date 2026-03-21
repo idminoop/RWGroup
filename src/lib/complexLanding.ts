@@ -18,7 +18,7 @@ const DEFAULT_SURFACE = '#071520'
 const KREMLIN_COORDS = { lat: 55.752023, lon: 37.617499 }
 const PLAN_IMAGE_RX = /(plan|layout|preset|floor)/i
 export const MAX_LANDING_FACTS = 12
-export const MAX_LANDING_ACCORDION_ITEMS = 12
+export const MAX_LANDING_ACCORDION_ITEMS = 1
 const MAX_NEARBY_CANDIDATES = 63 // up to 3 per category × 21 categories
 const MAX_NEARBY_SELECTED = 20
 const MAX_NEARBY_IMAGE_VARIANTS = 24
@@ -307,7 +307,7 @@ export function createLandingPlanItem(partial?: Partial<ComplexLandingPlanItem>)
 export function createLandingAccordionItem(partial?: Partial<ComplexLandingAccordionItem>): ComplexLandingAccordionItem {
   return {
     id: partial?.id || makeId('accordion'),
-    title: toText(partial?.title) || 'Текстовый блок',
+    title: toText(partial?.title),
     text: toText(partial?.text),
     image: toText(partial?.image) || undefined,
     open_by_default: typeof partial?.open_by_default === 'boolean' ? partial.open_by_default : undefined,

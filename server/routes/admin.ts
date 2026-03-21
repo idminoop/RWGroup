@@ -1569,7 +1569,7 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
     enabled: z.boolean().optional(),
     title: z.string().optional(),
     subtitle: z.string().optional(),
-    items: z.array(landingAccordionItemSchema).max(12),
+    items: z.array(landingAccordionItemSchema).max(1),
   })
 
   const landingNearbyPlaceSchema = z.object({
