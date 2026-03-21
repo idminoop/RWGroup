@@ -776,58 +776,6 @@ export default function ComplexPage() {
               </div>
             </section>
 
-            {infoCardsSection.enabled && infoCardsSection.items.length > 0 && (
-              <section className="mt-12 rounded-3xl border border-white/10 p-4 md:p-6" style={{ backgroundColor: surface }}>
-                {(infoCardsSection.title || infoCardsSection.subtitle) && (
-                  <div className="mb-4 md:mb-5">
-                    {infoCardsSection.title ? (
-                      <Heading size="h3" className="text-white">
-                        {infoCardsSection.title}
-                      </Heading>
-                    ) : null}
-                    {infoCardsSection.subtitle ? (
-                      <p className="mt-2 max-w-3xl text-sm text-white/65">{infoCardsSection.subtitle}</p>
-                    ) : null}
-                  </div>
-                )}
-
-                <div className="grid gap-3 md:grid-cols-2 xl:auto-rows-[220px] xl:grid-cols-3 xl:grid-flow-dense">
-                  {infoCardsSection.items.map((card) => {
-                    const colSpanClass =
-                      card.card_col_span === 3
-                        ? 'md:col-span-2 xl:col-span-3'
-                        : card.card_col_span === 2
-                          ? 'xl:col-span-2'
-                          : ''
-                    const rowSpanClass = card.card_row_span === 2 ? 'xl:row-span-2' : ''
-                    const heightClass = card.card_row_span === 2 ? 'h-[300px] xl:h-auto' : 'h-[220px] xl:h-auto'
-                    const image = card.cover_image || card.gallery_images[0]
-                    return (
-                      <button
-                        key={card.id}
-                        type="button"
-                        onClick={() => openInfoModal(card.id)}
-                        className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-[#0d1e2a] text-left ${heightClass} ${colSpanClass} ${rowSpanClass}`}
-                      >
-                        {image ? (
-                          <img
-                            src={image}
-                            alt={card.title}
-                            className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-                          />
-                        ) : null}
-                        <div className="absolute inset-0 bg-gradient-to-t from-[#020b12]/95 via-[#020b12]/45 to-transparent" />
-                        <div className="absolute inset-x-0 bottom-0 border-t border-white/10 bg-black/40 px-4 py-3 backdrop-blur">
-                          <div className="text-base font-semibold text-white md:text-lg">{card.title}</div>
-                          {card.description ? <div className="mt-1 line-clamp-2 text-xs text-white/75">{card.description}</div> : null}
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </section>
-            )}
-
             <section className="mt-12 rounded-3xl border border-white/10 p-4 md:p-6" style={{ backgroundColor: surface }}>
               <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_320px]">
                 <div className="min-w-0">
@@ -957,6 +905,58 @@ export default function ComplexPage() {
               </section>
             )}
 
+            {infoCardsSection.enabled && infoCardsSection.items.length > 0 && (
+              <section className="mt-12 rounded-3xl border border-white/10 p-4 md:p-6" style={{ backgroundColor: surface }}>
+                {(infoCardsSection.title || infoCardsSection.subtitle) && (
+                  <div className="mb-4 md:mb-5">
+                    {infoCardsSection.title ? (
+                      <Heading size="h3" className="text-white">
+                        {infoCardsSection.title}
+                      </Heading>
+                    ) : null}
+                    {infoCardsSection.subtitle ? (
+                      <p className="mt-2 max-w-3xl text-sm text-white/65">{infoCardsSection.subtitle}</p>
+                    ) : null}
+                  </div>
+                )}
+
+                <div className="grid gap-3 md:grid-cols-2 xl:auto-rows-[220px] xl:grid-cols-3 xl:grid-flow-dense">
+                  {infoCardsSection.items.map((card) => {
+                    const colSpanClass =
+                      card.card_col_span === 3
+                        ? 'md:col-span-2 xl:col-span-3'
+                        : card.card_col_span === 2
+                          ? 'xl:col-span-2'
+                          : ''
+                    const rowSpanClass = card.card_row_span === 2 ? 'xl:row-span-2' : ''
+                    const heightClass = card.card_row_span === 2 ? 'h-[300px] xl:h-auto' : 'h-[220px] xl:h-auto'
+                    const image = card.cover_image || card.gallery_images[0]
+                    return (
+                      <button
+                        key={card.id}
+                        type="button"
+                        onClick={() => openInfoModal(card.id)}
+                        className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-[#0d1e2a] text-left ${heightClass} ${colSpanClass} ${rowSpanClass}`}
+                      >
+                        {image ? (
+                          <img
+                            src={image}
+                            alt={card.title}
+                            className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                          />
+                        ) : null}
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#020b12]/95 via-[#020b12]/45 to-transparent" />
+                        <div className="absolute inset-x-0 bottom-0 border-t border-white/10 bg-black/40 px-4 py-3 backdrop-blur">
+                          <div className="text-base font-semibold text-white md:text-lg">{card.title}</div>
+                          {card.description ? <div className="mt-1 line-clamp-2 text-xs text-white/75">{card.description}</div> : null}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
+
             <section className="mt-12">
               <Suspense
                 fallback={(
@@ -1003,7 +1003,7 @@ export default function ComplexPage() {
           </div>
 
           {isInfoModalOpen && activeInfoCard && (
-            <div className="fixed inset-0 z-[120] bg-[#020b12]/95 backdrop-blur-sm">
+            <div className="fixed inset-0 z-[2500] bg-[#020b12]/95 backdrop-blur-sm">
               <div className="h-full overflow-y-auto px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
                 <div className="mx-auto flex max-w-[1280px] flex-col gap-4">
                   <div className="flex items-start justify-between gap-3">
@@ -1035,35 +1035,37 @@ export default function ComplexPage() {
                   </div>
 
                   <div className="grid gap-4 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-                    <div className="rounded-2xl border border-white/10 bg-[#041520] p-5">
-                      <h3 className="text-2xl font-semibold text-white sm:text-4xl">
-                        {activeInfoCard.modal_title || activeInfoCard.title}
-                      </h3>
-                      {activeInfoCard.modal_text ? (
-                        <p className="mt-5 whitespace-pre-line text-sm leading-relaxed text-white/85 sm:text-base">
-                          {activeInfoCard.modal_text}
-                        </p>
-                      ) : (
-                        <p className="mt-5 text-sm text-white/60">Добавьте расширенный текст в админке для этой карточки.</p>
-                      )}
+                    <div className="rounded-2xl border border-white/10 bg-[#041520] p-5 xl:h-[640px]">
+                      <div className="flex h-full flex-col justify-start">
+                        <h3 className="text-3xl font-semibold text-white sm:text-4xl">
+                          {activeInfoCard.modal_title || activeInfoCard.title}
+                        </h3>
+                        {activeInfoCard.modal_text ? (
+                          <p className="mt-5 whitespace-pre-line text-base leading-relaxed text-white/85">
+                            {activeInfoCard.modal_text}
+                          </p>
+                        ) : (
+                          <p className="mt-5 text-sm text-white/60">Добавьте расширенный текст в админке для этой карточки.</p>
+                        )}
 
-                      <div className="mt-6 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => stepInfoCard('prev')}
-                          className="inline-flex h-9 items-center gap-1 rounded-md border border-white/20 bg-white/5 px-3 text-xs text-white/85 transition hover:bg-white/10"
-                        >
-                          <ChevronLeft className="h-3.5 w-3.5" />
-                          Пред.
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => stepInfoCard('next')}
-                          className="inline-flex h-9 items-center gap-1 rounded-md border border-white/20 bg-white/5 px-3 text-xs text-white/85 transition hover:bg-white/10"
-                        >
-                          След.
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="mt-6 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => stepInfoCard('prev')}
+                            className="inline-flex h-9 items-center gap-1 rounded-md border border-white/20 bg-white/5 px-3 text-xs text-white/85 transition hover:bg-white/10"
+                          >
+                            <ChevronLeft className="h-3.5 w-3.5" />
+                            Пред.
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => stepInfoCard('next')}
+                            className="inline-flex h-9 items-center gap-1 rounded-md border border-white/20 bg-white/5 px-3 text-xs text-white/85 transition hover:bg-white/10"
+                          >
+                            След.
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
 
