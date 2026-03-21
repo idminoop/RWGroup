@@ -2,6 +2,7 @@
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Camera,
+  ChevronDown,
   ChevronRight,
   MapPin,
 } from 'lucide-react'
@@ -110,6 +111,7 @@ export default function ComplexPage() {
   const [draftLanding, setDraftLanding] = useState<ComplexLandingConfig | null>(null)
   const [activePlanId, setActivePlanId] = useState<string>('')
   const [activePlanImageIndex, setActivePlanImageIndex] = useState(0)
+  const [openAccordionItemId, setOpenAccordionItemId] = useState('')
   const [isTickerDragging, setIsTickerDragging] = useState(false)
   const isTickerDraggingRef = useRef(false)
   const tickerAutoPosRef = useRef(0)
@@ -227,6 +229,27 @@ export default function ComplexPage() {
   }, [landing?.feature_ticker])
 
   const photoFacts = useMemo(() => landing?.facts.slice(6) || [], [landing?.facts])
+  const accordionSection = useMemo(() => {
+    const section = landing?.accordion
+    const items = Array.isArray(section?.items)
+      ? section.items
+        .map((item) => ({
+          id: String(item.id || ''),
+          title: decodeEscapedUnicode(item.title || '').trim() || 'Текстовый блок',
+          text: decodeEscapedUnicode(item.text || '').trim(),
+          image: (item.image || '').trim() || undefined,
+          open_by_default: item.open_by_default === true,
+        }))
+        .filter((item) => item.id && (item.title || item.text || item.image))
+      : []
+
+    return {
+      enabled: section?.enabled !== false,
+      title: decodeEscapedUnicode(section?.title || 'Подробнее о проекте'),
+      subtitle: decodeEscapedUnicode(section?.subtitle || ''),
+      items,
+    }
+  }, [landing?.accordion])
   const nearbySection = useMemo(() => {
     const nearby = landing?.nearby
     if (!nearby || nearby.enabled === false) {
@@ -273,6 +296,16 @@ export default function ComplexPage() {
   useEffect(() => {
     setActivePlanImageIndex(0)
   }, [activePlan?.id])
+
+  useEffect(() => {
+    if (!accordionSection.enabled || !accordionSection.items.length) {
+      setOpenAccordionItemId('')
+      return
+    }
+    if (accordionSection.items.some((item) => item.id === openAccordionItemId)) return
+    const defaultOpenId = accordionSection.items.find((item) => item.open_by_default)?.id || accordionSection.items[0].id
+    setOpenAccordionItemId(defaultOpenId)
+  }, [accordionSection.enabled, accordionSection.items, openAccordionItemId])
 
   useEffect(() => {
     const viewport = tickerViewportRef.current
@@ -677,6 +710,74 @@ export default function ComplexPage() {
                 </aside>
               </div>
             </section>
+
+            {accordionSection.enabled && accordionSection.items.length > 0 && (
+              <section className="mt-12 rounded-3xl border border-white/10 p-4 md:p-6" style={{ backgroundColor: surface }}>
+                <Heading size="h3" className="text-white">
+                  {accordionSection.title}
+                </Heading>
+                {accordionSection.subtitle ? (
+                  <p className="mt-2 max-w-3xl text-sm text-white/65">{accordionSection.subtitle}</p>
+                ) : null}
+
+                <div className="mt-5 space-y-3">
+                  {accordionSection.items.map((item, index) => {
+                    const isOpen = openAccordionItemId === item.id
+                    const buttonId = `accordion_button_${item.id}`
+                    const panelId = `accordion_panel_${item.id}`
+                    return (
+                      <article
+                        key={item.id}
+                        className={`overflow-hidden rounded-2xl border transition ${
+                          isOpen
+                            ? 'border-white/25 bg-white/[0.08]'
+                            : 'border-white/10 bg-white/[0.03] hover:border-white/20'
+                        }`}
+                      >
+                        <button
+                          id={buttonId}
+                          type="button"
+                          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                          onClick={() => setOpenAccordionItemId(isOpen ? '' : item.id)}
+                          aria-expanded={isOpen}
+                          aria-controls={panelId}
+                        >
+                          <div className="min-w-0">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-white/45">
+                              Блок {String(index + 1).padStart(2, '0')}
+                            </div>
+                            <div className="mt-1 truncate text-base font-semibold text-white">{item.title}</div>
+                          </div>
+                          <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${isOpen ? 'rotate-180 text-white' : 'text-white/60'}`} />
+                        </button>
+
+                        <div
+                          id={panelId}
+                          role="region"
+                          aria-labelledby={buttonId}
+                          className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ${
+                            isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                          }`}
+                        >
+                          <div className="min-h-0">
+                            <div className={`px-4 pb-4 ${item.image ? 'pt-1 md:grid md:grid-cols-[220px_minmax(0,1fr)] md:gap-4' : 'pt-0'}`}>
+                              {item.image ? (
+                                <div className="mb-3 overflow-hidden rounded-xl border border-white/10 bg-black/20 md:mb-0">
+                                  <img src={item.image} alt={item.title} className="h-[140px] w-full object-cover md:h-[160px]" />
+                                </div>
+                              ) : null}
+                              <p className="whitespace-pre-line text-sm leading-relaxed text-white/75">
+                                {item.text || 'Заполните текст в админке, чтобы показать описание в этом блоке.'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
 
             <section className="mt-12">
               <Suspense

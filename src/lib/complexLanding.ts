@@ -1,5 +1,7 @@
 import type {
   Complex,
+  ComplexLandingAccordion,
+  ComplexLandingAccordionItem,
   ComplexLandingConfig,
   ComplexLandingFact,
   ComplexLandingFeature,
@@ -16,6 +18,7 @@ const DEFAULT_SURFACE = '#071520'
 const KREMLIN_COORDS = { lat: 55.752023, lon: 37.617499 }
 const PLAN_IMAGE_RX = /(plan|layout|preset|floor)/i
 export const MAX_LANDING_FACTS = 12
+export const MAX_LANDING_ACCORDION_ITEMS = 12
 const MAX_NEARBY_CANDIDATES = 63 // up to 3 per category × 21 categories
 const MAX_NEARBY_SELECTED = 20
 const MAX_NEARBY_IMAGE_VARIANTS = 24
@@ -301,6 +304,39 @@ export function createLandingPlanItem(partial?: Partial<ComplexLandingPlanItem>)
   }
 }
 
+export function createLandingAccordionItem(partial?: Partial<ComplexLandingAccordionItem>): ComplexLandingAccordionItem {
+  return {
+    id: partial?.id || makeId('accordion'),
+    title: toText(partial?.title) || 'Текстовый блок',
+    text: toText(partial?.text),
+    image: toText(partial?.image) || undefined,
+    open_by_default: typeof partial?.open_by_default === 'boolean' ? partial.open_by_default : undefined,
+  }
+}
+
+export function createLandingAccordion(partial?: Partial<ComplexLandingAccordion>): ComplexLandingAccordion {
+  const items = safeArray<Partial<ComplexLandingAccordionItem>>(partial?.items)
+    .map((item) => createLandingAccordionItem(item))
+    .slice(0, MAX_LANDING_ACCORDION_ITEMS)
+
+  let defaultOpenFound = false
+  for (const item of items) {
+    if (!item.open_by_default) continue
+    if (!defaultOpenFound) {
+      defaultOpenFound = true
+      continue
+    }
+    item.open_by_default = false
+  }
+
+  return {
+    enabled: typeof partial?.enabled === 'boolean' ? partial.enabled : true,
+    title: toText(partial?.title) || 'Подробнее о проекте',
+    subtitle: toText(partial?.subtitle) || undefined,
+    items,
+  }
+}
+
 export function createLandingNearbyPlace(partial?: Partial<ComplexNearbyPlace>): ComplexNearbyPlace {
   const imageVariants = safeArray<string>(partial?.image_variants)
     .map((item) => toText(item))
@@ -469,6 +505,7 @@ export function buildAutoLandingConfig(complex: Complex, properties: Property[])
       cta_label: 'Все планировки',
       items: planItems,
     },
+    accordion: createLandingAccordion(),
     nearby: createLandingNearby(),
   }
 }
@@ -567,6 +604,10 @@ export function normalizeLandingConfig(
 
   const plansData = (candidate.plans && typeof candidate.plans === 'object' ? (candidate.plans as Record<string, unknown>) : {}) || {}
   const planItems = inferPlanItems(complex, properties)
+  const accordionData =
+    candidate.accordion && typeof candidate.accordion === 'object'
+      ? createLandingAccordion(candidate.accordion as Partial<ComplexLandingAccordion>)
+      : auto.accordion
   const nearbyData =
     candidate.nearby && typeof candidate.nearby === 'object'
       ? createLandingNearby(candidate.nearby as Partial<ComplexLandingNearby>)
@@ -588,6 +629,7 @@ export function normalizeLandingConfig(
       cta_label: toText(plansData.cta_label) || auto.plans.cta_label,
       items: planItems,
     },
+    accordion: accordionData,
     nearby: nearbyData,
   }
 }

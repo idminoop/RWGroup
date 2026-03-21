@@ -8,6 +8,8 @@ import { geocodeAddress } from '@/lib/overpass'
 import { useUiStore } from '@/store/useUiStore'
 import {
   buildAutoLandingConfig,
+  createLandingAccordion,
+  createLandingAccordionItem,
   createLandingFact,
   createLandingFeature,
   createLandingNearby,
@@ -16,12 +18,15 @@ import {
   FACT_IMAGE_PRESETS,
   inferFeaturePresetKey,
   LANDING_FEATURE_PRESETS,
+  MAX_LANDING_ACCORDION_ITEMS,
   MAX_LANDING_FACTS,
   normalizeLandingConfig,
 } from '@/lib/complexLanding'
 import { promoteImageToFront, isLayoutImage } from '@/lib/images'
 import type {
   Complex,
+  ComplexLandingAccordion,
+  ComplexLandingAccordionItem,
   ComplexLandingConfig,
   ComplexLandingFact,
   ComplexLandingNearby,
@@ -267,6 +272,11 @@ export default function AdminComplexSettingsPage() {
     if (activePlan.preview_image) return [activePlan.preview_image]
     return []
   }, [activePlan])
+  const accordionConfig = useMemo<ComplexLandingAccordion>(() => createLandingAccordion(draftLanding?.accordion), [draftLanding?.accordion])
+  const feedImageOptions = useMemo(
+    () => dedupeUrls((draftComplex?.images || []).filter((url) => !isLayoutImage(url))),
+    [draftComplex?.images]
+  )
   const nearbyConfig = useMemo<ComplexLandingNearby | null>(() => {
     if (!draftLanding) return null
     return createLandingNearby(draftLanding.nearby)
@@ -419,6 +429,73 @@ export default function AdminComplexSettingsPage() {
     patchLanding((cfg) => ({
       ...cfg,
       facts: cfg.facts.map((fact) => (fact.id === id ? { ...fact, ...patch } : fact)),
+    }))
+  }
+
+  const patchAccordion = (updater: (value: ComplexLandingAccordion) => ComplexLandingAccordion) => {
+    patchLanding((cfg) => ({
+      ...cfg,
+      accordion: updater(createLandingAccordion(cfg.accordion)),
+    }))
+  }
+
+  const patchAccordionItem = (id: string, patch: Partial<ComplexLandingAccordionItem>) => {
+    patchAccordion((accordion) => ({
+      ...accordion,
+      items: accordion.items.map((item) => (item.id === id ? createLandingAccordionItem({ ...item, ...patch }) : item)),
+    }))
+  }
+
+  const addAccordionItem = () => {
+    patchAccordion((accordion) => {
+      if (accordion.items.length >= MAX_LANDING_ACCORDION_ITEMS) return accordion
+      const hasDefaultOpen = accordion.items.some((item) => item.open_by_default)
+      return {
+        ...accordion,
+        items: [
+          ...accordion.items,
+          createLandingAccordionItem({
+            title: `Блок ${accordion.items.length + 1}`,
+            open_by_default: !hasDefaultOpen,
+          }),
+        ],
+      }
+    })
+  }
+
+  const deleteAccordionItem = (id: string) => {
+    patchAccordion((accordion) => {
+      const nextItems = accordion.items.filter((item) => item.id !== id)
+      if (nextItems.length && !nextItems.some((item) => item.open_by_default)) {
+        nextItems[0] = { ...nextItems[0], open_by_default: true }
+      }
+      return { ...accordion, items: nextItems }
+    })
+  }
+
+  const moveAccordionItem = (id: string, direction: 'up' | 'down') => {
+    patchAccordion((accordion) => {
+      const items = [...accordion.items]
+      const currentIndex = items.findIndex((item) => item.id === id)
+      if (currentIndex < 0) return accordion
+      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+      if (targetIndex < 0 || targetIndex >= items.length) return accordion
+      const [moved] = items.splice(currentIndex, 1)
+      items.splice(targetIndex, 0, moved)
+      return { ...accordion, items }
+    })
+  }
+
+  const setAccordionDefaultOpen = (id: string, nextOpen: boolean) => {
+    patchAccordion((accordion) => ({
+      ...accordion,
+      items: accordion.items.map((item) => {
+        if (item.id === id) {
+          return { ...item, open_by_default: nextOpen || undefined }
+        }
+        if (nextOpen && item.open_by_default) return { ...item, open_by_default: false }
+        return item
+      }),
     }))
   }
 
@@ -941,14 +1018,14 @@ export default function AdminComplexSettingsPage() {
                 </div>
 
                 {/* Feed photo picker — non-layout images only */}
-                {draftComplex && (draftComplex.images || []).filter((u) => !isLayoutImage(u)).length > 0 && (
+                {feedImageOptions.length > 0 && (
                   <div>
                     <label className="text-xs text-white/60">Выбрать из фото фида</label>
                     <div
                       className="mt-1.5 flex gap-2 overflow-x-auto pb-1"
                       style={{ scrollbarWidth: 'none' }}
                     >
-                      {(draftComplex.images || []).filter((u) => !isLayoutImage(u)).map((url) => {
+                      {feedImageOptions.map((url) => {
                         const active = draftLanding.hero_image === url
                         return (
                           <button
@@ -1679,6 +1756,165 @@ export default function AdminComplexSettingsPage() {
                   </div>
                 )}
               </div>
+            </section>
+
+            <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-white">
+                  Сворачивающийся текстовый блок после планировок ({accordionConfig.items.length}/{MAX_LANDING_ACCORDION_ITEMS})
+                </h3>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={addAccordionItem}
+                  disabled={accordionConfig.items.length >= MAX_LANDING_ACCORDION_ITEMS}
+                >
+                  + Блок
+                </Button>
+              </div>
+
+              <label className="inline-flex items-center gap-2 text-xs text-white/70">
+                <input
+                  type="checkbox"
+                  checked={accordionConfig.enabled !== false}
+                  onChange={(e) => patchAccordion((accordion) => ({ ...accordion, enabled: e.target.checked }))}
+                />
+                Показывать секцию сразу после планировок
+              </label>
+
+              <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-white/60">Заголовок секции</label>
+                  <Input
+                    value={accordionConfig.title || ''}
+                    className="border-white/20 bg-white/5 text-white"
+                    onChange={(e) => patchAccordion((accordion) => ({ ...accordion, title: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-white/60">Подзаголовок секции</label>
+                  <Input
+                    value={accordionConfig.subtitle || ''}
+                    className="border-white/20 bg-white/5 text-white"
+                    onChange={(e) => patchAccordion((accordion) => ({ ...accordion, subtitle: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              {!accordionConfig.items.length ? (
+                <div className="rounded-xl border border-dashed border-white/20 bg-white/[0.03] p-4 text-sm text-white/55">
+                  Добавьте хотя бы один блок, чтобы он появился на публичной странице.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {accordionConfig.items.map((item, index) => {
+                    const canMoveUp = index > 0
+                    const canMoveDown = index < accordionConfig.items.length - 1
+                    return (
+                      <article key={item.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-xs text-white/60">Блок #{index + 1}</div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" variant="secondary" onClick={() => moveAccordionItem(item.id, 'up')} disabled={!canMoveUp}>
+                              ↑
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => moveAccordionItem(item.id, 'down')} disabled={!canMoveDown}>
+                              ↓
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => deleteAccordionItem(item.id)}>
+                              Удалить
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+                          <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
+                            {item.image ? (
+                              <img src={item.image} alt="" className="h-[150px] w-full object-cover" />
+                            ) : (
+                              <div className="flex h-[150px] w-full items-center justify-center text-xs text-white/45">
+                                Фото не выбрано
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-2">
+                            <Input
+                              value={item.title}
+                              className="border-white/20 bg-white/5 text-white"
+                              placeholder="Заголовок блока"
+                              onChange={(e) => patchAccordionItem(item.id, { title: e.target.value })}
+                            />
+                            <textarea
+                              value={item.text}
+                              rows={5}
+                              className="w-full rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/40"
+                              placeholder="Текст внутри раскрывающегося блока"
+                              onChange={(e) => patchAccordionItem(item.id, { text: e.target.value })}
+                            />
+                            <label className="inline-flex items-center gap-2 text-xs text-white/70">
+                              <input
+                                type="checkbox"
+                                checked={item.open_by_default === true}
+                                onChange={(e) => setAccordionDefaultOpen(item.id, e.target.checked)}
+                              />
+                              Открывать этот блок по умолчанию
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                          <Input
+                            value={item.image || ''}
+                            className="border-white/20 bg-white/5 text-white"
+                            placeholder="URL фото"
+                            onChange={(e) => patchAccordionItem(item.id, { image: e.target.value })}
+                          />
+                          <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-white/25 bg-white/10 px-3 text-xs hover:bg-white/15">
+                            Файл
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept="image/*"
+                              onChange={async (e) => {
+                                if (!e.target.files?.[0]) return
+                                try {
+                                  const url = await uploadImage(token || '', e.target.files[0])
+                                  patchAccordionItem(item.id, { image: url })
+                                } catch (err) {
+                                  alert(err instanceof Error ? err.message : 'Upload error')
+                                } finally {
+                                  e.target.value = ''
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+
+                        {feedImageOptions.length > 0 && (
+                          <div className="mt-2">
+                            <div className="mb-1 text-xs text-white/55">Выбрать фото из фида</div>
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {feedImageOptions.map((url) => (
+                                <button
+                                  key={`${item.id}_${url}`}
+                                  type="button"
+                                  onClick={() => patchAccordionItem(item.id, { image: url })}
+                                  className={`h-14 w-20 shrink-0 overflow-hidden rounded border ${
+                                    item.image === url ? 'border-amber-300' : 'border-white/20'
+                                  }`}
+                                >
+                                  <img src={url} alt="" className="h-full w-full object-cover" />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
             </section>
           </article>
         </>

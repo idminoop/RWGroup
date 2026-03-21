@@ -95,6 +95,21 @@ export interface ComplexLandingPlanItem {
   preview_images?: string[]
 }
 
+export interface ComplexLandingAccordionItem {
+  id: string
+  title: string
+  text: string
+  image?: string
+  open_by_default?: boolean
+}
+
+export interface ComplexLandingAccordion {
+  enabled?: boolean
+  title?: string
+  subtitle?: string
+  items: ComplexLandingAccordionItem[]
+}
+
 export type NearbyGroup = 'life' | 'leisure' | 'family'
 
 export interface ComplexNearbyCollection {
@@ -149,6 +164,7 @@ export interface ComplexLandingConfig {
     cta_label?: string
     items: ComplexLandingPlanItem[]
   }
+  accordion?: ComplexLandingAccordion
   nearby?: ComplexLandingNearby
 }
 

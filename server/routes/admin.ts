@@ -1557,6 +1557,21 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
     preview_images: z.array(z.string()).optional(),
   })
 
+  const landingAccordionItemSchema = z.object({
+    id: z.string().min(1),
+    title: z.string().optional(),
+    text: z.string().optional(),
+    image: z.string().optional(),
+    open_by_default: z.boolean().optional(),
+  })
+
+  const landingAccordionSchema = z.object({
+    enabled: z.boolean().optional(),
+    title: z.string().optional(),
+    subtitle: z.string().optional(),
+    items: z.array(landingAccordionItemSchema).max(12),
+  })
+
   const landingNearbyPlaceSchema = z.object({
     id: z.string().min(1),
     name: z.string().min(1),
@@ -1609,6 +1624,7 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
       cta_label: z.string().optional(),
       items: z.array(landingPlanSchema),
     }),
+    accordion: landingAccordionSchema.optional(),
     nearby: landingNearbySchema.optional(),
   })
 
