@@ -2,8 +2,10 @@
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Camera,
+  ChevronLeft,
   ChevronRight,
   MapPin,
+  X,
 } from 'lucide-react'
 import SiteLayout from '@/components/layout/SiteLayout'
 import Button from '@/components/ui/Button'
@@ -16,7 +18,14 @@ import { getPresentableImages, selectCoverImage } from '@/lib/images'
 import { normalizeLandingConfig } from '@/lib/complexLanding'
 import JsonLd from '@/components/seo/JsonLd'
 import { setPageMeta } from '@/lib/meta'
-import type { Complex, ComplexLandingConfig, ComplexLandingPlanItem, ComplexNearbyPlace, Property } from '../../shared/types'
+import type {
+  Complex,
+  ComplexLandingConfig,
+  ComplexLandingInfoCard,
+  ComplexLandingPlanItem,
+  ComplexNearbyPlace,
+  Property,
+} from '../../shared/types'
 import { useUiStore } from '@/store/useUiStore'
 
 const ComplexMap = lazy(() => import('@/components/complex/ComplexMap'))
@@ -50,6 +59,26 @@ function normalizeFactCardRowSpan(value: unknown): 1 | 2 {
   const parsed = toFiniteNumber(value)
   if (parsed === 2) return 2
   return 1
+}
+
+function normalizeInfoCardColSpan(value: unknown): 1 | 2 | 3 {
+  return normalizeFactCardColSpan(value)
+}
+
+function normalizeInfoCardRowSpan(value: unknown): 1 | 2 {
+  return normalizeFactCardRowSpan(value)
+}
+
+function dedupeImageUrls(urls: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of urls) {
+    const url = raw.trim()
+    if (!url || seen.has(url)) continue
+    seen.add(url)
+    out.push(url)
+  }
+  return out
 }
 
 function decodeEscapedUnicode(value: unknown): string {
@@ -96,6 +125,18 @@ function inferBedroomsFromPlan(plan?: ComplexLandingPlanItem): number | undefine
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
+type InfoCardViewModel = {
+  id: string
+  title: string
+  description?: string
+  cover_image?: string
+  modal_title: string
+  modal_text: string
+  gallery_images: string[]
+  card_col_span: 1 | 2 | 3
+  card_row_span: 1 | 2
+}
+
 export default function ComplexPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -111,6 +152,9 @@ export default function ComplexPage() {
   const [activePlanId, setActivePlanId] = useState<string>('')
   const [activePlanImageIndex, setActivePlanImageIndex] = useState(0)
   const [isAccordionExpanded, setIsAccordionExpanded] = useState(false)
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false)
+  const [activeInfoCardId, setActiveInfoCardId] = useState('')
+  const [activeInfoImageIndex, setActiveInfoImageIndex] = useState(0)
   const [isTickerDragging, setIsTickerDragging] = useState(false)
   const isTickerDraggingRef = useRef(false)
   const tickerAutoPosRef = useRef(0)
@@ -250,6 +294,46 @@ export default function ComplexPage() {
     const text = accordionSection.item?.text || ''
     return text.length > 520 || text.includes('\n')
   }, [accordionSection.item?.text])
+  const infoCardsSection = useMemo(() => {
+    const section = landing?.info_cards
+    const rawItems = Array.isArray(section?.items) ? section.items : []
+    const items: InfoCardViewModel[] = rawItems
+      .map((item: ComplexLandingInfoCard) => {
+        const title = decodeEscapedUnicode(item.title || '').trim()
+        const description = decodeEscapedUnicode(item.description || '').trim()
+        const modal_title = decodeEscapedUnicode(item.modal_title || title || '').trim()
+        const modal_text = decodeEscapedUnicode(item.modal_text || description || '').trim()
+        const cover_image = (item.cover_image || '').trim() || undefined
+        const gallery_images = dedupeImageUrls([
+          cover_image || '',
+          ...((Array.isArray(item.gallery_images) ? item.gallery_images : []).map((src) => String(src || '').trim())),
+        ])
+
+        return {
+          id: item.id,
+          title: title || 'Карточка',
+          description: description || undefined,
+          cover_image,
+          modal_title: modal_title || title || 'Подробная информация',
+          modal_text,
+          gallery_images,
+          card_col_span: normalizeInfoCardColSpan(item.card_col_span),
+          card_row_span: normalizeInfoCardRowSpan(item.card_row_span),
+        }
+      })
+      .filter((item) => item.title || item.modal_text || item.cover_image)
+
+    return {
+      enabled: section?.enabled !== false,
+      title: decodeEscapedUnicode(section?.title || 'Информация о ЖК').trim(),
+      subtitle: decodeEscapedUnicode(section?.subtitle || '').trim(),
+      items,
+    }
+  }, [landing?.info_cards])
+  const activeInfoCard = useMemo(
+    () => infoCardsSection.items.find((item) => item.id === activeInfoCardId) || infoCardsSection.items[0] || null,
+    [activeInfoCardId, infoCardsSection.items]
+  )
   const nearbySection = useMemo(() => {
     const nearby = landing?.nearby
     if (!nearby || nearby.enabled === false) {
@@ -300,6 +384,57 @@ export default function ComplexPage() {
   useEffect(() => {
     setIsAccordionExpanded(false)
   }, [accordionSection.item?.text, accordionSection.item?.image, c?.id])
+
+  useEffect(() => {
+    if (!infoCardsSection.items.length) {
+      setActiveInfoCardId('')
+      setIsInfoModalOpen(false)
+      return
+    }
+    if (!infoCardsSection.items.some((item) => item.id === activeInfoCardId)) {
+      setActiveInfoCardId(infoCardsSection.items[0].id)
+    }
+  }, [activeInfoCardId, infoCardsSection.items])
+
+  useEffect(() => {
+    setActiveInfoImageIndex(0)
+  }, [activeInfoCard?.id])
+
+  useEffect(() => {
+    if (!activeInfoCard) return
+    if (!activeInfoCard.gallery_images.length) {
+      setActiveInfoImageIndex(0)
+      return
+    }
+    if (activeInfoImageIndex >= activeInfoCard.gallery_images.length) {
+      setActiveInfoImageIndex(0)
+    }
+  }, [activeInfoCard, activeInfoImageIndex])
+
+  useEffect(() => {
+    if (!isInfoModalOpen || !activeInfoCard) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsInfoModalOpen(false)
+        return
+      }
+      if (event.key === 'ArrowRight' && activeInfoCard.gallery_images.length > 1) {
+        setActiveInfoImageIndex((prev) => (prev + 1) % activeInfoCard.gallery_images.length)
+      }
+      if (event.key === 'ArrowLeft' && activeInfoCard.gallery_images.length > 1) {
+        setActiveInfoImageIndex((prev) => (prev - 1 + activeInfoCard.gallery_images.length) % activeInfoCard.gallery_images.length)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [activeInfoCard, isInfoModalOpen])
 
   useEffect(() => {
     const viewport = tickerViewportRef.current
@@ -434,6 +569,36 @@ export default function ComplexPage() {
   const openGallery = (index = 0) => {
     setGalleryIndex(index)
     setGalleryOpen(true)
+  }
+
+  const openInfoModal = (cardId: string) => {
+    setActiveInfoCardId(cardId)
+    setActiveInfoImageIndex(0)
+    setIsInfoModalOpen(true)
+  }
+
+  const closeInfoModal = () => {
+    setIsInfoModalOpen(false)
+  }
+
+  const switchInfoCard = (cardId: string) => {
+    setActiveInfoCardId(cardId)
+    setActiveInfoImageIndex(0)
+  }
+
+  const stepInfoCard = (direction: 'prev' | 'next') => {
+    if (!infoCardsSection.items.length || !activeInfoCard) return
+    const currentIndex = infoCardsSection.items.findIndex((item) => item.id === activeInfoCard.id)
+    if (currentIndex < 0) return
+    const delta = direction === 'next' ? 1 : -1
+    const nextIndex = (currentIndex + delta + infoCardsSection.items.length) % infoCardsSection.items.length
+    switchInfoCard(infoCardsSection.items[nextIndex].id)
+  }
+
+  const stepInfoImage = (direction: 'prev' | 'next') => {
+    if (!activeInfoCard || activeInfoCard.gallery_images.length <= 1) return
+    const delta = direction === 'next' ? 1 : -1
+    setActiveInfoImageIndex((prev) => (prev + delta + activeInfoCard.gallery_images.length) % activeInfoCard.gallery_images.length)
   }
 
   const openCatalogForPlan = (plan?: ComplexLandingPlanItem) => {
@@ -611,6 +776,58 @@ export default function ComplexPage() {
               </div>
             </section>
 
+            {infoCardsSection.enabled && infoCardsSection.items.length > 0 && (
+              <section className="mt-12 rounded-3xl border border-white/10 p-4 md:p-6" style={{ backgroundColor: surface }}>
+                {(infoCardsSection.title || infoCardsSection.subtitle) && (
+                  <div className="mb-4 md:mb-5">
+                    {infoCardsSection.title ? (
+                      <Heading size="h3" className="text-white">
+                        {infoCardsSection.title}
+                      </Heading>
+                    ) : null}
+                    {infoCardsSection.subtitle ? (
+                      <p className="mt-2 max-w-3xl text-sm text-white/65">{infoCardsSection.subtitle}</p>
+                    ) : null}
+                  </div>
+                )}
+
+                <div className="grid gap-3 md:grid-cols-2 xl:auto-rows-[220px] xl:grid-cols-3 xl:grid-flow-dense">
+                  {infoCardsSection.items.map((card) => {
+                    const colSpanClass =
+                      card.card_col_span === 3
+                        ? 'md:col-span-2 xl:col-span-3'
+                        : card.card_col_span === 2
+                          ? 'xl:col-span-2'
+                          : ''
+                    const rowSpanClass = card.card_row_span === 2 ? 'xl:row-span-2' : ''
+                    const heightClass = card.card_row_span === 2 ? 'h-[300px] xl:h-auto' : 'h-[220px] xl:h-auto'
+                    const image = card.cover_image || card.gallery_images[0]
+                    return (
+                      <button
+                        key={card.id}
+                        type="button"
+                        onClick={() => openInfoModal(card.id)}
+                        className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-[#0d1e2a] text-left ${heightClass} ${colSpanClass} ${rowSpanClass}`}
+                      >
+                        {image ? (
+                          <img
+                            src={image}
+                            alt={card.title}
+                            className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                          />
+                        ) : null}
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#020b12]/95 via-[#020b12]/45 to-transparent" />
+                        <div className="absolute inset-x-0 bottom-0 border-t border-white/10 bg-black/40 px-4 py-3 backdrop-blur">
+                          <div className="text-base font-semibold text-white md:text-lg">{card.title}</div>
+                          {card.description ? <div className="mt-1 line-clamp-2 text-xs text-white/75">{card.description}</div> : null}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
+
             <section className="mt-12 rounded-3xl border border-white/10 p-4 md:p-6" style={{ backgroundColor: surface }}>
               <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_320px]">
                 <div className="min-w-0">
@@ -784,6 +1001,128 @@ export default function ComplexPage() {
             )}
 
           </div>
+
+          {isInfoModalOpen && activeInfoCard && (
+            <div className="fixed inset-0 z-[120] bg-[#020b12]/95 backdrop-blur-sm">
+              <div className="h-full overflow-y-auto px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+                <div className="mx-auto flex max-w-[1280px] flex-col gap-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
+                      {infoCardsSection.items.map((card) => (
+                        <button
+                          key={`modal_tab_${card.id}`}
+                          type="button"
+                          onClick={() => switchInfoCard(card.id)}
+                          className={`h-10 shrink-0 rounded-sm border px-4 text-sm font-semibold transition ${
+                            card.id === activeInfoCard.id
+                              ? 'border-amber-300/80 bg-amber-300 text-[#081015]'
+                              : 'border-white/10 bg-[#071923] text-white/85 hover:bg-[#0b2433]'
+                          }`}
+                        >
+                          {card.title}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={closeInfoModal}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                      aria-label="Закрыть"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+                    <div className="rounded-2xl border border-white/10 bg-[#041520] p-5">
+                      <h3 className="text-2xl font-semibold text-white sm:text-4xl">
+                        {activeInfoCard.modal_title || activeInfoCard.title}
+                      </h3>
+                      {activeInfoCard.modal_text ? (
+                        <p className="mt-5 whitespace-pre-line text-sm leading-relaxed text-white/85 sm:text-base">
+                          {activeInfoCard.modal_text}
+                        </p>
+                      ) : (
+                        <p className="mt-5 text-sm text-white/60">Добавьте расширенный текст в админке для этой карточки.</p>
+                      )}
+
+                      <div className="mt-6 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => stepInfoCard('prev')}
+                          className="inline-flex h-9 items-center gap-1 rounded-md border border-white/20 bg-white/5 px-3 text-xs text-white/85 transition hover:bg-white/10"
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                          Пред.
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => stepInfoCard('next')}
+                          className="inline-flex h-9 items-center gap-1 rounded-md border border-white/20 bg-white/5 px-3 text-xs text-white/85 transition hover:bg-white/10"
+                        >
+                          След.
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/25">
+                      {activeInfoCard.gallery_images.length ? (
+                        <img
+                          src={activeInfoCard.gallery_images[activeInfoImageIndex] || activeInfoCard.gallery_images[0]}
+                          alt={activeInfoCard.title}
+                          className="h-[320px] w-full object-cover sm:h-[420px] xl:h-[640px]"
+                        />
+                      ) : activeInfoCard.cover_image ? (
+                        <img src={activeInfoCard.cover_image} alt={activeInfoCard.title} className="h-[320px] w-full object-cover sm:h-[420px] xl:h-[640px]" />
+                      ) : (
+                        <div className="flex h-[320px] items-center justify-center text-sm text-white/45 sm:h-[420px] xl:h-[640px]">Изображение не выбрано</div>
+                      )}
+
+                      {activeInfoCard.gallery_images.length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => stepInfoImage('prev')}
+                            className="absolute bottom-5 left-5 inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#021019] text-white/90 transition hover:bg-[#04324a]"
+                            aria-label="Предыдущее фото"
+                          >
+                            <ChevronLeft className="h-5 w-5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => stepInfoImage('next')}
+                            className="absolute bottom-5 right-5 inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#021019] text-white/90 transition hover:bg-[#04324a]"
+                            aria-label="Следующее фото"
+                          >
+                            <ChevronRight className="h-5 w-5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {activeInfoCard.gallery_images.length > 1 && (
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {activeInfoCard.gallery_images.map((src, index) => (
+                        <button
+                          key={`modal_thumb_${activeInfoCard.id}_${index}`}
+                          type="button"
+                          onClick={() => setActiveInfoImageIndex(index)}
+                          className={`h-20 w-28 shrink-0 overflow-hidden rounded border ${
+                            index === activeInfoImageIndex ? 'border-amber-300' : 'border-white/20'
+                          }`}
+                        >
+                          <img src={src} alt="" className="h-full w-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <ImageGallery
             images={presentableImages}

@@ -5,6 +5,8 @@ import type {
   ComplexLandingConfig,
   ComplexLandingFact,
   ComplexLandingFeature,
+  ComplexLandingInfoCard,
+  ComplexLandingInfoSection,
   ComplexLandingNearby,
   ComplexLandingPlanItem,
   ComplexLandingTag,
@@ -19,6 +21,7 @@ const KREMLIN_COORDS = { lat: 55.752023, lon: 37.617499 }
 const PLAN_IMAGE_RX = /(plan|layout|preset|floor)/i
 export const MAX_LANDING_FACTS = 12
 export const MAX_LANDING_ACCORDION_ITEMS = 1
+export const MAX_LANDING_INFO_CARDS = 12
 const MAX_NEARBY_CANDIDATES = 63 // up to 3 per category × 21 categories
 const MAX_NEARBY_SELECTED = 20
 const MAX_NEARBY_IMAGE_VARIANTS = 24
@@ -83,6 +86,14 @@ function normalizeFactCardRowSpan(value: unknown): 1 | 2 {
   const parsed = toFiniteNumber(value)
   if (parsed === 2) return 2
   return 1
+}
+
+function normalizeInfoCardColSpan(value: unknown): 1 | 2 | 3 {
+  return normalizeFactCardColSpan(value)
+}
+
+function normalizeInfoCardRowSpan(value: unknown): 1 | 2 {
+  return normalizeFactCardRowSpan(value)
 }
 
 function isLikelyPlanImage(url?: string): boolean {
@@ -337,6 +348,39 @@ export function createLandingAccordion(partial?: Partial<ComplexLandingAccordion
   }
 }
 
+export function createLandingInfoCard(partial?: Partial<ComplexLandingInfoCard>): ComplexLandingInfoCard {
+  const cover_image = toText(partial?.cover_image) || undefined
+  const gallery_images = uniq([
+    cover_image || '',
+    ...safeArray<string>(partial?.gallery_images).map((item) => toText(item)),
+  ]).slice(0, 24)
+
+  return {
+    id: partial?.id || makeId('info'),
+    title: toText(partial?.title) || 'Карточка',
+    description: toText(partial?.description) || undefined,
+    cover_image,
+    modal_title: toText(partial?.modal_title) || undefined,
+    modal_text: toText(partial?.modal_text) || undefined,
+    gallery_images: gallery_images.length ? gallery_images : undefined,
+    card_col_span: normalizeInfoCardColSpan(partial?.card_col_span),
+    card_row_span: normalizeInfoCardRowSpan(partial?.card_row_span),
+  }
+}
+
+export function createLandingInfoSection(partial?: Partial<ComplexLandingInfoSection>): ComplexLandingInfoSection {
+  const items = safeArray<Partial<ComplexLandingInfoCard>>(partial?.items)
+    .map((item) => createLandingInfoCard(item))
+    .slice(0, MAX_LANDING_INFO_CARDS)
+
+  return {
+    enabled: typeof partial?.enabled === 'boolean' ? partial.enabled : true,
+    title: toText(partial?.title) || 'Информация о ЖК',
+    subtitle: toText(partial?.subtitle) || undefined,
+    items,
+  }
+}
+
 export function createLandingNearbyPlace(partial?: Partial<ComplexNearbyPlace>): ComplexNearbyPlace {
   const imageVariants = safeArray<string>(partial?.image_variants)
     .map((item) => toText(item))
@@ -506,6 +550,7 @@ export function buildAutoLandingConfig(complex: Complex, properties: Property[])
       items: planItems,
     },
     accordion: createLandingAccordion(),
+    info_cards: createLandingInfoSection({ enabled: false, items: [] }),
     nearby: createLandingNearby(),
   }
 }
@@ -608,6 +653,10 @@ export function normalizeLandingConfig(
     candidate.accordion && typeof candidate.accordion === 'object'
       ? createLandingAccordion(candidate.accordion as Partial<ComplexLandingAccordion>)
       : auto.accordion
+  const infoCardsData =
+    candidate.info_cards && typeof candidate.info_cards === 'object'
+      ? createLandingInfoSection(candidate.info_cards as Partial<ComplexLandingInfoSection>)
+      : auto.info_cards
   const nearbyData =
     candidate.nearby && typeof candidate.nearby === 'object'
       ? createLandingNearby(candidate.nearby as Partial<ComplexLandingNearby>)
@@ -630,6 +679,7 @@ export function normalizeLandingConfig(
       items: planItems,
     },
     accordion: accordionData,
+    info_cards: infoCardsData,
     nearby: nearbyData,
   }
 }

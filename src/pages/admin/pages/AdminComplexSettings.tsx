@@ -12,6 +12,8 @@ import {
   createLandingAccordionItem,
   createLandingFact,
   createLandingFeature,
+  createLandingInfoCard,
+  createLandingInfoSection,
   createLandingNearby,
   createLandingNearbyPlace,
   createLandingTag,
@@ -20,6 +22,7 @@ import {
   LANDING_FEATURE_PRESETS,
   MAX_LANDING_ACCORDION_ITEMS,
   MAX_LANDING_FACTS,
+  MAX_LANDING_INFO_CARDS,
   normalizeLandingConfig,
 } from '@/lib/complexLanding'
 import { promoteImageToFront, isLayoutImage } from '@/lib/images'
@@ -29,6 +32,8 @@ import type {
   ComplexLandingAccordionItem,
   ComplexLandingConfig,
   ComplexLandingFact,
+  ComplexLandingInfoCard,
+  ComplexLandingInfoSection,
   ComplexLandingNearby,
   ComplexNearbyCollection,
   LandingFeaturePreset,
@@ -200,6 +205,15 @@ function dedupeUrls(urls: string[]): string[] {
   return result
 }
 
+function parseMultilineUrls(raw: string): string[] {
+  return dedupeUrls(
+    raw
+      .split('\n')
+      .map((item) => item.trim())
+      .filter(Boolean)
+  )
+}
+
 function nearbyCategoryKey(label: string): string {
   const normalized = label
     .trim()
@@ -280,6 +294,7 @@ export default function AdminComplexSettingsPage() {
       items: [firstItem],
     }
   }, [draftLanding?.accordion])
+  const infoCardsConfig = useMemo<ComplexLandingInfoSection>(() => createLandingInfoSection(draftLanding?.info_cards), [draftLanding?.info_cards])
   const feedImageOptions = useMemo(
     () => dedupeUrls((draftComplex?.images || []).filter((url) => !isLayoutImage(url))),
     [draftComplex?.images]
@@ -437,6 +452,70 @@ export default function AdminComplexSettingsPage() {
     patchLanding((cfg) => ({
       ...cfg,
       facts: cfg.facts.map((fact) => (fact.id === id ? { ...fact, ...patch } : fact)),
+    }))
+  }
+
+  const patchInfoCards = (updater: (value: ComplexLandingInfoSection) => ComplexLandingInfoSection) => {
+    patchLanding((cfg) => ({
+      ...cfg,
+      info_cards: updater(createLandingInfoSection(cfg.info_cards)),
+    }))
+  }
+
+  const patchInfoCard = (id: string, patch: Partial<ComplexLandingInfoCard>) => {
+    patchInfoCards((section) => ({
+      ...section,
+      items: section.items.map((item) => (
+        item.id === id
+          ? createLandingInfoCard({ ...item, ...patch })
+          : item
+      )),
+    }))
+  }
+
+  const addInfoCard = () => {
+    patchInfoCards((section) => {
+      if (section.items.length >= MAX_LANDING_INFO_CARDS) return section
+      return {
+        ...section,
+        items: [...section.items, createLandingInfoCard({ title: `Карточка ${section.items.length + 1}` })],
+      }
+    })
+  }
+
+  const deleteInfoCard = (id: string) => {
+    patchInfoCards((section) => ({
+      ...section,
+      items: section.items.filter((item) => item.id !== id),
+    }))
+  }
+
+  const moveInfoCard = (id: string, direction: 'up' | 'down') => {
+    patchInfoCards((section) => {
+      const items = [...section.items]
+      const currentIndex = items.findIndex((item) => item.id === id)
+      if (currentIndex < 0) return section
+      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+      if (targetIndex < 0 || targetIndex >= items.length) return section
+      const [moved] = items.splice(currentIndex, 1)
+      items.splice(targetIndex, 0, moved)
+      return { ...section, items }
+    })
+  }
+
+  const appendInfoCardGalleryImage = (id: string, url: string) => {
+    const normalized = url.trim()
+    if (!normalized) return
+    patchInfoCards((section) => ({
+      ...section,
+      items: section.items.map((item) => {
+        if (item.id !== id) return item
+        return createLandingInfoCard({
+          ...item,
+          cover_image: item.cover_image || normalized,
+          gallery_images: dedupeUrls([normalized, item.cover_image || '', ...(item.gallery_images || [])]),
+        })
+      }),
     }))
   }
 
@@ -838,9 +917,11 @@ export default function AdminComplexSettingsPage() {
     const nextHeroImage = (draftLanding.hero_image || '').trim()
     const heroChanged = nextHeroImage !== loadedHeroImage
     const normalizedFeatureTicker = normalizeFeatureTicker(draftLanding.feature_ticker)
+    const normalizedInfoCards = createLandingInfoSection(draftLanding.info_cards)
     const landingForSave: ComplexLandingConfig = {
       ...draftLanding,
       feature_ticker: normalizedFeatureTicker,
+      info_cards: normalizedInfoCards,
     }
     const imagesForSave =
       heroChanged && nextHeroImage
@@ -866,7 +947,7 @@ export default function AdminComplexSettingsPage() {
         landing: landingForSave,
       }, headers)
       setDraftComplex((prev) => (prev ? { ...prev, images: imagesForSave } : prev))
-      setDraftLanding((prev) => (prev ? { ...prev, feature_ticker: normalizedFeatureTicker } : prev))
+      setDraftLanding((prev) => (prev ? { ...prev, feature_ticker: normalizedFeatureTicker, info_cards: normalizedInfoCards } : prev))
       setLoadedHeroImage(nextHeroImage)
       alert('Настройки ЖК сохранены')
       loadComplexes()
@@ -1093,6 +1174,240 @@ export default function AdminComplexSettingsPage() {
                   </Button>
                 </div>
               </div>
+            </section>
+
+            <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-white">
+                  Информация о ЖК: карточки + fullscreen ({infoCardsConfig.items.length}/{MAX_LANDING_INFO_CARDS})
+                </h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex items-center gap-2 text-xs text-white/70">
+                    <input
+                      type="checkbox"
+                      checked={infoCardsConfig.enabled !== false}
+                      onChange={(e) => patchInfoCards((section) => ({ ...section, enabled: e.target.checked }))}
+                    />
+                    Показывать секцию на витрине
+                  </label>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={addInfoCard}
+                    disabled={infoCardsConfig.items.length >= MAX_LANDING_INFO_CARDS}
+                  >
+                    + Карточка
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2">
+                <Input
+                  value={infoCardsConfig.title || ''}
+                  className="border-white/20 bg-white/5 text-white"
+                  placeholder="Заголовок секции (опционально)"
+                  onChange={(e) => patchInfoCards((section) => ({ ...section, title: e.target.value }))}
+                />
+                <Input
+                  value={infoCardsConfig.subtitle || ''}
+                  className="border-white/20 bg-white/5 text-white"
+                  placeholder="Подзаголовок секции (опционально)"
+                  onChange={(e) => patchInfoCards((section) => ({ ...section, subtitle: e.target.value }))}
+                />
+              </div>
+
+              {!infoCardsConfig.items.length ? (
+                <div className="rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-4 text-xs text-white/55">
+                  Пока нет карточек. Добавьте хотя бы одну, чтобы на витрине появился интерактивный блок с модальным окном.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {infoCardsConfig.items.map((card, index) => {
+                    const canMoveUp = index > 0
+                    const canMoveDown = index < infoCardsConfig.items.length - 1
+                    const galleryImages = dedupeUrls([card.cover_image || '', ...(card.gallery_images || [])])
+                    return (
+                      <article key={card.id} className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-xs text-white/60">Карточка #{index + 1}</div>
+                          <div className="flex items-center gap-1">
+                            <Button size="sm" variant="secondary" onClick={() => moveInfoCard(card.id, 'up')} disabled={!canMoveUp}>
+                              ↑
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => moveInfoCard(card.id, 'down')} disabled={!canMoveDown}>
+                              ↓
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => deleteInfoCard(card.id)}>
+                              Удалить
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-[280px_minmax(0,1fr)]">
+                          <div className="space-y-2">
+                            <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
+                              {card.cover_image ? (
+                                <img src={card.cover_image} alt="" className="h-[170px] w-full object-cover" />
+                              ) : (
+                                <div className="flex h-[170px] items-center justify-center text-xs text-white/45">Обложка не выбрана</div>
+                              )}
+                            </div>
+                            <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                              <Input
+                                value={card.cover_image || ''}
+                                className="border-white/20 bg-white/5 text-white"
+                                placeholder="URL обложки карточки"
+                                onChange={(e) => {
+                                  const nextCover = e.target.value.trim()
+                                  patchInfoCard(card.id, {
+                                    cover_image: nextCover || undefined,
+                                    gallery_images: dedupeUrls([nextCover, ...(card.gallery_images || [])]),
+                                  })
+                                }}
+                              />
+                              <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-white/25 bg-white/10 px-3 text-xs hover:bg-white/15">
+                                Файл
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  accept="image/*"
+                                  onChange={async (e) => {
+                                    if (!e.target.files?.[0]) return
+                                    try {
+                                      const url = await uploadImage(token || '', e.target.files[0])
+                                      patchInfoCard(card.id, {
+                                        cover_image: url,
+                                        gallery_images: dedupeUrls([url, ...(card.gallery_images || [])]),
+                                      })
+                                    } catch (err) {
+                                      alert(err instanceof Error ? err.message : 'Upload error')
+                                    } finally {
+                                      e.target.value = ''
+                                    }
+                                  }}
+                                />
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2">
+                              <Input
+                                value={card.title || ''}
+                                className="border-white/20 bg-white/5 text-white"
+                                placeholder="Название карточки"
+                                onChange={(e) => patchInfoCard(card.id, { title: e.target.value })}
+                              />
+                              <Input
+                                value={card.modal_title || ''}
+                                className="border-white/20 bg-white/5 text-white"
+                                placeholder="Заголовок в модальном окне"
+                                onChange={(e) => patchInfoCard(card.id, { modal_title: e.target.value })}
+                              />
+                            </div>
+
+                            <Input
+                              value={card.description || ''}
+                              className="border-white/20 bg-white/5 text-white"
+                              placeholder="Короткое описание карточки (опционально)"
+                              onChange={(e) => patchInfoCard(card.id, { description: e.target.value })}
+                            />
+
+                            <textarea
+                              value={card.modal_text || ''}
+                              rows={5}
+                              className="w-full rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/40"
+                              placeholder="Расширенный текст в fullscreen-модалке"
+                              onChange={(e) => patchInfoCard(card.id, { modal_text: e.target.value })}
+                            />
+
+                            <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2">
+                              <div>
+                                <label className="mb-1 block text-xs text-white/60">Растяжение по ширине</label>
+                                <Select
+                                  value={String(card.card_col_span || 1)}
+                                  className="h-9 border-white/20 bg-white/5 text-white"
+                                  onChange={(e) => patchInfoCard(card.id, { card_col_span: Number(e.target.value) as 1 | 2 | 3 })}
+                                >
+                                  <option value="1">1/3 (обычная)</option>
+                                  <option value="2">2/3 (широкая)</option>
+                                  <option value="3">Вся строка</option>
+                                </Select>
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs text-white/60">Растяжение по высоте</label>
+                                <Select
+                                  value={String(card.card_row_span || 1)}
+                                  className="h-9 border-white/20 bg-white/5 text-white"
+                                  onChange={(e) => patchInfoCard(card.id, { card_row_span: Number(e.target.value) as 1 | 2 })}
+                                >
+                                  <option value="1">Обычная высота</option>
+                                  <option value="2">Высокая (x2)</option>
+                                </Select>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-2.5">
+                          <div className="text-xs text-white/55">Галерея модального окна (каждый URL с новой строки)</div>
+                          <textarea
+                            value={(card.gallery_images || []).join('\n')}
+                            rows={3}
+                            className="w-full rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/40"
+                            placeholder={'https://.../1.jpg\nhttps://.../2.jpg'}
+                            onChange={(e) => {
+                              const gallery = parseMultilineUrls(e.target.value)
+                              patchInfoCard(card.id, {
+                                gallery_images: gallery,
+                                cover_image: card.cover_image || gallery[0] || undefined,
+                              })
+                            }}
+                          />
+
+                          {galleryImages.length > 0 && (
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {galleryImages.map((src, imageIndex) => (
+                                <button
+                                  key={`${card.id}_gallery_${imageIndex}`}
+                                  type="button"
+                                  onClick={() => patchInfoCard(card.id, { cover_image: src })}
+                                  className={`h-14 w-20 shrink-0 overflow-hidden rounded border ${
+                                    card.cover_image === src ? 'border-amber-300' : 'border-white/20'
+                                  }`}
+                                  title="Сделать обложкой"
+                                >
+                                  <img src={src} alt="" className="h-full w-full object-cover" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {feedImageOptions.length > 0 && (
+                          <div>
+                            <div className="mb-1 text-xs text-white/55">Добавить фото из фида в карточку/галерею</div>
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {feedImageOptions.map((url) => (
+                                <button
+                                  key={`${card.id}_feed_${url}`}
+                                  type="button"
+                                  onClick={() => appendInfoCardGalleryImage(card.id, url)}
+                                  className={`h-14 w-20 shrink-0 overflow-hidden rounded border ${
+                                    card.cover_image === url ? 'border-amber-300' : 'border-white/20'
+                                  }`}
+                                >
+                                  <img src={url} alt="" className="h-full w-full object-cover" />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
             </section>
 
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">

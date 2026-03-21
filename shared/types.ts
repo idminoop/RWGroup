@@ -110,6 +110,25 @@ export interface ComplexLandingAccordion {
   items: ComplexLandingAccordionItem[]
 }
 
+export interface ComplexLandingInfoCard {
+  id: string
+  title: string
+  description?: string
+  cover_image?: string
+  modal_title?: string
+  modal_text?: string
+  gallery_images?: string[]
+  card_col_span?: 1 | 2 | 3
+  card_row_span?: 1 | 2
+}
+
+export interface ComplexLandingInfoSection {
+  enabled?: boolean
+  title?: string
+  subtitle?: string
+  items: ComplexLandingInfoCard[]
+}
+
 export type NearbyGroup = 'life' | 'leisure' | 'family'
 
 export interface ComplexNearbyCollection {
@@ -165,6 +184,7 @@ export interface ComplexLandingConfig {
     items: ComplexLandingPlanItem[]
   }
   accordion?: ComplexLandingAccordion
+  info_cards?: ComplexLandingInfoSection
   nearby?: ComplexLandingNearby
 }
 
