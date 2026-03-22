@@ -81,6 +81,31 @@ function dedupeImageUrls(urls: string[]): string[] {
   return out
 }
 
+function buildHiResModalImageUrl(url: string): string {
+  const source = url.trim()
+  if (!source) return source
+
+  if (/images\.unsplash\.com/i.test(source)) {
+    try {
+      const parsed = new URL(source)
+      const width = Number(parsed.searchParams.get('w') || '0')
+      if (!Number.isFinite(width) || width < 2400) parsed.searchParams.set('w', '2400')
+      const quality = Number(parsed.searchParams.get('q') || '0')
+      if (!Number.isFinite(quality) || quality < 90) parsed.searchParams.set('q', '95')
+      if (!parsed.searchParams.get('fit')) parsed.searchParams.set('fit', 'max')
+      return parsed.toString()
+    } catch {
+      return source
+    }
+  }
+
+  if (/wikimedia\.org/i.test(source)) {
+    return source.replace(/\/\d+px-/i, '/2400px-')
+  }
+
+  return source
+}
+
 function decodeEscapedUnicode(value: unknown): string {
   if (typeof value !== 'string') return ''
   return value.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex) => {
@@ -1072,12 +1097,16 @@ export default function ComplexPage() {
                     <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/25">
                       {activeInfoCard.gallery_images.length ? (
                         <img
-                          src={activeInfoCard.gallery_images[activeInfoImageIndex] || activeInfoCard.gallery_images[0]}
+                          src={buildHiResModalImageUrl(activeInfoCard.gallery_images[activeInfoImageIndex] || activeInfoCard.gallery_images[0])}
                           alt={activeInfoCard.title}
-                          className="h-[320px] w-full object-cover sm:h-[420px] xl:h-[640px]"
+                          className="h-[320px] w-full object-contain bg-[#021019] sm:h-[420px] xl:h-[640px]"
                         />
                       ) : activeInfoCard.cover_image ? (
-                        <img src={activeInfoCard.cover_image} alt={activeInfoCard.title} className="h-[320px] w-full object-cover sm:h-[420px] xl:h-[640px]" />
+                        <img
+                          src={buildHiResModalImageUrl(activeInfoCard.cover_image)}
+                          alt={activeInfoCard.title}
+                          className="h-[320px] w-full object-contain bg-[#021019] sm:h-[420px] xl:h-[640px]"
+                        />
                       ) : (
                         <div className="flex h-[320px] items-center justify-center text-sm text-white/45 sm:h-[420px] xl:h-[640px]">Изображение не выбрано</div>
                       )}

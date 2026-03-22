@@ -54,10 +54,29 @@ type GeoPoint = {
   lon: number
 }
 
+type AdminSectionKey =
+  | 'info_cards'
+  | 'facts'
+  | 'features'
+  | 'coords'
+  | 'nearby'
+  | 'plans'
+  | 'accordion'
+
 const MAX_NEARBY_IMAGE_VARIANTS = 24
 const MAP_LOOKUP_TIMEOUT_MS = 50000
 const ADMIN_TRACE_STORAGE_KEY = 'rw_debug_admin_nearby'
 const ADMIN_TRACE_QUERY_PARAM = 'debugNearby'
+const ADMIN_COMPLEX_SECTIONS_STORAGE_KEY = 'rw_admin_complex_sections_v1'
+const DEFAULT_SECTION_COLLAPSE_STATE: Record<AdminSectionKey, boolean> = {
+  info_cards: false,
+  facts: false,
+  features: false,
+  coords: false,
+  nearby: false,
+  plans: false,
+  accordion: false,
+}
 let adminTraceSeq = 0
 const MOSCOW_COORD_BOUNDS = {
   minLat: 54.9,
@@ -268,6 +287,7 @@ export default function AdminComplexSettingsPage() {
   const [mapSearchQuery, setMapSearchQuery] = useState('')
   const [mapLookupLoading, setMapLookupLoading] = useState(false)
   const [mapLookupError, setMapLookupError] = useState<string | null>(null)
+  const [collapsedSections, setCollapsedSections] = useState<Record<AdminSectionKey, boolean>>(DEFAULT_SECTION_COLLAPSE_STATE)
 
   const filteredComplexes = useMemo(() => {
     const q = pickerFilter.trim().toLowerCase()
@@ -395,6 +415,31 @@ export default function AdminComplexSettingsPage() {
   }, [loadCustomFeaturePresets])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(ADMIN_COMPLEX_SECTIONS_STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Partial<Record<AdminSectionKey, boolean>>
+      if (!parsed || typeof parsed !== 'object') return
+      setCollapsedSections((prev) => ({
+        ...prev,
+        ...(Object.fromEntries(
+          Object.entries(parsed).filter((entry): entry is [AdminSectionKey, boolean] => (
+            typeof entry[0] === 'string' && typeof entry[1] === 'boolean'
+          ))
+        ) as Partial<Record<AdminSectionKey, boolean>>),
+      }))
+    } catch {
+      // Ignore malformed persisted collapse state.
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(ADMIN_COMPLEX_SECTIONS_STORAGE_KEY, JSON.stringify(collapsedSections))
+  }, [collapsedSections])
+
+  useEffect(() => {
     if (!selectedId) {
       setLoadedHeroImage('')
       return
@@ -428,6 +473,12 @@ export default function AdminComplexSettingsPage() {
     if (id) next.set('complexId', id)
     else next.delete('complexId')
     setSearchParams(next)
+  }
+
+  const isSectionCollapsed = (key: AdminSectionKey): boolean => collapsedSections[key]
+
+  const toggleSectionCollapse = (key: AdminSectionKey) => {
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
   const patchLanding = (updater: (value: ComplexLandingConfig) => ComplexLandingConfig) => {
@@ -1020,7 +1071,7 @@ export default function AdminComplexSettingsPage() {
             </div>
           </div>
 
-          <article className="min-w-0 space-y-6 rounded-2xl border border-slate-900/30 bg-[#05131c] p-4 text-white md:p-6">
+          <article className="min-w-0 flex flex-col gap-6 rounded-2xl border border-slate-900/30 bg-[#05131c] p-4 text-white md:p-6">
             <section className="space-y-3 rounded-2xl border border-white/10 bg-[#081b27] p-3 md:p-4">
               <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="md:col-span-2">
@@ -1176,12 +1227,15 @@ export default function AdminComplexSettingsPage() {
               </div>
             </section>
 
-            <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
+            <section className="order-[90] space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-white">
                   Информация о ЖК: карточки + fullscreen ({infoCardsConfig.items.length}/{MAX_LANDING_INFO_CARDS})
                 </h3>
                 <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => toggleSectionCollapse('info_cards')}>
+                    {isSectionCollapsed('info_cards') ? 'Развернуть' : 'Свернуть'}
+                  </Button>
                   <label className="inline-flex items-center gap-2 text-xs text-white/70">
                     <input
                       type="checkbox"
@@ -1201,27 +1255,29 @@ export default function AdminComplexSettingsPage() {
                 </div>
               </div>
 
-              <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2">
-                <Input
-                  value={infoCardsConfig.title || ''}
-                  className="border-white/20 bg-white/5 text-white"
-                  placeholder="Заголовок секции (опционально)"
-                  onChange={(e) => patchInfoCards((section) => ({ ...section, title: e.target.value }))}
-                />
-                <Input
-                  value={infoCardsConfig.subtitle || ''}
-                  className="border-white/20 bg-white/5 text-white"
-                  placeholder="Подзаголовок секции (опционально)"
-                  onChange={(e) => patchInfoCards((section) => ({ ...section, subtitle: e.target.value }))}
-                />
-              </div>
+              {!isSectionCollapsed('info_cards') && (
+                <>
+                  <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2">
+                    <Input
+                      value={infoCardsConfig.title || ''}
+                      className="border-white/20 bg-white/5 text-white"
+                      placeholder="Заголовок секции (опционально)"
+                      onChange={(e) => patchInfoCards((section) => ({ ...section, title: e.target.value }))}
+                    />
+                    <Input
+                      value={infoCardsConfig.subtitle || ''}
+                      className="border-white/20 bg-white/5 text-white"
+                      placeholder="Подзаголовок секции (опционально)"
+                      onChange={(e) => patchInfoCards((section) => ({ ...section, subtitle: e.target.value }))}
+                    />
+                  </div>
 
-              {!infoCardsConfig.items.length ? (
-                <div className="rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-4 text-xs text-white/55">
-                  Пока нет карточек. Добавьте хотя бы одну, чтобы на витрине появился интерактивный блок с модальным окном.
-                </div>
-              ) : (
-                <div className="space-y-3">
+                  {!infoCardsConfig.items.length ? (
+                    <div className="rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-4 text-xs text-white/55">
+                      Пока нет карточек. Добавьте хотя бы одну, чтобы на витрине появился интерактивный блок с модальным окном.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
                   {infoCardsConfig.items.map((card, index) => {
                     const canMoveUp = index > 0
                     const canMoveDown = index < infoCardsConfig.items.length - 1
@@ -1406,22 +1462,30 @@ export default function AdminComplexSettingsPage() {
                       </article>
                     )
                   })}
-                </div>
+                    </div>
+                  )}
+                </>
               )}
             </section>
 
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-white">Факты и карточки ({draftLanding.facts.length}/{MAX_LANDING_FACTS})</h3>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={addFactCard}
-                  disabled={draftLanding.facts.length >= MAX_LANDING_FACTS}
-                >
-                  + Карточка
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => toggleSectionCollapse('facts')}>
+                    {isSectionCollapsed('facts') ? 'Развернуть' : 'Свернуть'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={addFactCard}
+                    disabled={draftLanding.facts.length >= MAX_LANDING_FACTS}
+                  >
+                    + Карточка
+                  </Button>
+                </div>
               </div>
+              {!isSectionCollapsed('facts') && (
               <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {draftLanding.facts.map((fact, index) => (
                   <article key={fact.id} className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] p-3">
@@ -1534,16 +1598,24 @@ export default function AdminComplexSettingsPage() {
                   </article>
                 ))}
               </div>
+              )}
             </section>
 
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-white">Бегущая лента фишек</h3>
-                <div className="text-xs text-white/55">
-                  Можно создать свою фишку и использовать её для всех ЖК
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-xs text-white/55">
+                    Можно создать свою фишку и использовать её для всех ЖК
+                  </div>
+                  <Button size="sm" variant="secondary" onClick={() => toggleSectionCollapse('features')}>
+                    {isSectionCollapsed('features') ? 'Развернуть' : 'Свернуть'}
+                  </Button>
                 </div>
               </div>
 
+              {!isSectionCollapsed('features') && (
+              <>
               <div className="grid min-w-0 grid-cols-1 gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:grid-cols-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
                 <Input
                   value={newPresetTitle}
@@ -1628,6 +1700,8 @@ export default function AdminComplexSettingsPage() {
                   )
                 })}
               </div>
+              </>
+              )}
 
             </section>
 
@@ -1635,12 +1709,17 @@ export default function AdminComplexSettingsPage() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-white">Координаты ЖК</h3>
                 <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => toggleSectionCollapse('coords')}>
+                    {isSectionCollapsed('coords') ? 'Развернуть' : 'Свернуть'}
+                  </Button>
                   <Button size="sm" variant="secondary" onClick={() => setComplexMapPoint(null)} disabled={!mapPoint}>
                     Сбросить координаты
                   </Button>
                 </div>
               </div>
 
+              {!isSectionCollapsed('coords') && (
+              <>
               <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
                 <div>
                   <label className="mb-1 block text-xs text-white/60">Поиск координат (название + адрес)</label>
@@ -1720,6 +1799,8 @@ export default function AdminComplexSettingsPage() {
               ) : null}
 
               {mapLookupError ? <div className="text-xs text-rose-300">{mapLookupError}</div> : null}
+              </>
+              )}
             </section>
 
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
@@ -1727,8 +1808,13 @@ export default function AdminComplexSettingsPage() {
                 <h3 className="text-sm font-semibold text-white">
                   Места поблизости {nearbyConfig ? `(${nearbyCollections.length} подборок, ${nearbyConfig.candidates.length} мест)` : ''}
                 </h3>
+                <Button size="sm" variant="secondary" onClick={() => toggleSectionCollapse('nearby')}>
+                  {isSectionCollapsed('nearby') ? 'Развернуть' : 'Свернуть'}
+                </Button>
               </div>
 
+              {!isSectionCollapsed('nearby') && (
+              <>
               <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs text-white/60">Заголовок блока</label>
@@ -2006,9 +2092,20 @@ export default function AdminComplexSettingsPage() {
                   })()}
                 </div>
               )}
+              </>
+              )}
             </section>
 
             <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-white">Планировки</h3>
+                <Button size="sm" variant="secondary" onClick={() => toggleSectionCollapse('plans')}>
+                  {isSectionCollapsed('plans') ? 'Развернуть' : 'Свернуть'}
+                </Button>
+              </div>
+
+              {!isSectionCollapsed('plans') && (
+              <>
               <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-xs text-white/60">Заголовок блока планировок</label>
@@ -2085,13 +2182,20 @@ export default function AdminComplexSettingsPage() {
                   </div>
                 )}
               </div>
+              </>
+              )}
             </section>
 
-            <section className="space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
+            <section className="order-[80] space-y-3 rounded-2xl border border-white/10 p-3 md:p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-white">Текстовый блок после планировок</h3>
+                <Button size="sm" variant="secondary" onClick={() => toggleSectionCollapse('accordion')}>
+                  {isSectionCollapsed('accordion') ? 'Развернуть' : 'Свернуть'}
+                </Button>
               </div>
 
+              {!isSectionCollapsed('accordion') && (
+              <>
               <label className="inline-flex items-center gap-2 text-xs text-white/70">
                 <input
                   type="checkbox"
@@ -2179,6 +2283,8 @@ export default function AdminComplexSettingsPage() {
               <div className="text-xs text-white/55">
                 На витрине показываем превью текста с кнопкой «Читать полностью».
               </div>
+              </>
+              )}
             </section>
           </article>
         </>
