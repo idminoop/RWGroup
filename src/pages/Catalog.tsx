@@ -31,6 +31,10 @@ const UI = {
   rentOut: '\u0421\u0434\u0430\u0442\u044c \u043d\u0435\u0434\u0432\u0438\u0436\u0438\u043c\u043e\u0441\u0442\u044c',
 }
 
+function normalizeNumericFilter(value: string | null): string {
+  return (value || '').replace(/\D/g, '')
+}
+
 export default function CatalogPage() {
   const { openLeadModal } = useUiStore()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -41,8 +45,8 @@ export default function CatalogPage() {
   const [filters, setFilters] = useState<FiltersState>(() => ({
     complexId: searchParams.get('complexId') || '',
     bedrooms: searchParams.get('bedrooms') || '',
-    priceMin: searchParams.get('priceMin') || '',
-    priceMax: searchParams.get('priceMax') || '',
+    priceMin: normalizeNumericFilter(searchParams.get('priceMin')),
+    priceMax: normalizeNumericFilter(searchParams.get('priceMax')),
     areaMin: searchParams.get('areaMin') || '',
     areaMax: searchParams.get('areaMax') || '',
     district: searchParams.get('district') || '',

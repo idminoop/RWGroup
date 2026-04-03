@@ -1,0 +1,99 @@
+[
+  {
+    "name": "blocks",
+    "description": "Жилые комплексы",
+    "props_description": {
+      "district": "ID региона",
+      "locations": "ID локаций",
+      "subway": {
+        "subway_id": "ID метро",
+        "distance_time": "Расстояние (в минутах)",
+        "distance_type": "Тип расстояния (1 - пешком, 2 - транспортом)"
+      },
+      "geometry": "Геометка ЖК",
+      "renderer": "Рендеры ЖК",
+      "progress": "Ход строительства",
+      "plan": "Ген. план"
+    },
+    "url": "https://dataout.trendagent.ru/msk/blocks.json",
+    "scope": "all",
+    "exported_at": "2026-03-30T05:03:04.592Z"
+  },
+  {
+    "name": "builders",
+    "description": "Застройщики",
+    "url": "https://dataout.trendagent.ru/msk/builders.json",
+    "scope": "all",
+    "exported_at": "2026-03-30T05:03:04.592Z"
+  },
+  {
+    "name": "regions",
+    "description": "Районы",
+    "url": "https://dataout.trendagent.ru/msk/regions.json",
+    "scope": "all",
+    "exported_at": "2026-03-30T05:03:04.592Z"
+  },
+  {
+    "name": "subways",
+    "description": "Метро",
+    "url": "https://dataout.trendagent.ru/msk/subways.json",
+    "scope": "all",
+    "exported_at": "2026-03-30T05:03:04.592Z"
+  },
+  {
+    "name": "rooms",
+    "description": "Комнатность",
+    "url": "https://dataout.trendagent.ru/msk/rooms.json",
+    "scope": "all",
+    "exported_at": "2026-03-30T05:03:04.592Z"
+  },
+  {
+    "name": "finishings",
+    "description": "Отделка",
+    "url": "https://dataout.trendagent.ru/msk/finishings.json",
+    "scope": "all",
+    "exported_at": "2026-03-30T05:03:04.592Z"
+  },
+  {
+    "name": "buildingtypes",
+    "description": "Технология строительства",
+    "url": "https://dataout.trendagent.ru/msk/buildingtypes.json",
+    "scope": "all",
+    "exported_at": "2026-03-30T05:03:04.592Z"
+  },
+  {
+    "name": "buildings",
+    "description": "Корпуса",
+    "props_description": {
+      "name": "Наименование корпуса",
+      "queue": "Очередь",
+      "address": "Адрес",
+      "deadline": "Срок сдачи",
+      "building_type": "ID Технологии строительства",
+      "mortgages": "ID Ипотечных программ"
+    },
+    "url": "https://dataout.trendagent.ru/msk/buildings.json",
+    "scope": "all",
+    "exported_at": "2026-03-30T05:03:04.592Z"
+  },
+  {
+    "name": "apartments",
+    "description": "Квартиры",
+    "props_description": {
+      "area_given": "Приведённая площадь",
+      "area_total": "Общая площадь",
+      "area_rooms_total": "Жилая площадь",
+      "finishing": "ID Отделки",
+      "floor": "Этаж",
+      "floors": "Этажей в секции",
+      "number": "Номер квартиры (по ПИБ/БТИ)",
+      "plan": "Планировка",
+      "price": "Цена при 100% оплате",
+      "price_base": "Базовая цена",
+      "room": "ID Комнатности"
+    },
+    "url": "https://dataout.trendagent.ru/msk/apartments.json",
+    "scope": "all",
+    "exported_at": "2026-03-30T05:03:04.592Z"
+  }
+]

@@ -856,12 +856,12 @@ export default function ComplexPage() {
                   <div className="text-xs uppercase tracking-[0.1em] text-white/45">Формат</div>
                   <div className="mt-1 text-lg font-semibold text-white">{decodeEscapedUnicode(activePlan?.name || 'Планировка')}</div>
                   <div className="mt-3 text-sm text-white/65">{defaultPlanNote(activePlan)}</div>
-                  <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]">
+                  <div className="group mt-4 overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]">
                     {activePlanImages.length ? (
                       <img
                         src={activePlanImages[activePlanImageIndex] || activePlanImages[0]}
                         alt={activePlan?.name}
-                        className="h-[220px] w-full object-contain p-2 sm:h-[260px]"
+                        className="h-[220px] w-full cursor-zoom-in object-contain p-2 transition-transform duration-300 ease-out group-hover:scale-110 sm:h-[260px]"
                         onError={(e) => { e.currentTarget.style.display = 'none' }}
                       />
                     ) : (

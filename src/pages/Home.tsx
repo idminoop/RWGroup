@@ -282,8 +282,7 @@ export default function Home() {
       </section>
 
       {/* 5. Почему выбирают нас */}
-      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#F8F7F3_0%,_#F3F1EB_100%)] py-16 text-background md:py-24">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,_rgba(15,29,40,0.56)_0%,_rgba(15,29,40,0.22)_46%,_rgba(248,247,243,0)_100%)]" />
+      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#0F1D28_0%,_#F8F7F3_20%,_#F3F1EB_100%)] py-16 text-background md:py-24">
         <div className="pointer-events-none absolute left-[-140px] top-24 h-80 w-80 rounded-full bg-[#DDE6F2]/35" />
         <div className="pointer-events-none absolute right-[-120px] bottom-10 h-72 w-72 rounded-full bg-[#E7DDD0]/30" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
@@ -375,7 +374,7 @@ export default function Home() {
       <Roadmap />
 
       {/* 6. Mission */}
-      <section className="relative w-full overflow-hidden py-16 md:py-32">
+      <section className="relative w-full overflow-hidden bg-[linear-gradient(180deg,_#0F1D28_0%,_#F7F7F7_20%,_#F7F7F7_100%)] py-16 md:py-32">
         {/* Background Image */}
         <div className="absolute inset-0">
           <img
@@ -383,13 +382,8 @@ export default function Home() {
             alt="Mission Background"
             className="h-full w-full object-cover"
           />
-          {/* Soft white gradient overlay to blend with card */}
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,_rgba(248,247,243,0.30)_0%,_rgba(248,247,243,0.22)_52%,_rgba(248,247,243,0.36)_100%)]" />
+          <div className="absolute inset-0 bg-[#F8F7F3]/58" />
         </div>
-        {/* Gradient fade from dark Roadmap at top */}
-        <div className="pointer-events-none absolute top-0 inset-x-0 h-20 bg-[linear-gradient(180deg,_rgba(15,29,40,0.72)_0%,_rgba(15,29,40,0.24)_55%,_rgba(15,29,40,0)_100%)]" />
-        {/* Gradient fade to light Team at bottom */}
-        <div className="pointer-events-none absolute bottom-0 inset-x-0 h-20 bg-[linear-gradient(180deg,_rgba(247,247,247,0)_0%,_rgba(247,247,247,0.62)_100%)]" />
 
         <div className="relative z-10 mx-auto max-w-5xl px-4">
           <div className="rounded-3xl border border-white/50 bg-white/70 p-6 text-center shadow-sm backdrop-blur-md sm:p-8 md:p-16">
@@ -535,11 +529,9 @@ export default function Home() {
         </div>
       </section>
       {/* 10. Стать партнёром */}
-      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#F8F7F3_0%,_#F3F1EB_100%)] py-16 text-background md:py-24">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,_rgba(15,29,40,0.58)_0%,_rgba(15,29,40,0.24)_44%,_rgba(248,247,243,0)_100%)]" />
+      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#0B1821_0%,_#F8F7F3_14%,_#F3F1EB_84%,_#0B1821_100%)] py-16 text-background md:py-24">
         <div className="pointer-events-none absolute right-[-140px] top-12 h-72 w-72 rounded-full bg-[#DDE6F2]/26" />
         <div className="pointer-events-none absolute left-[-120px] bottom-12 h-72 w-72 rounded-full bg-[#E7DDD0]/22" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,_rgba(243,241,235,0)_0%,_rgba(11,24,33,0.42)_78%,_#0B1821_100%)]" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
           <div className="grid items-center gap-12 lg:grid-cols-2">
             <div>

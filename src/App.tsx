@@ -6,10 +6,12 @@ import ComplexPage from '@/pages/Complex'
 import CollectionPage from '@/pages/Collection'
 import PrivacyPage from '@/pages/Privacy'
 import AdminEntry from '@/pages/admin/AdminEntry'
+import ScrollToTop from '@/components/layout/ScrollToTop'
 
 export default function App() {
   return (
     <Router>
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/catalog" element={<CatalogPage />} />

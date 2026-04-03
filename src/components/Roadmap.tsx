@@ -37,8 +37,7 @@ const steps = [
 
 export default function Roadmap() {
   return (
-    <section className="relative overflow-hidden bg-background py-24">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,_rgba(243,241,235,0.88)_0%,_rgba(243,241,235,0.34)_46%,_rgba(15,29,40,0)_100%)]" />
+    <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#F3F1EB_0%,_#0F1D28_22%,_#0F1D28_100%)] py-24">
       <div className="mx-auto max-w-7xl px-4 relative z-10">
         <Heading size="h2" className="text-center mb-16 text-white">
           Дорожная карта сделки с недвижимостью

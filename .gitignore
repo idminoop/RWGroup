@@ -28,3 +28,4 @@ server/data/db.published.json
 server/uploads/*
 nul
 server/data/backups
+feed_mirror

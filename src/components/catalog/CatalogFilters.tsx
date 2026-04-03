@@ -24,6 +24,16 @@ type Props = {
   onChange: (next: FiltersState) => void
 }
 
+function normalizePriceInput(value: string): string {
+  return value.replace(/\D/g, '')
+}
+
+function formatPriceInput(value: string): string {
+  const digits = normalizePriceInput(value)
+  if (!digits) return ''
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+}
+
 const UI = {
   bedrooms: 'Спальни',
   studio: 'Студия',
@@ -75,6 +85,14 @@ export default function CatalogFilters({ tab, value, onChange }: Props) {
     onChange({ ...value, areaMin: min, areaMax: max })
   }
 
+  const handlePriceMinChange = (raw: string) => {
+    onChange({ ...value, priceMin: normalizePriceInput(raw) })
+  }
+
+  const handlePriceMaxChange = (raw: string) => {
+    onChange({ ...value, priceMax: normalizePriceInput(raw) })
+  }
+
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -98,14 +116,14 @@ export default function CatalogFilters({ tab, value, onChange }: Props) {
         <Input
           placeholder={UI.priceFrom}
           inputMode="numeric"
-          value={value.priceMin}
-          onChange={(e) => onChange({ ...value, priceMin: e.target.value })}
+          value={formatPriceInput(value.priceMin)}
+          onChange={(e) => handlePriceMinChange(e.target.value)}
         />
         <Input
           placeholder={UI.priceTo}
           inputMode="numeric"
-          value={value.priceMax}
-          onChange={(e) => onChange({ ...value, priceMax: e.target.value })}
+          value={formatPriceInput(value.priceMax)}
+          onChange={(e) => handlePriceMaxChange(e.target.value)}
         />
 
         <Select value={value.sort} onChange={(e) => onChange({ ...value, sort: e.target.value })}>
