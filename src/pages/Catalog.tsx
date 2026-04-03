@@ -26,6 +26,11 @@ const UI = {
   page: '\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u0430',
   of: '\u0438\u0437',
   empty: '\u041d\u0435\u0442 \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u043e\u0432',
+  emptyInComplex: '\u0412 \u044d\u0442\u043e\u043c \u0416\u041a \u043f\u043e \u0437\u0430\u0434\u0430\u043d\u043d\u044b\u043c \u0444\u0438\u043b\u044c\u0442\u0440\u0430\u043c \u043e\u0431\u044a\u0435\u043a\u0442\u043e\u0432 \u043d\u0435\u0442',
+  inComplexLabel: '\u041f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0435\u043c \u043f\u043b\u0430\u043d\u0438\u0440\u043e\u0432\u043a\u0438 \u0432 \u0416\u041a',
+  inComplexLabelFallback: '\u041f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0435\u043c \u043f\u043b\u0430\u043d\u0438\u0440\u043e\u0432\u043a\u0438 \u0432 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u043e\u043c \u0416\u041a',
+  resetComplex: '\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0432\u0441\u0435 \u0416\u041a',
+  objectsInComplex: '\u041f\u043b\u0430\u043d\u0438\u0440\u043e\u0432\u043a\u0438 \u0432 \u0412\u044b\u0431\u0440\u0430\u043d\u043d\u043e\u043c \u0416\u041a',
   buy: '\u041a\u0443\u043f\u0438\u0442\u044c \u043d\u0435\u0434\u0432\u0438\u0436\u0438\u043c\u043e\u0441\u0442\u044c',
   sell: '\u041f\u0440\u043e\u0434\u0430\u0442\u044c \u043d\u0435\u0434\u0432\u0438\u0436\u0438\u043c\u043e\u0441\u0442\u044c',
   rentOut: '\u0421\u0434\u0430\u0442\u044c \u043d\u0435\u0434\u0432\u0438\u0436\u0438\u043c\u043e\u0441\u0442\u044c',
@@ -136,6 +141,12 @@ export default function CatalogPage() {
     return props
   }, [data?.properties, filters.sort])
 
+  const isComplexDrilldown = tab === 'newbuild' && Boolean(filters.complexId)
+  const selectedComplexTitle = useMemo(() => {
+    if (!filters.complexId) return ''
+    return data?.complexes?.find((c) => c.id === filters.complexId)?.title || ''
+  }, [filters.complexId, data?.complexes])
+
   const totalPages = Math.max(1, Math.ceil((data?.total || 0) / limit))
 
   useEffect(() => {
@@ -173,7 +184,24 @@ export default function CatalogPage() {
               <div className="rounded-xl border border-rose-500/40 bg-rose-900/20 p-4 text-sm text-rose-200">{error}</div>
             ) : (
               <div className="space-y-8">
-                {tab === 'newbuild' && data?.complexes?.length ? (
+                {isComplexDrilldown ? (
+                  <div className="flex flex-col gap-3 rounded-xl border border-[#2A4050] bg-[#0B1F2E] px-4 py-3 text-sm text-[#D3DEE4] sm:flex-row sm:items-center sm:justify-between">
+                    <span>
+                      {selectedComplexTitle
+                        ? `${UI.inComplexLabel} «${selectedComplexTitle}»`
+                        : UI.inComplexLabelFallback}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setFilters((prev) => ({ ...prev, complexId: '' }))}
+                    >
+                      {UI.resetComplex}
+                    </Button>
+                  </div>
+                ) : null}
+
+                {tab === 'newbuild' && !isComplexDrilldown && data?.complexes?.length ? (
                   <section>
                     <Heading size="h4" className="mb-3 text-white">
                       {UI.complexes}
@@ -188,7 +216,7 @@ export default function CatalogPage() {
 
                 <section>
                   <Heading size="h4" className="mb-3 text-white">
-                    {UI.objects}
+                    {isComplexDrilldown ? UI.objectsInComplex : UI.objects}
                   </Heading>
                   {sortedProperties.length ? (
                     <div className="space-y-4">
@@ -216,7 +244,9 @@ export default function CatalogPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{UI.empty}</div>
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                      {isComplexDrilldown ? UI.emptyInComplex : UI.empty}
+                    </div>
                   )}
                 </section>
               </div>
