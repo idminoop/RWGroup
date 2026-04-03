@@ -7,8 +7,12 @@ export default function Footer() {
       <div className="mx-auto w-full max-w-7xl px-4 py-12 md:py-16">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <div className="mb-4 flex items-center gap-2">
-               <img src="/rwgroup.svg" alt="RWgroup" className="h-14 w-auto invert md:h-16" />
+            <div className="mb-5 flex items-center gap-2">
+               <img
+                 src="/rwgroup.svg"
+                 alt="RWgroup"
+                 className="h-20 w-auto object-contain invert drop-shadow-[0_2px_8px_rgba(255,255,255,0.18)] md:h-24"
+               />
             </div>
             <Text size="sm" className="text-gray-400">Агентство элитной недвижимости</Text>
             <div className="mt-6">

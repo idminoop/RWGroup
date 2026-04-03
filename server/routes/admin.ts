@@ -7,7 +7,15 @@ import {
   requireAdminAnyPermission,
   requireAdminPermission,
 } from '../middleware/adminAuth.js'
-import { getPublishStatus, publishDraft, withDb, withDbRead, readDb } from '../lib/storage.js'
+import {
+  getPublishStatus,
+  publishDraft,
+  readDb,
+  readPublishedDb,
+  withDb,
+  withDbRead,
+  writePublishedDb,
+} from '../lib/storage.js'
 import { newId, slugify } from '../lib/ids.js'
 import { resolveCollectionItems } from '../lib/collections.js'
 import {
@@ -1701,18 +1709,25 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
     return
   }
 
+  let nextStatus: 'active' | 'hidden' | 'archived' | undefined
+  let touchedUpdatedAt: string | undefined
+
   const ok = withDb((db) => {
     if (type === 'property') {
       const item = db.properties.find(p => p.id === id)
       if (!item) return false
       Object.assign(item, parsed.data)
       item.updated_at = new Date().toISOString()
+      touchedUpdatedAt = item.updated_at
+      nextStatus = parsed.data.status
       return true
     } else if (type === 'complex') {
       const item = db.complexes.find(c => c.id === id)
       if (!item) return false
       Object.assign(item, parsed.data)
       item.updated_at = new Date().toISOString()
+      touchedUpdatedAt = item.updated_at
+      nextStatus = parsed.data.status
       return true
     }
     return false
@@ -1722,6 +1737,31 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
     res.status(404).json({ success: false, error: 'Not found' })
     return
   }
+
+  // Keep visibility changes in sync for public API without publishing unrelated drafts.
+  if (nextStatus) {
+    try {
+      const published = readPublishedDb()
+      if (type === 'property') {
+        const publishedItem = published.properties.find((p) => p.id === id)
+        if (publishedItem) {
+          publishedItem.status = nextStatus
+          if (touchedUpdatedAt) publishedItem.updated_at = touchedUpdatedAt
+          writePublishedDb(published)
+        }
+      } else if (type === 'complex') {
+        const publishedItem = published.complexes.find((c) => c.id === id)
+        if (publishedItem) {
+          publishedItem.status = nextStatus
+          if (touchedUpdatedAt) publishedItem.updated_at = touchedUpdatedAt
+          writePublishedDb(published)
+        }
+      }
+    } catch (error) {
+      console.warn(`[admin] Failed to sync published status for ${type}:${id}`, error)
+    }
+  }
+
   const entityType = type === 'property' ? 'property' : 'complex' as const
   addAuditLog(req.admin!.id, req.admin!.login, 'update', entityType, id, `Обновлён ${type === 'property' ? 'лот' : 'ЖК'} (id: ${id})`)
   res.json({ success: true })
