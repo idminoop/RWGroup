@@ -1710,7 +1710,10 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
   }
 
   let nextStatus: 'active' | 'hidden' | 'archived' | undefined
+  let previousStatus: 'active' | 'hidden' | 'archived' | undefined
   let touchedUpdatedAt: string | undefined
+  let touchedComplexExternalId: string | undefined
+  let restoredLinkedDraftProperties = 0
 
   const ok = withDb((db) => {
     if (type === 'property') {
@@ -1724,10 +1727,25 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
     } else if (type === 'complex') {
       const item = db.complexes.find(c => c.id === id)
       if (!item) return false
+      previousStatus = item.status
       Object.assign(item, parsed.data)
       item.updated_at = new Date().toISOString()
       touchedUpdatedAt = item.updated_at
       nextStatus = parsed.data.status
+
+      touchedComplexExternalId = item.external_id
+      const shouldRestoreLinkedProperties = nextStatus === 'active' && previousStatus !== 'active'
+      if (shouldRestoreLinkedProperties) {
+        for (const property of db.properties) {
+          const linkedById = property.complex_id === item.id
+          const linkedByExternal = Boolean(item.external_id) && property.complex_external_id === item.external_id
+          if (!linkedById && !linkedByExternal) continue
+          if (property.status === 'active') continue
+          property.status = 'active'
+          property.updated_at = item.updated_at
+          restoredLinkedDraftProperties += 1
+        }
+      }
       return true
     }
     return false
@@ -1742,28 +1760,48 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
   if (nextStatus) {
     try {
       const published = readPublishedDb()
+      let publishedChanged = false
       if (type === 'property') {
         const publishedItem = published.properties.find((p) => p.id === id)
         if (publishedItem) {
           publishedItem.status = nextStatus
           if (touchedUpdatedAt) publishedItem.updated_at = touchedUpdatedAt
-          writePublishedDb(published)
+          publishedChanged = true
         }
       } else if (type === 'complex') {
         const publishedItem = published.complexes.find((c) => c.id === id)
         if (publishedItem) {
           publishedItem.status = nextStatus
           if (touchedUpdatedAt) publishedItem.updated_at = touchedUpdatedAt
-          writePublishedDb(published)
+          publishedChanged = true
+        }
+
+        const shouldRestoreLinkedPublishedProperties = nextStatus === 'active' && previousStatus !== 'active'
+        if (shouldRestoreLinkedPublishedProperties) {
+          const restoreTimestamp = touchedUpdatedAt || new Date().toISOString()
+          for (const property of published.properties) {
+            const linkedById = property.complex_id === id
+            const linkedByExternal = Boolean(touchedComplexExternalId) && property.complex_external_id === touchedComplexExternalId
+            if (!linkedById && !linkedByExternal) continue
+            if (property.status === 'active') continue
+            property.status = 'active'
+            property.updated_at = restoreTimestamp
+            publishedChanged = true
+          }
         }
       }
+
+      if (publishedChanged) writePublishedDb(published)
     } catch (error) {
       console.warn(`[admin] Failed to sync published status for ${type}:${id}`, error)
     }
   }
 
   const entityType = type === 'property' ? 'property' : 'complex' as const
-  addAuditLog(req.admin!.id, req.admin!.login, 'update', entityType, id, `Обновлён ${type === 'property' ? 'лот' : 'ЖК'} (id: ${id})`)
+  const restoreDetails = type === 'complex' && restoredLinkedDraftProperties > 0
+    ? `; restored linked properties=${restoredLinkedDraftProperties}`
+    : ''
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', entityType, id, `Обновлён ${type === 'property' ? 'лот' : 'ЖК'} (id: ${id})${restoreDetails}`)
   res.json({ success: true })
 })
 
