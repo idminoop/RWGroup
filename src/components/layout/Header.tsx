@@ -86,7 +86,7 @@ export default function Header() {
       <Drawer isOpen={isMenuOpen} onClose={() => toggleMenu(false)} side="right">
         <div className="flex h-full flex-col gap-8 pt-8">
           <div className="px-2">
-            <img src="/rwgroup.svg" alt="RWgroup" className="h-16 w-auto object-contain invert" />
+            <img src="/rwgroup.svg" alt="RWgroup" className="h-24 w-auto object-contain invert" />
           </div>
 
           <nav className="flex flex-col gap-4">

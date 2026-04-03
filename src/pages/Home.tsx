@@ -382,14 +382,14 @@ export default function Home() {
             alt="Mission Background"
             className="h-full w-full object-cover"
           />
-          <div className="absolute inset-0 bg-[#0B1821]/62" />
+          <div className="absolute inset-0 bg-[#0B1821]/68" />
         </div>
 
         <div className="relative z-10 mx-auto max-w-5xl px-4">
-          <div className="rounded-3xl border border-[#E9DCC6]/70 bg-[#FCFAF5]/88 p-6 text-center shadow-sm backdrop-blur-md sm:p-8 md:p-16">
-            <Heading size="h6" className="mb-6 text-sm font-bold uppercase tracking-[0.2em] text-gray-500">Миссия</Heading>
+          <div className="rounded-3xl border border-white/45 bg-[#F8F4EC]/96 p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-8 md:p-16">
+            <Heading size="h6" className="mb-6 text-sm font-bold uppercase tracking-[0.2em] text-[#8D734C]">Миссия</Heading>
             
-            <Text className="mx-auto max-w-4xl text-lg font-light leading-snug text-slate-800 sm:text-xl md:text-3xl lg:text-4xl">
+            <Text className="mx-auto max-w-4xl text-lg font-normal leading-[1.25] text-[#1D2A38] sm:text-xl md:text-3xl lg:text-4xl">
               «Мы не просто продаем квадратные метры. Мы помогаем людям найти дом, где они будут счастливы, и создаем безопасное пространство для принятия важных решений»
             </Text>
             
