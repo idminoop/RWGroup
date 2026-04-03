@@ -37,7 +37,7 @@ const steps = [
 
 export default function Roadmap() {
   return (
-    <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#F3F1EB_0%,_#0F1D28_22%,_#0F1D28_100%)] py-24">
+    <section className="relative overflow-hidden bg-[#0F1D28] py-24">
       <div className="mx-auto max-w-7xl px-4 relative z-10">
         <Heading size="h2" className="text-center mb-16 text-white">
           Дорожная карта сделки с недвижимостью
@@ -45,7 +45,7 @@ export default function Roadmap() {
 
         <div className="relative">
           {/* Connecting Line (Desktop) */}
-          <div className="hidden md:block absolute top-6 left-0 w-full h-1 bg-gradient-to-r from-secondary via-primary to-accent opacity-30" />
+          <div className="hidden md:block absolute top-6 left-0 w-full h-1 bg-primary/30" />
           
           <div className="grid grid-cols-1 md:grid-cols-5 gap-10 md:gap-4 relative">
             {steps.map((step) => (

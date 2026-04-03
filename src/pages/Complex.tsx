@@ -176,6 +176,8 @@ export default function ComplexPage() {
   const [draftLanding, setDraftLanding] = useState<ComplexLandingConfig | null>(null)
   const [activePlanId, setActivePlanId] = useState<string>('')
   const [activePlanImageIndex, setActivePlanImageIndex] = useState(0)
+  const [planGalleryOpen, setPlanGalleryOpen] = useState(false)
+  const [planGalleryIndex, setPlanGalleryIndex] = useState(0)
   const [isAccordionExpanded, setIsAccordionExpanded] = useState(false)
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false)
   const [activeInfoCardId, setActiveInfoCardId] = useState('')
@@ -404,6 +406,8 @@ export default function ComplexPage() {
 
   useEffect(() => {
     setActivePlanImageIndex(0)
+    setPlanGalleryOpen(false)
+    setPlanGalleryIndex(0)
   }, [activePlan?.id])
 
   useEffect(() => {
@@ -594,6 +598,13 @@ export default function ComplexPage() {
   const openGallery = (index = 0) => {
     setGalleryIndex(index)
     setGalleryOpen(true)
+  }
+
+  const openPlanGallery = (index = 0) => {
+    if (!activePlanImages.length) return
+    const safeIndex = Math.min(Math.max(index, 0), activePlanImages.length - 1)
+    setPlanGalleryIndex(safeIndex)
+    setPlanGalleryOpen(true)
   }
 
   const openInfoModal = (cardId: string) => {
@@ -862,6 +873,7 @@ export default function ComplexPage() {
                         src={activePlanImages[activePlanImageIndex] || activePlanImages[0]}
                         alt={activePlan?.name}
                         className="h-[220px] w-full cursor-zoom-in object-contain p-2 transition-transform duration-300 ease-out group-hover:scale-110 sm:h-[260px]"
+                        onClick={() => openPlanGallery(activePlanImageIndex)}
                         onError={(e) => { e.currentTarget.style.display = 'none' }}
                       />
                     ) : (
@@ -1161,6 +1173,13 @@ export default function ComplexPage() {
             open={galleryOpen}
             onClose={() => setGalleryOpen(false)}
             title={c.title}
+          />
+          <ImageGallery
+            images={activePlanImages}
+            initialIndex={planGalleryIndex}
+            open={planGalleryOpen}
+            onClose={() => setPlanGalleryOpen(false)}
+            title={`${c.title} — ${decodeEscapedUnicode(activePlan?.name || UI.plansFallback)}`}
           />
           </>
         )}

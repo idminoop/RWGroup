@@ -89,11 +89,11 @@ export default function Home() {
       <section className="relative h-[calc(100svh-72px)] min-h-[520px] w-full overflow-hidden bg-background md:h-[calc(100vh-80px)] md:min-h-[620px]">
         <div className="absolute inset-0">
           <img
-            src="/hero-bg.jpg"
+            src="/hero-bg.png"
             alt="Luxury Real Estate"
             className="h-full w-full max-h-full max-w-full object-cover object-[70%_8%] opacity-60 sm:object-[72%_10%] lg:object-[74%_12%]"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-background/95 via-background/55 to-background/15 lg:via-background/35" />
+          <div className="absolute inset-0 bg-background/72" />
         </div>
 
         <div className="relative mx-auto flex h-full w-full max-w-[1400px] flex-col justify-center px-4 pb-12 pt-8 sm:px-6 sm:pt-10 md:px-8 md:pb-20">
@@ -192,7 +192,7 @@ export default function Home() {
                   alt="Купить недвижимость"
                   className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
-                <div className="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
+                <div className="absolute inset-0 bg-background/55" />
               </div>
             </div>
 
@@ -215,7 +215,7 @@ export default function Home() {
                   alt="Продать недвижимость"
                   className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
-                <div className="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
+                <div className="absolute inset-0 bg-background/55" />
               </div>
             </div>
 
@@ -238,7 +238,7 @@ export default function Home() {
                   alt="Сдать недвижимость"
                   className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
-                <div className="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
+                <div className="absolute inset-0 bg-background/55" />
               </div>
             </div>
           </div>
@@ -282,7 +282,7 @@ export default function Home() {
       </section>
 
       {/* 5. Почему выбирают нас */}
-      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#0F1D28_0%,_#F8F7F3_20%,_#F3F1EB_100%)] py-16 text-background md:py-24">
+      <section className="relative overflow-hidden bg-[#F3F1EB] py-16 text-background md:py-24">
         <div className="pointer-events-none absolute left-[-140px] top-24 h-80 w-80 rounded-full bg-[#DDE6F2]/35" />
         <div className="pointer-events-none absolute right-[-120px] bottom-10 h-72 w-72 rounded-full bg-[#E7DDD0]/30" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
@@ -311,7 +311,7 @@ export default function Home() {
       </section>
 
       {/* 6. Стоимость услуг */}
-      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#F8F7F3_0%,_#F3F1EB_100%)] py-16 text-background md:py-24">
+      <section className="relative overflow-hidden bg-[#F3F1EB] py-16 text-background md:py-24">
         <div className="pointer-events-none absolute right-[-140px] top-12 h-80 w-80 rounded-full bg-[#DDE6F2]/28" />
         <div className="pointer-events-none absolute left-[-120px] bottom-12 h-72 w-72 rounded-full bg-[#E7DDD0]/24" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
@@ -374,7 +374,7 @@ export default function Home() {
       <Roadmap />
 
       {/* 6. Mission */}
-      <section className="relative w-full overflow-hidden bg-[linear-gradient(180deg,_#0F1D28_0%,_#F7F7F7_20%,_#F7F7F7_100%)] py-16 md:py-32">
+      <section className="relative w-full overflow-hidden bg-[#F7F7F7] py-16 md:py-32">
         {/* Background Image */}
         <div className="absolute inset-0">
           <img
@@ -406,7 +406,7 @@ export default function Home() {
       </section>
 
       {/* 7. Team */}
-      <section id="team" className="relative overflow-hidden bg-[linear-gradient(180deg,_#F7F7F7_0%,_#EEEAE0_64%,_#172530_100%)] py-16 text-[#0B1115] md:py-24">
+      <section id="team" className="relative overflow-hidden bg-[#EEEAE0] py-16 text-[#0B1115] md:py-24">
         <div className="pointer-events-none absolute left-[-120px] top-10 h-72 w-72 rounded-full bg-[#DDE6F2]/22" />
         <div className="pointer-events-none absolute right-[-120px] bottom-10 h-72 w-72 rounded-full bg-[#E6DCCB]/18" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
@@ -449,7 +449,7 @@ export default function Home() {
         </div>
       </section>
       {/* 9. Отзывы */}
-      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#0F1D28_0%,_#0B1821_100%)] py-16 md:py-24">
+      <section className="relative overflow-hidden bg-[#0B1821] py-16 md:py-24">
         <div className="pointer-events-none absolute right-[-140px] top-16 h-80 w-80 rounded-full bg-[#1D3446]/28" />
         <div className="pointer-events-none absolute left-[-120px] bottom-14 h-72 w-72 rounded-full bg-[#243C52]/18" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
@@ -529,7 +529,7 @@ export default function Home() {
         </div>
       </section>
       {/* 10. Стать партнёром */}
-      <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#0B1821_0%,_#F8F7F3_14%,_#F3F1EB_84%,_#0B1821_100%)] py-16 text-background md:py-24">
+      <section className="relative overflow-hidden bg-[#F3F1EB] py-16 text-background md:py-24">
         <div className="pointer-events-none absolute right-[-140px] top-12 h-72 w-72 rounded-full bg-[#DDE6F2]/26" />
         <div className="pointer-events-none absolute left-[-120px] bottom-12 h-72 w-72 rounded-full bg-[#E7DDD0]/22" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
