@@ -286,8 +286,8 @@ export default function Home() {
         <div className="pointer-events-none absolute left-[-140px] top-24 h-80 w-80 rounded-full bg-[#1B3143]/35" />
         <div className="pointer-events-none absolute right-[-120px] bottom-10 h-72 w-72 rounded-full bg-[#22394C]/30" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
-          <Heading size="h2">Почему выбирают нас</Heading>
-          <Text className="mt-2 mb-12 text-gray-500">Мы делаем всё, чтобы каждая сделка прошла безупречно</Text>
+          <Heading size="h2" className="text-white">Почему выбирают нас</Heading>
+          <Text className="mt-2 mb-12 text-slate-300">Мы делаем всё, чтобы каждая сделка прошла безупречно</Text>
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {[
@@ -302,7 +302,7 @@ export default function Home() {
                 <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-lg bg-white/10 text-[#D8C4A3]">
                   <item.icon className="h-6 w-6" />
                 </div>
-                <Heading size="h4">{item.title}</Heading>
+                <Heading size="h4" className="text-white">{item.title}</Heading>
                 <Text size="sm" className="mt-2 text-slate-300">{item.desc}</Text>
               </div>
             ))}
@@ -535,8 +535,8 @@ export default function Home() {
         <div className="relative z-10 mx-auto max-w-7xl px-4">
           <div className="grid items-center gap-12 lg:grid-cols-2">
             <div>
-              <Heading size="h2">Стать партнёром</Heading>
-              <Text size="lg" className="mt-4 max-w-lg text-gray-600">
+              <Heading size="h2" className="text-white">Стать партнёром</Heading>
+              <Text size="lg" className="mt-4 max-w-lg text-slate-300">
                 Мы открыты к сотрудничеству с застройщиками, агентствами и частными риэлторами. Вместе мы сможем предложить клиентам лучший сервис.
               </Text>
               <div className="mt-8 space-y-4">
@@ -554,7 +554,7 @@ export default function Home() {
             </div>
 
             <div className="rounded-2xl border border-white/15 bg-white/[0.06] p-8 shadow-sm">
-              <Heading size="h4" className="mb-6">Оставьте заявку</Heading>
+              <Heading size="h4" className="mb-6 text-white">Оставьте заявку</Heading>
               <div className="space-y-4">
                 <Button
                   variant="default"
