@@ -1,0 +1,41 @@
+PAGES: 1
+
+===== PAGE 1 =====
+•Выдать доступ / Забрать доступ
+•IP Номер - список ip
+Когда вы получите доступ
+Все доступы выдаются в пятницу после 15 часов по МСК. К пятнице до 15.00 должна быть 
+предоставлена вся информация для получения доступа. 
+Исключения составляют дни, когда пятница является календарным выходным днем, в этом 
+случае доступы будут выданы на день ранее
+2. Ссылки
+Ссылки на фиды (будут доступны после предоставления доступа):
+СПБ: 
+МСК: 
+КРД: 
+НСК: 
+РСТ: 
+КЗН: 
+ЕКБ: 
+КРЫМ: 
+https://dataout.trendagent.ru/spb/about.json
+https://dataout.trendagent.ru/msk/about.json
+https://dataout.trendagent.ru/krasnodar/about.json
+https://dataout.trendagent.ru/nsk/about.json
+https://dataout.trendagent.ru/rostov/about.json
+https://dataout.trendagent.ru/kzn/about.json
+https://dataout.trendagent.ru/ekb/about.json
+https://dataout.trendagent.ru/crimea/about.json
+Технические вопросы (все ссылки на спб)
+1. Как связывать объекты между собой
+Данные по квартирам находятся в фиде 
+https://dataout.trendagent.ru/spb/apartments.json
+Связать их с ЖК из фида  можно по block_id
+https://dataout.trendagent.ru/spb/blocks.json
+2. Какую информацию можно использовать для вывода на карту
+Координаты ЖК есть в фиде с ЖК 
+https://dataout.trendagent.ru/spb/blocks.json
+Координаты корпусов есть в фиде с корпусами 
+https://dataout.trendagent.ru/spb/buildings.jsonFAQ. Фид для сайта АН Get Notion free
+Notion uses cookies. See  for details. Cookie Notice Accept allReject all
+

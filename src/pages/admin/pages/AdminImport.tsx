@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Button from '@/components/ui/Button'
 import { useNavigate } from 'react-router-dom'
 import Select from '@/components/ui/Select'
@@ -86,6 +86,50 @@ type TrendAgentComplexOption = {
 
 const TRENDAGENT_PAGE_SIZE = 50
 
+type ApiEnvelope<T> = {
+  success?: boolean
+  data?: T
+  error?: string
+  details?: string
+}
+
+function normalizeImportErrorMessage(message: string): string {
+  const text = message.trim()
+  const lowered = text.toLowerCase()
+  if (lowered.includes('source url must point to about.json')) {
+    return 'Для TrendAgent укажите URL на about.json (или папку, где лежит about.json).'
+  }
+  if (lowered.includes('import already running for this source')) {
+    return 'Импорт уже выполняется для этого источника. Подождите завершения и попробуйте снова.'
+  }
+  if (lowered.includes('unexpected token') || lowered.includes('not valid json')) {
+    return 'Сервер вернул не JSON (похоже HTML-страницу). Проверьте прокси и backend-логи.'
+  }
+  return text
+}
+
+async function parseApiEnvelope<T>(res: Response): Promise<ApiEnvelope<T>> {
+  const contentType = (res.headers.get('content-type') || '').toLowerCase()
+  if (contentType.includes('application/json')) {
+    try {
+      return await res.json() as ApiEnvelope<T>
+    } catch {
+      return { success: false, error: `Некорректный JSON ответа сервера (${res.status} ${res.statusText})` }
+    }
+  }
+
+  try {
+    const text = await res.text()
+    const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 220)
+    return {
+      success: false,
+      error: `Сервер вернул не JSON (${res.status} ${res.statusText})${snippet ? `: ${snippet}` : ''}`,
+    }
+  } catch {
+    return { success: false, error: `Сервер вернул не JSON (${res.status} ${res.statusText})` }
+  }
+}
+
 export default function AdminImportPage() {
   const navigate = useNavigate()
   const token = useUiStore((s) => s.adminToken)
@@ -159,6 +203,8 @@ export default function AdminImportPage() {
   const [trendagentPage, setTrendagentPage] = useState(1)
   const [trendagentTotal, setTrendagentTotal] = useState(0)
   const [trendagentTotalPages, setTrendagentTotalPages] = useState(1)
+  const trendagentListInFlightRef = useRef(false)
+  const trendagentImportInFlightRef = useRef(false)
 
   // Edit Preview State
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -479,12 +525,18 @@ export default function AdminImportPage() {
   // --- Import Functions ---
 
   const loadTrendagentComplexes = async (forceRefresh = false, pageOverride?: number, queryOverride?: string) => {
+    if (trendagentListInFlightRef.current) return
     if (!activeImportSource?.id) {
       setTrendagentError('Выберите источник.')
       return
     }
+    if (!activeImportSource.url || !isTrendAgentAboutSource) {
+      setTrendagentError('Для выбора ЖК нужен источник TrendAgent с URL на about.json.')
+      return
+    }
     const page = Math.max(1, pageOverride || trendagentPage || 1)
     const query = (queryOverride ?? trendagentQuery).trim()
+    trendagentListInFlightRef.current = true
     setTrendagentLoadedSourceId(activeImportSource.id)
     setTrendagentLoading(true)
     setTrendagentError(null)
@@ -503,13 +555,10 @@ export default function AdminImportPage() {
           query,
         }),
       })
-      const json = await res.json() as {
-        success: boolean
-        error?: string
-        details?: string
-        data?: { items?: TrendAgentComplexOption[]; total?: number; page?: number; total_pages?: number }
+      const json = await parseApiEnvelope<{ items?: TrendAgentComplexOption[]; total?: number; page?: number; total_pages?: number }>(res)
+      if (!res.ok || json.success !== true) {
+        throw new Error(normalizeImportErrorMessage(json.details || json.error || 'Не удалось загрузить список ЖК'))
       }
-      if (!res.ok || !json.success) throw new Error(json.details || json.error || 'Не удалось загрузить список ЖК')
       const items = Array.isArray(json.data?.items) ? json.data!.items : []
       setTrendagentOptions(items)
       setTrendagentTotal(Number(json.data?.total || 0))
@@ -517,21 +566,32 @@ export default function AdminImportPage() {
       setTrendagentTotalPages(Math.max(1, Number(json.data?.total_pages || 1)))
       setTrendagentLoadedSourceId(activeImportSource.id)
     } catch (e) {
-      setTrendagentError(e instanceof Error ? e.message : 'Ошибка загрузки ЖК')
+      const message = e instanceof Error ? e.message : 'Ошибка загрузки ЖК'
+      setTrendagentError(normalizeImportErrorMessage(message))
     } finally {
+      trendagentListInFlightRef.current = false
       setTrendagentLoading(false)
     }
   }
 
   const runTrendagentSelectedImport = async () => {
+    if (trendagentImportInFlightRef.current) {
+      setTrendagentError('Импорт уже выполняется для этого источника. Подождите завершения и попробуйте снова.')
+      return
+    }
     if (!activeImportSource?.id) {
       setError('Выберите источник')
+      return
+    }
+    if (!activeImportSource.url || !isTrendAgentAboutSource) {
+      setTrendagentError('Для импорта выбранных ЖК нужен источник TrendAgent с URL на about.json.')
       return
     }
     if (trendagentSelectedIds.length === 0) {
       setTrendagentError('Выберите хотя бы один ЖК')
       return
     }
+    trendagentImportInFlightRef.current = true
     setTrendagentLoading(true)
     setTrendagentError(null)
     setError(null)
@@ -549,21 +609,20 @@ export default function AdminImportPage() {
           hide_invalid: hideInvalid,
         }),
       })
-      const json = await res.json() as {
-        success: boolean
-        error?: string
-        details?: string
-        data?: { target_complex_id?: string }
+      const json = await parseApiEnvelope<{ target_complex_id?: string }>(res)
+      if (!res.ok || json.success !== true) {
+        throw new Error(normalizeImportErrorMessage(json.details || json.error || 'Import failed'))
       }
-      if (!res.ok || !json.success) throw new Error(json.details || json.error || 'Import failed')
       await load()
       const targetComplexId = json.data?.target_complex_id
       if (entity === 'complex' && targetComplexId) {
         navigate(`/admin/complex-settings?complexId=${encodeURIComponent(targetComplexId)}`)
       }
     } catch (e) {
-      setTrendagentError(e instanceof Error ? e.message : 'Ошибка импорта выбранных ЖК')
+      const message = e instanceof Error ? e.message : 'Ошибка импорта выбранных ЖК'
+      setTrendagentError(normalizeImportErrorMessage(message))
     } finally {
+      trendagentImportInFlightRef.current = false
       setTrendagentLoading(false)
     }
   }
@@ -617,14 +676,16 @@ export default function AdminImportPage() {
         body: fd,
       })
 
-      const json = await res.json()
-      if (!res.ok || !json.success) throw new Error(json.details || json.error || 'Preview failed')
+      const json = await parseApiEnvelope<ImportPreview>(res)
+      if (!res.ok || json.success !== true) {
+        throw new Error(normalizeImportErrorMessage(json.details || json.error || 'Preview failed'))
+      }
 
       setPreview(json.data)
       setViewMode('visual')
       setHideInvalid(true)
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Ошибка'
+      const message = normalizeImportErrorMessage(e instanceof Error ? e.message : 'Ошибка')
       setError(message)
       if (message.includes('TrendAgent about.json')) {
         setIsPreviewMode(false)
@@ -636,7 +697,7 @@ export default function AdminImportPage() {
       setLoading(false)
       void load()
     }
-  }, [entity, token, load])
+  }, [entity, token, load, trendagentQuery])
 
   const handleStartImport = useCallback((feed: FeedSource, autoPreview = false) => {
     selectFeed(feed)
@@ -724,13 +785,10 @@ export default function AdminImportPage() {
         headers: { 'x-admin-token': token || '' },
         body: fd,
       })
-      const json = await res.json() as {
-        success: boolean
-        error?: string
-        details?: string
-        data?: { target_complex_id?: string }
+      const json = await parseApiEnvelope<{ target_complex_id?: string }>(res)
+      if (!res.ok || json.success !== true) {
+        throw new Error(normalizeImportErrorMessage(json.details || json.error || 'Import failed'))
       }
-      if (!res.ok || !json.success) throw new Error(json.details || json.error || 'Import failed')
       const importedEntity = previewContext?.entity || entity
       const responseTargetComplexId = json.data?.target_complex_id
 
@@ -757,7 +815,7 @@ export default function AdminImportPage() {
         navigate(`/admin/complex-settings?complexId=${encodeURIComponent(targetComplexId)}`)
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ошибка')
+      setError(normalizeImportErrorMessage(e instanceof Error ? e.message : 'Ошибка'))
     } finally {
       setLoading(false)
       setPendingSourceIds((prev) => {
@@ -1791,6 +1849,7 @@ export default function AdminImportPage() {
     </div>
   )
 }
+
 
 
 

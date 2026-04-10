@@ -66,6 +66,7 @@ import * as XLSX from 'xlsx'
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } })
 const importLocks = new Map<string, number>()
+const IMPORT_LOCK_STALE_MS = 15 * 60 * 1000
 const DEFAULT_FEED_REFRESH_INTERVAL_HOURS = 24
 const TRENDAGENT_CACHE_TTL_MS = 5 * 60 * 1000
 const TRENDAGENT_DEFAULT_TIMEOUT_MS = 120_000
@@ -104,6 +105,16 @@ type TrendAgentComplexOption = {
 type TrendAgentDatasetMode = 'full' | 'list'
 
 const trendAgentDatasetCache = new Map<string, { loadedAt: number; dataset: TrendAgentDataset }>()
+
+function hasActiveImportLock(lockKey: string): boolean {
+  const startedAt = importLocks.get(lockKey)
+  if (!startedAt) return false
+  if (Date.now() - startedAt > IMPORT_LOCK_STALE_MS) {
+    importLocks.delete(lockKey)
+    return false
+  }
+  return true
+}
 
 function toNumber(v: unknown): number | undefined {
   const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : typeof v === 'number' ? v : NaN
@@ -1963,7 +1974,7 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
     return
   }
   const lockKey = `${parsed.data.source_id}:${parsed.data.entity}`
-  if (importLocks.has(lockKey)) {
+  if (hasActiveImportLock(lockKey)) {
     res.status(409).json({ success: false, error: 'РРјРїРѕСЂС‚ СѓР¶Рµ РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ РґР»СЏ СЌС‚РѕРіРѕ РёСЃС‚РѕС‡РЅРёРєР°' })
     return
   }
@@ -2163,7 +2174,7 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
   }
 
   const lockKey = `${parsed.data.source_id}:${parsed.data.entity}:trendagent`
-  if (importLocks.has(lockKey)) {
+  if (hasActiveImportLock(lockKey)) {
     res.status(409).json({ success: false, error: 'Import already running for this source' })
     return
   }
@@ -2807,7 +2818,7 @@ async function loadTrendAgentDataset(sourceUrl: string, forceRefresh = false, mo
 
   const names = mode === 'full'
     ? (['apartments', 'blocks', 'buildings', 'builders', 'regions', 'subways', 'rooms', 'finishings', 'buildingtypes'] as const)
-    : (['blocks', 'regions'] as const)
+    : (['blocks', 'regions', 'builders'] as const)
   const loaded = await Promise.all(
     names.map(async (name) => {
       const fileUrl = files[name]
@@ -2825,7 +2836,7 @@ async function loadTrendAgentDataset(sourceUrl: string, forceRefresh = false, mo
     apartments: mode === 'full' ? (entries.apartments || []) : [],
     blocks: entries.blocks || [],
     buildings: mode === 'full' ? (entries.buildings || []) : [],
-    builders: mode === 'full' ? (entries.builders || []) : [],
+    builders: entries.builders || [],
     regions: entries.regions || [],
     subways: mode === 'full' ? (entries.subways || []) : [],
     rooms: mode === 'full' ? (entries.rooms || []) : [],
@@ -2846,6 +2857,15 @@ function buildTrendAgentComplexOptions(dataset: TrendAgentDataset): TrendAgentCo
       .map((region) => [stringValue(region._id), stringValue(region.name)] as const)
       .filter(([id]) => Boolean(id)),
   )
+  const buildersById = new Map<string, string>()
+  for (const builder of dataset.builders) {
+    const name = stringValue(builder.name)
+    const id = stringValue(builder._id)
+    if (id && name) buildersById.set(id, name)
+    if (builder.crm_id !== undefined && builder.crm_id !== null && name) {
+      buildersById.set(String(builder.crm_id), name)
+    }
+  }
 
   const buckets = new Map<
     string,
@@ -2864,12 +2884,23 @@ function buildTrendAgentComplexOptions(dataset: TrendAgentDataset): TrendAgentCo
     const district = regionsById.get(stringValue(block.district))
     const address = compactAddress(block.address)
     const title = stringValue(block.name) || blockId
+    const builderKey =
+      stringValue(block.builder)
+      || stringValue(block.builder_id)
+      || stringValue(block.builderId)
+      || stringValue(block.block_builder)
+    const builderName =
+      stringValue(block.builder_name)
+      || stringValue(block.block_builder_name)
+      || (builderKey ? buildersById.get(builderKey) : '')
+    const developerCounts = new Map<string, number>()
+    if (builderName) developerCounts.set(builderName, 1)
     buckets.set(blockId, {
       count: 0,
       district: district || undefined,
       address: address || undefined,
       title,
-      developerCounts: new Map<string, number>(),
+      developerCounts,
     })
   }
 
@@ -2958,21 +2989,105 @@ function buildTrendAgentImportRows(dataset: TrendAgentDataset, selectedBlockIds:
     if (crmId !== undefined && crmId !== null) roomNameByCode.set(String(crmId), name)
     if (id) roomNameByCode.set(id, name)
   }
+  const regionNameById = new Map<string, string>(
+    dataset.regions.map((item) => [stringValue(item._id), stringValue(item.name)] as const).filter(([id]) => Boolean(id)),
+  )
+  const subwayNameById = new Map<string, string>()
+  for (const subway of dataset.subways) {
+    const name = stringValue(subway.name)
+    const id = stringValue(subway._id)
+    if (id && name) subwayNameById.set(id, name)
+    if (subway.crm_id !== undefined && subway.crm_id !== null && name) {
+      subwayNameById.set(String(subway.crm_id), name)
+    }
+  }
+  const builderNameById = new Map<string, string>()
+  for (const builder of dataset.builders) {
+    const name = stringValue(builder.name)
+    const id = stringValue(builder._id)
+    if (id && name) builderNameById.set(id, name)
+    if (builder.crm_id !== undefined && builder.crm_id !== null && name) {
+      builderNameById.set(String(builder.crm_id), name)
+    }
+  }
   const finishingNameById = new Map<string, string>(
     dataset.finishings.map((item) => [stringValue(item._id), stringValue(item.name)] as const).filter(([id]) => Boolean(id)),
   )
   const buildingTypeNameById = new Map<string, string>(
     dataset.buildingtypes.map((item) => [stringValue(item._id), stringValue(item.name)] as const).filter(([id]) => Boolean(id)),
   )
+  const buildingById = new Map<string, Record<string, unknown>>()
+  const buildingByName = new Map<string, Record<string, unknown>>()
+  for (const building of dataset.buildings) {
+    const id = stringValue(building._id)
+    if (id) buildingById.set(id, building)
+    if (building.crm_id !== undefined && building.crm_id !== null) {
+      buildingById.set(String(building.crm_id), building)
+    }
+    const name = stringValue(building.name).toLowerCase()
+    if (name && !buildingByName.has(name)) buildingByName.set(name, building)
+  }
   const blockById = new Map<string, Record<string, unknown>>(
     dataset.blocks.map((item) => [stringValue(item._id), item] as const).filter(([id]) => Boolean(id)),
   )
+
+  const resolveBuildingByApartment = (apt: Record<string, unknown>): Record<string, unknown> | undefined => {
+    const key =
+      stringValue(apt.building)
+      || stringValue(apt.building_id)
+      || stringValue(apt.buildingId)
+      || stringValue(apt.building_uid)
+      || stringValue(apt.building_crm_id)
+    if (key && buildingById.has(key)) return buildingById.get(key)
+    const name = stringValue(apt.building_name).toLowerCase()
+    if (name && buildingByName.has(name)) return buildingByName.get(name)
+    return undefined
+  }
+
+  const hasNonEmptyValue = (value: unknown): boolean => {
+    if (Array.isArray(value)) return value.length > 0
+    const record = asRecord(value)
+    if (record) return Object.keys(record).length > 0
+    const str = stringValue(value)
+    if (!str) return false
+    const normalized = str.toLowerCase()
+    if (['0', 'false', 'no', 'none', 'null', 'нет'].includes(normalized)) return false
+    return true
+  }
+
+  const collectSubwayNames = (value: unknown): string[] => {
+    const names = new Set<string>()
+    const visit = (node: unknown) => {
+      if (Array.isArray(node)) {
+        for (const item of node) visit(item)
+        return
+      }
+      const record = asRecord(node)
+      if (record) {
+        const id =
+          stringValue(record.subway_id)
+          || stringValue(record.subwayId)
+          || stringValue(record.id)
+          || stringValue(record._id)
+        const explicitName = stringValue(record.name)
+        const resolvedName = explicitName || (id ? subwayNameById.get(id) || '' : '')
+        if (resolvedName) names.add(resolvedName)
+        return
+      }
+      const raw = stringValue(node)
+      if (!raw) return
+      names.add(subwayNameById.get(raw) || raw)
+    }
+    visit(value)
+    return [...names]
+  }
 
   const rows: Record<string, unknown>[] = []
   for (const apt of dataset.apartments) {
     const blockId = stringValue(apt.block_id)
     if (!blockId || !selectedBlockIds.has(blockId)) continue
     const block = blockById.get(blockId)
+    const building = resolveBuildingByApartment(apt)
 
     const roomCode = apt.room
     const roomName = roomNameByCode.get(String(roomCode ?? '')) || ''
@@ -2986,13 +3101,35 @@ function buildTrendAgentImportRows(dataset: TrendAgentDataset, selectedBlockIds:
           : `${parsedBedrooms.bedrooms}-РєРѕРјРЅ. РІ ${blockName}`
 
     const finishingId = stringValue(apt.finishing)
-    const buildingTypeId = stringValue(apt.building_type)
+    const buildingTypeId = stringValue(apt.building_type) || stringValue(building?.building_type)
+    const buildingDeadline = stringValue(building?.deadline) || stringValue(apt.building_deadline)
+    const buildingQueue = numberValue(building?.queue) ?? numberValue(apt.building_queue)
+    const blockDistrictName =
+      stringValue(apt.block_district_name)
+      || (block ? regionNameById.get(stringValue(block.district)) || '' : '')
+    const blockBuilderKey =
+      block
+        ? (
+            stringValue(block.builder)
+            || stringValue(block.builder_id)
+            || stringValue(block.builderId)
+            || stringValue(block.block_builder)
+          )
+        : ''
+    const blockBuilderName =
+      stringValue(apt.block_builder_name)
+      || (block ? stringValue(block.builder_name) || stringValue(block.block_builder_name) : '')
+      || (blockBuilderKey ? builderNameById.get(blockBuilderKey) || '' : '')
+    const aptSubwayNames = collectSubwayNames(apt.block_subway_name)
+    const subwayNames = aptSubwayNames.length > 0 ? aptSubwayNames : collectSubwayNames(block?.subway)
+    const hasMortgagePrograms = hasNonEmptyValue(building?.mortgages ?? apt.building_mortgage ?? apt.mortgage)
     const imagesSet = new Set<string>()
     collectTrendAgentImageUrls(apt.plan, dataset.sourceUrl, imagesSet)
     collectTrendAgentImageUrls(apt.block_renderer, dataset.sourceUrl, imagesSet)
     if (block) {
       collectTrendAgentImageUrls(block.renderer, dataset.sourceUrl, imagesSet)
       collectTrendAgentImageUrls(block.plan, dataset.sourceUrl, imagesSet)
+      collectTrendAgentImageUrls(block.progress, dataset.sourceUrl, imagesSet)
     }
     const images = [...imagesSet]
 
@@ -3005,11 +3142,21 @@ function buildTrendAgentImportRows(dataset: TrendAgentDataset, selectedBlockIds:
       is_euroflat: parsedBedrooms.isEuroflat,
       lot_number: stringValue(apt.number),
       area_living: numberValue(apt.area_rooms_total),
+      area_given: numberValue(apt.area_given),
       floors_total: numberValue(apt.floors),
+      old_price: numberValue(apt.price_base),
       renovation: finishingNameById.get(finishingId) || finishingId || undefined,
       building_type_name: buildingTypeNameById.get(buildingTypeId) || buildingTypeId || undefined,
       building_type: buildingTypeNameById.get(buildingTypeId) || buildingTypeId || undefined,
-      building_section: stringValue(apt.building_name) || undefined,
+      building_section: stringValue(apt.building_name) || stringValue(building?.name) || undefined,
+      building_queue: typeof buildingQueue === 'number' ? buildingQueue : undefined,
+      building_deadline: buildingDeadline || undefined,
+      building_mortgage: hasMortgagePrograms ? true : undefined,
+      block_builder_name: blockBuilderName || undefined,
+      block_district_name: blockDistrictName || undefined,
+      district: blockDistrictName || undefined,
+      block_subway_name: subwayNames.length > 0 ? subwayNames : undefined,
+      block_geometry: block?.geometry,
       block_description: block ? stringValue(block.description) : undefined,
       block_address: block ? compactAddress(block.address) : compactAddress(apt.block_address),
       images,

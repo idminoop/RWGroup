@@ -10,7 +10,6 @@ function isApiError(x: unknown): x is ApiError {
   return !!r && r.success === false && typeof r.error === 'string'
 }
 
-const API_DEBUG_STORAGE_KEY = 'rw_debug_api'
 const API_DEBUG_QUERY_PARAM = 'debugApi'
 let apiRequestSeq = 0
 
@@ -24,13 +23,12 @@ function nextApiRequestId(): string {
   return String(apiRequestSeq).padStart(5, '0')
 }
 
-function shouldDebugApi(url: string): boolean {
+function shouldDebugApi(_url: string): boolean {
   if (typeof window === 'undefined') return false
   const qs = new URLSearchParams(window.location.search || '')
   if (qs.get(API_DEBUG_QUERY_PARAM) === '1') return true
-  if (window.localStorage.getItem(API_DEBUG_STORAGE_KEY) === '1') return true
-  if (window.location.pathname.startsWith('/admin')) return true
-  return url.startsWith('/api/geocode') || url.startsWith('/api/admin/yandex-key/check')
+  if (qs.get(API_DEBUG_QUERY_PARAM) === '0') return false
+  return false
 }
 
 function summarizeValue(value: unknown): unknown {
