@@ -53,6 +53,24 @@ const normalizeFileName = (value: string) => {
   return base.replace(/\.[a-z0-9]+$/i, '')
 }
 
+type FeedFormat = 'xlsx' | 'csv' | 'xml' | 'json'
+
+const detectFormatByPath = (value?: string): FeedFormat | null => {
+  if (!value) return null
+  let source = value.trim().toLowerCase()
+  if (!source) return null
+  try {
+    source = new URL(source).pathname.toLowerCase()
+  } catch {
+    // keep raw local path/filename
+  }
+  if (source.endsWith('.xlsx') || source.endsWith('.xls')) return 'xlsx'
+  if (source.endsWith('.csv')) return 'csv'
+  if (source.endsWith('.xml')) return 'xml'
+  if (source.endsWith('.json')) return 'json'
+  return null
+}
+
 const DEFAULT_AUTO_REFRESH_INTERVAL_HOURS = 24
 
 type TrendAgentComplexOption = {
@@ -135,6 +153,7 @@ export default function AdminImportPage() {
   const [trendagentOptions, setTrendagentOptions] = useState<TrendAgentComplexOption[]>([])
   const [trendagentSelectedIds, setTrendagentSelectedIds] = useState<string[]>([])
   const [trendagentQuery, setTrendagentQuery] = useState('')
+  const [trendagentLoadedSourceId, setTrendagentLoadedSourceId] = useState<string | null>(null)
 
   // Edit Preview State
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -282,6 +301,7 @@ export default function AdminImportPage() {
     setTrendagentOptions([])
     setTrendagentSelectedIds([])
     setTrendagentQuery('')
+    setTrendagentLoadedSourceId(null)
     setError(null)
   }, [])
 
@@ -319,6 +339,13 @@ export default function AdminImportPage() {
   }, [feeds, feedForm.mode, feedForm.name, feedForm.url, editingFeedId])
 
   const mappingFilledCount = Object.keys(feedForm.mapping).length
+  const autoDetectedFeedFormat = useMemo<FeedFormat>(() => {
+    if (feedForm.mode === 'upload') {
+      return detectFormatByPath(feedFile?.name) || feedForm.format
+    }
+    return detectFormatByPath(feedForm.url) || feedForm.format
+  }, [feedFile?.name, feedForm.format, feedForm.mode, feedForm.url])
+
   const filteredTrendagentOptions = useMemo(() => {
     const q = trendagentQuery.trim().toLowerCase()
     if (!q) return trendagentOptions
@@ -380,6 +407,7 @@ export default function AdminImportPage() {
       )
       const payload = {
         ...feedForm,
+        format: autoDetectedFeedFormat,
         url: feedForm.mode === 'url' ? feedForm.url : undefined,
         auto_refresh: feedForm.mode === 'url' ? feedForm.auto_refresh : false,
         refresh_interval_hours:
@@ -407,7 +435,7 @@ export default function AdminImportPage() {
           name: feedForm.name,
           mode: feedForm.mode,
           url: feedForm.mode === 'url' ? feedForm.url : undefined,
-          format: feedForm.format,
+          format: autoDetectedFeedFormat,
           is_active: true,
           auto_refresh: feedForm.mode === 'url' ? feedForm.auto_refresh : false,
           refresh_interval_hours:
@@ -452,6 +480,7 @@ export default function AdminImportPage() {
       setTrendagentError('Выберите источник.')
       return
     }
+    setTrendagentLoadedSourceId(activeImportSource.id)
     setTrendagentLoading(true)
     setTrendagentError(null)
     try {
@@ -476,6 +505,7 @@ export default function AdminImportPage() {
       const items = Array.isArray(json.data?.items) ? json.data!.items : []
       setTrendagentOptions(items)
       setTrendagentSelectedIds([])
+      setTrendagentLoadedSourceId(activeImportSource.id)
     } catch (e) {
       setTrendagentError(e instanceof Error ? e.message : 'Ошибка загрузки ЖК')
     } finally {
@@ -527,6 +557,14 @@ export default function AdminImportPage() {
       setTrendagentLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!activeImportSource?.id) return
+    if (!activeImportSource.url) return
+    if (importInputMode !== 'url') return
+    if (trendagentLoadedSourceId === activeImportSource.id) return
+    void loadTrendagentComplexes(false)
+  }, [activeImportSource?.id, activeImportSource?.url, importInputMode, trendagentLoadedSourceId])
 
   const runPreviewForFeed = useCallback(async (feed: FeedSource, fileOverride?: File | null, inputModeOverride?: 'url' | 'file') => {
     const inputMode = inputModeOverride || (feed.mode === 'upload' ? 'file' : 'url')
@@ -1121,7 +1159,7 @@ export default function AdminImportPage() {
             </div>
           </div>
 
-          {activeImportSource?.url && importInputMode === 'url' && (
+          {activeImportSource?.url && (
             <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm font-semibold text-slate-900">Выбор ЖК из большого TrendAgent-фида</div>
@@ -1453,12 +1491,13 @@ export default function AdminImportPage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="text-xs font-medium text-slate-700">Формат</label>
-              <Select value={feedForm.format} onChange={(e) => setFeedForm({...feedForm, format: e.target.value as any})}>
+              <Select value={autoDetectedFeedFormat} disabled>
                 <option value="json">JSON</option>
                 <option value="csv">CSV</option>
                 <option value="xlsx">XLSX</option>
                 <option value="xml">XML</option>
               </Select>
+              <div className="mt-1 text-[10px] text-slate-500">Определяется автоматически по расширению файла или URL.</div>
             </div>
             <div>
               <label className="text-xs font-medium text-slate-700">Режим</label>
@@ -1485,7 +1524,15 @@ export default function AdminImportPage() {
                 <label className="text-xs font-medium text-slate-700">URL фида</label>
                 <Input
                   value={feedForm.url}
-                  onChange={(e) => setFeedForm({ ...feedForm, url: e.target.value })}
+                  onChange={(e) => {
+                    const nextUrl = e.target.value
+                    const detected = detectFormatByPath(nextUrl)
+                    setFeedForm({
+                      ...feedForm,
+                      url: nextUrl,
+                      format: detected || feedForm.format,
+                    })
+                  }}
                   placeholder="https://example.com/feed.xml"
                 />
               </div>
@@ -1537,6 +1584,10 @@ export default function AdminImportPage() {
                   const selected = e.target.files?.[0] || null
                   setFeedFile(selected)
                   setFile(selected)
+                  const detected = detectFormatByPath(selected?.name)
+                  if (detected) {
+                    setFeedForm((prev) => ({ ...prev, format: detected }))
+                  }
                   if (selected && !feedNameTouched) {
                     const suggested = normalizeFileName(selected.name)
                     if (suggested && suggested !== feedForm.name) {

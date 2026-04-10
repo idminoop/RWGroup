@@ -2566,6 +2566,45 @@ function compactAddress(value: unknown): string {
   return parts.join(', ')
 }
 
+function normalizeTrendAgentImageUrl(value: unknown, baseUrl: string): string | null {
+  if (typeof value !== 'string') return null
+  const raw = value.trim()
+  if (!raw) return null
+  if (/^https?:\/\//i.test(raw)) return raw
+  if (raw.startsWith('//')) return `https:${raw}`
+
+  let cleaned = raw
+  while (cleaned.startsWith('../')) cleaned = cleaned.slice(3)
+  while (cleaned.startsWith('./')) cleaned = cleaned.slice(2)
+
+  if (/^[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(cleaned)) {
+    return `https://${cleaned}`
+  }
+
+  try {
+    return new URL(cleaned, baseUrl).toString()
+  } catch {
+    return null
+  }
+}
+
+function collectTrendAgentImageUrls(value: unknown, baseUrl: string, out: Set<string>): void {
+  if (!value) return
+  if (Array.isArray(value)) {
+    for (const item of value) collectTrendAgentImageUrls(item, baseUrl, out)
+    return
+  }
+  const record = asRecord(value)
+  if (record) {
+    if (record.url) collectTrendAgentImageUrls(record.url, baseUrl, out)
+    if (record.src) collectTrendAgentImageUrls(record.src, baseUrl, out)
+    if (record.path) collectTrendAgentImageUrls(record.path, baseUrl, out)
+    return
+  }
+  const normalized = normalizeTrendAgentImageUrl(value, baseUrl)
+  if (normalized) out.add(normalized)
+}
+
 function normalizeTrendAgentAboutUrl(sourceUrl: string): string {
   const parsed = new URL(sourceUrl)
   const pathname = parsed.pathname || '/'
@@ -2769,6 +2808,15 @@ function parseTrendAgentBedrooms(roomCode: unknown, roomName: string): { bedroom
   return { bedrooms, isEuroflat: /[еe]/i.test(normalized) }
 }
 
+function isTrendAgentManifestRows(rows: Record<string, unknown>[]): boolean {
+  if (!rows.length) return false
+  const hasApartments = rows.some(
+    (row) => stringValue(row.name).toLowerCase() === 'apartments' && stringValue(row.url).toLowerCase().includes('apartments'),
+  )
+  const allHaveManifestShape = rows.every((row) => Boolean(stringValue(row.name)) && Boolean(stringValue(row.url)))
+  return hasApartments && allHaveManifestShape
+}
+
 function buildTrendAgentImportRows(dataset: TrendAgentDataset, selectedBlockIds: Set<string>): Record<string, unknown>[] {
   const roomNameByCode = new Map<string, string>()
   for (const room of dataset.rooms) {
@@ -2807,17 +2855,14 @@ function buildTrendAgentImportRows(dataset: TrendAgentDataset, selectedBlockIds:
 
     const finishingId = stringValue(apt.finishing)
     const buildingTypeId = stringValue(apt.building_type)
-    const images = []
-    if (typeof apt.plan === 'string' && apt.plan.trim()) images.push(apt.plan.trim())
-    if (Array.isArray(apt.block_renderer)) {
-      for (const value of apt.block_renderer) {
-        if (typeof value === 'string' && value.trim()) images.push(value.trim())
-      }
-    } else if (block && Array.isArray(block.renderer)) {
-      for (const value of block.renderer) {
-        if (typeof value === 'string' && value.trim()) images.push(value.trim())
-      }
+    const imagesSet = new Set<string>()
+    collectTrendAgentImageUrls(apt.plan, dataset.sourceUrl, imagesSet)
+    collectTrendAgentImageUrls(apt.block_renderer, dataset.sourceUrl, imagesSet)
+    if (block) {
+      collectTrendAgentImageUrls(block.renderer, dataset.sourceUrl, imagesSet)
+      collectTrendAgentImageUrls(block.plan, dataset.sourceUrl, imagesSet)
     }
+    const images = [...imagesSet]
 
     rows.push({
       ...apt,
@@ -2872,11 +2917,17 @@ function parseRows(buffer: Buffer, ext: 'csv' | 'xlsx' | 'xml' | 'json'): Record
   const obj = JSON.parse(buffer.toString('utf-8'))
   if (Array.isArray(obj)) {
     const rows = obj.filter(isPlainObject) as Record<string, unknown>[]
+    if (isTrendAgentManifestRows(rows)) {
+      throw new Error('Обнаружен TrendAgent about.json. Используйте блок выбора ЖК в админке и импорт выбранных комплексов.')
+    }
     assertFeedRowLimit(rows.length)
     return rows
   }
   const arr = findFirstObjectArray(obj)
   const rows = arr || []
+  if (isTrendAgentManifestRows(rows)) {
+    throw new Error('Обнаружен TrendAgent about.json. Используйте блок выбора ЖК в админке и импорт выбранных комплексов.')
+  }
   assertFeedRowLimit(rows.length)
   return rows
 }
