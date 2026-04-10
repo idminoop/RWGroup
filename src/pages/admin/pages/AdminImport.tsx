@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import Button from '@/components/ui/Button'
 import { useNavigate } from 'react-router-dom'
 import Select from '@/components/ui/Select'
@@ -613,7 +613,14 @@ export default function AdminImportPage() {
       setViewMode('visual')
       setHideInvalid(true)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ошибка')
+      const message = e instanceof Error ? e.message : 'Ошибка'
+      setError(message)
+      if (message.includes('TrendAgent about.json')) {
+        setIsPreviewMode(false)
+        setPreview(null)
+        setImportInputMode('url')
+        void loadTrendagentComplexes(false)
+      }
     } finally {
       setLoading(false)
       void load()
@@ -1156,6 +1163,18 @@ export default function AdminImportPage() {
               >
                 {loading ? 'Анализ…' : 'Предпросмотр'}
               </Button>
+              {activeImportSource?.url && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setImportInputMode('url')
+                    void loadTrendagentComplexes(false)
+                  }}
+                  disabled={trendagentLoading}
+                >
+                  Выбрать ЖК
+                </Button>
+              )}
             </div>
           </div>
 
