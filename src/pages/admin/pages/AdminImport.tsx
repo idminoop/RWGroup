@@ -84,6 +84,8 @@ type TrendAgentComplexOption = {
   price_to?: number
 }
 
+const TRENDAGENT_PAGE_SIZE = 50
+
 export default function AdminImportPage() {
   const navigate = useNavigate()
   const token = useUiStore((s) => s.adminToken)
@@ -154,6 +156,9 @@ export default function AdminImportPage() {
   const [trendagentSelectedIds, setTrendagentSelectedIds] = useState<string[]>([])
   const [trendagentQuery, setTrendagentQuery] = useState('')
   const [trendagentLoadedSourceId, setTrendagentLoadedSourceId] = useState<string | null>(null)
+  const [trendagentPage, setTrendagentPage] = useState(1)
+  const [trendagentTotal, setTrendagentTotal] = useState(0)
+  const [trendagentTotalPages, setTrendagentTotalPages] = useState(1)
 
   // Edit Preview State
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -302,6 +307,9 @@ export default function AdminImportPage() {
     setTrendagentSelectedIds([])
     setTrendagentQuery('')
     setTrendagentLoadedSourceId(null)
+    setTrendagentPage(1)
+    setTrendagentTotal(0)
+    setTrendagentTotalPages(1)
     setError(null)
   }, [])
 
@@ -346,15 +354,6 @@ export default function AdminImportPage() {
     return detectFormatByPath(feedForm.url) || feedForm.format
   }, [feedFile?.name, feedForm.format, feedForm.mode, feedForm.url])
 
-  const filteredTrendagentOptions = useMemo(() => {
-    const q = trendagentQuery.trim().toLowerCase()
-    if (!q) return trendagentOptions
-    return trendagentOptions.filter((item) =>
-      [item.title, item.district, item.developer, item.address, item.block_id]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(q)),
-    )
-  }, [trendagentOptions, trendagentQuery])
   const isTrendAgentAboutSource = useMemo(() => {
     const url = activeImportSource?.url?.toLowerCase() || ''
     return url.includes('about.json')
@@ -479,11 +478,13 @@ export default function AdminImportPage() {
 
   // --- Import Functions ---
 
-  const loadTrendagentComplexes = async (forceRefresh = false) => {
+  const loadTrendagentComplexes = async (forceRefresh = false, pageOverride?: number, queryOverride?: string) => {
     if (!activeImportSource?.id) {
       setTrendagentError('Выберите источник.')
       return
     }
+    const page = Math.max(1, pageOverride || trendagentPage || 1)
+    const query = (queryOverride ?? trendagentQuery).trim()
     setTrendagentLoadedSourceId(activeImportSource.id)
     setTrendagentLoading(true)
     setTrendagentError(null)
@@ -497,18 +498,23 @@ export default function AdminImportPage() {
         body: JSON.stringify({
           source_id: activeImportSource.id,
           force_refresh: forceRefresh,
+          page,
+          limit: TRENDAGENT_PAGE_SIZE,
+          query,
         }),
       })
       const json = await res.json() as {
         success: boolean
         error?: string
         details?: string
-        data?: { items?: TrendAgentComplexOption[] }
+        data?: { items?: TrendAgentComplexOption[]; total?: number; page?: number; total_pages?: number }
       }
       if (!res.ok || !json.success) throw new Error(json.details || json.error || 'Не удалось загрузить список ЖК')
       const items = Array.isArray(json.data?.items) ? json.data!.items : []
       setTrendagentOptions(items)
-      setTrendagentSelectedIds([])
+      setTrendagentTotal(Number(json.data?.total || 0))
+      setTrendagentPage(Number(json.data?.page || page))
+      setTrendagentTotalPages(Math.max(1, Number(json.data?.total_pages || 1)))
       setTrendagentLoadedSourceId(activeImportSource.id)
     } catch (e) {
       setTrendagentError(e instanceof Error ? e.message : 'Ошибка загрузки ЖК')
@@ -567,7 +573,7 @@ export default function AdminImportPage() {
     if (!activeImportSource.url) return
     if (importInputMode !== 'url') return
     if (trendagentLoadedSourceId === activeImportSource.id) return
-    void loadTrendagentComplexes(false)
+    void loadTrendagentComplexes(false, 1, trendagentQuery)
   }, [activeImportSource?.id, activeImportSource?.url, importInputMode, trendagentLoadedSourceId])
 
   const runPreviewForFeed = useCallback(async (feed: FeedSource, fileOverride?: File | null, inputModeOverride?: 'url' | 'file') => {
@@ -623,7 +629,7 @@ export default function AdminImportPage() {
         setIsPreviewMode(false)
         setPreview(null)
         setImportInputMode('url')
-        void loadTrendagentComplexes(false)
+        void loadTrendagentComplexes(false, 1, trendagentQuery)
       }
     } finally {
       setLoading(false)
@@ -636,7 +642,7 @@ export default function AdminImportPage() {
     if (autoPreview && feed.mode === 'url') {
       if ((feed.url || '').toLowerCase().includes('about.json')) {
         setImportInputMode('url')
-        void loadTrendagentComplexes(false)
+        void loadTrendagentComplexes(false, 1, trendagentQuery)
       } else {
         void runPreviewForFeed(feed)
       }
@@ -650,7 +656,7 @@ export default function AdminImportPage() {
     }
     if (importInputMode === 'url' && isTrendAgentAboutSource) {
       setError(null)
-      await loadTrendagentComplexes(false)
+      await loadTrendagentComplexes(false, 1, trendagentQuery)
       return
     }
     await runPreviewForFeed(activeImportSource, file, importInputMode)
@@ -1182,7 +1188,7 @@ export default function AdminImportPage() {
                   variant="secondary"
                   onClick={() => {
                     setImportInputMode('url')
-                    void loadTrendagentComplexes(false)
+                    void loadTrendagentComplexes(false, 1, trendagentQuery)
                   }}
                   disabled={trendagentLoading}
                 >
@@ -1192,15 +1198,25 @@ export default function AdminImportPage() {
             </div>
           </div>
 
-          {activeImportSource?.url && (
+          {activeImportSource?.url && importInputMode === 'url' && isTrendAgentAboutSource && (
             <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm font-semibold text-slate-900">Выбор ЖК из большого TrendAgent-фида</div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => void loadTrendagentComplexes(false)} disabled={trendagentLoading}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void loadTrendagentComplexes(false, 1, trendagentQuery)}
+                    disabled={trendagentLoading}
+                  >
                     {trendagentLoading ? 'Загрузка…' : 'Загрузить список ЖК'}
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={() => void loadTrendagentComplexes(true)} disabled={trendagentLoading}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void loadTrendagentComplexes(true, trendagentPage, trendagentQuery)}
+                    disabled={trendagentLoading}
+                  >
                     Обновить
                   </Button>
                 </div>
@@ -1217,26 +1233,51 @@ export default function AdminImportPage() {
                 </div>
               ) : null}
 
-              {trendagentOptions.length > 0 && (
+              {trendagentLoadedSourceId === activeImportSource.id && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <Input
                       value={trendagentQuery}
                       onChange={(e) => setTrendagentQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          void loadTrendagentComplexes(false, 1, trendagentQuery)
+                        }
+                      }}
                       placeholder="Поиск по названию, району, застройщику, block_id"
                     />
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={() => setTrendagentSelectedIds(filteredTrendagentOptions.map((item) => item.block_id))}
+                      onClick={() => void loadTrendagentComplexes(false, 1, trendagentQuery)}
+                      disabled={trendagentLoading}
                     >
-                      Выбрать все (в фильтре)
+                      Найти
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setTrendagentQuery('')
+                        void loadTrendagentComplexes(false, 1, '')
+                      }}
+                      disabled={trendagentLoading || trendagentQuery.trim().length === 0}
+                    >
+                      Сбросить
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setTrendagentSelectedIds(trendagentOptions.map((item) => item.block_id))}
+                    >
+                      Выбрать все (на странице)
                     </Button>
                     <Button size="sm" variant="secondary" onClick={() => setTrendagentSelectedIds([])}>
                       Снять выбор
                     </Button>
                     <div className="text-xs text-slate-600">
-                      Выбрано: {trendagentSelectedIds.length} из {trendagentOptions.length}
+                      Выбрано: {trendagentSelectedIds.length} • На странице: {trendagentOptions.length} • Всего: {trendagentTotal}
                     </div>
                   </div>
 
@@ -1253,7 +1294,7 @@ export default function AdminImportPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredTrendagentOptions.map((item) => {
+                        {trendagentOptions.map((item) => {
                           const checked = trendagentSelectedIds.includes(item.block_id)
                           return (
                             <tr key={item.block_id} className="border-t border-slate-100">
@@ -1280,6 +1321,35 @@ export default function AdminImportPage() {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                  {trendagentOptions.length === 0 && !trendagentLoading && (
+                    <div className="text-xs text-slate-500">
+                      По текущему запросу ничего не найдено.
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs text-slate-600">
+                      Страница {trendagentPage} из {trendagentTotalPages}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void loadTrendagentComplexes(false, trendagentPage - 1, trendagentQuery)}
+                        disabled={trendagentLoading || trendagentPage <= 1}
+                      >
+                        Назад
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void loadTrendagentComplexes(false, trendagentPage + 1, trendagentQuery)}
+                        disabled={trendagentLoading || trendagentPage >= trendagentTotalPages}
+                      >
+                        Вперёд
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="flex justify-end">

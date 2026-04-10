@@ -68,6 +68,10 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 
 const importLocks = new Map<string, number>()
 const DEFAULT_FEED_REFRESH_INTERVAL_HOURS = 24
 const TRENDAGENT_CACHE_TTL_MS = 5 * 60 * 1000
+const TRENDAGENT_DEFAULT_TIMEOUT_MS = 120_000
+const TRENDAGENT_DEFAULT_MAX_BYTES = 250 * 1024 * 1024
+const TRENDAGENT_APARTMENTS_TIMEOUT_MS = 180_000
+const TRENDAGENT_APARTMENTS_MAX_BYTES = 600 * 1024 * 1024
 
 type TrendAgentDataset = {
   sourceUrl: string
@@ -94,6 +98,8 @@ type TrendAgentComplexOption = {
   price_from?: number
   price_to?: number
 }
+
+type TrendAgentDatasetMode = 'full' | 'list'
 
 const trendAgentDatasetCache = new Map<string, { loadedAt: number; dataset: TrendAgentDataset }>()
 
@@ -2082,6 +2088,9 @@ router.post('/import/trendagent/complexes', requireAdminPermission('import.write
   const schema = z.object({
     source_id: z.string().min(1),
     force_refresh: z.coerce.boolean().optional(),
+    page: z.coerce.number().int().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional(),
+    query: z.string().optional(),
   })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) {
@@ -2100,14 +2109,33 @@ router.post('/import/trendagent/complexes', requireAdminPermission('import.write
   }
 
   try {
-    const dataset = await loadTrendAgentDataset(source.url, parsed.data.force_refresh === true)
-    const items = buildTrendAgentComplexOptions(dataset)
+    const dataset = await loadTrendAgentDataset(source.url, parsed.data.force_refresh === true, 'list')
+    const allItems = buildTrendAgentComplexOptions(dataset)
+    const query = stringValue(parsed.data.query).toLowerCase()
+    const filtered = query
+      ? allItems.filter((item) =>
+          [item.title, item.district, item.developer, item.address, item.block_id]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(query)),
+        )
+      : allItems
+    const page = parsed.data.page || 1
+    const limit = parsed.data.limit || 50
+    const total = filtered.length
+    const totalPages = Math.max(1, Math.ceil(total / limit))
+    const safePage = Math.min(page, totalPages)
+    const start = (safePage - 1) * limit
+    const items = filtered.slice(start, start + limit)
+
     res.json({
       success: true,
       data: {
         source_id: source.id,
         source_url: source.url,
-        total: items.length,
+        total,
+        page: safePage,
+        limit,
+        total_pages: totalPages,
         items,
       },
     })
@@ -2181,7 +2209,7 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
       throw new Error('At least one block_id is required')
     }
 
-    const dataset = await loadTrendAgentDataset(sourceSnapshot.url, parsed.data.force_refresh === true)
+    const dataset = await loadTrendAgentDataset(sourceSnapshot.url, parsed.data.force_refresh === true, 'full')
     const rows = buildTrendAgentImportRows(dataset, selectedBlockIds)
     if (rows.length === 0) {
       throw new Error('No apartments found for selected complexes')
@@ -2556,6 +2584,30 @@ function numberValue(value: unknown): number | undefined {
   return undefined
 }
 
+function parsePositiveIntEnv(raw: string | undefined): number | undefined {
+  if (!raw) return undefined
+  const parsed = Number.parseInt(raw.trim(), 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined
+  return parsed
+}
+
+function getTrendAgentFetchOptions(url: string): { timeoutMs: number; maxBytes: number } {
+  const isApartments = /\/apartments\.json(?:\?|$)/i.test(url)
+  const timeoutMs = isApartments
+    ? parsePositiveIntEnv(process.env.RW_TRENDAGENT_APARTMENTS_TIMEOUT_MS)
+      ?? parsePositiveIntEnv(process.env.RW_TRENDAGENT_FETCH_TIMEOUT_MS)
+      ?? TRENDAGENT_APARTMENTS_TIMEOUT_MS
+    : parsePositiveIntEnv(process.env.RW_TRENDAGENT_FETCH_TIMEOUT_MS)
+      ?? TRENDAGENT_DEFAULT_TIMEOUT_MS
+  const maxBytes = isApartments
+    ? parsePositiveIntEnv(process.env.RW_TRENDAGENT_APARTMENTS_MAX_BYTES)
+      ?? parsePositiveIntEnv(process.env.RW_TRENDAGENT_FETCH_MAX_BYTES)
+      ?? TRENDAGENT_APARTMENTS_MAX_BYTES
+    : parsePositiveIntEnv(process.env.RW_TRENDAGENT_FETCH_MAX_BYTES)
+      ?? TRENDAGENT_DEFAULT_MAX_BYTES
+  return { timeoutMs, maxBytes }
+}
+
 function compactAddress(value: unknown): string {
   if (typeof value === 'string') return value.trim()
   const rec = asRecord(value)
@@ -2626,11 +2678,12 @@ function toAbsoluteUrl(baseUrl: string, relativeOrAbsolute: string): string {
 
 async function fetchJsonValue(url: string): Promise<unknown> {
   let buffer: Buffer
+  const options = getTrendAgentFetchOptions(url)
   try {
-    buffer = await fetchFeedBuffer(url)
+    buffer = await fetchFeedBuffer(url, options)
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'unknown error'
-    throw new Error(`Не удалось загрузить ${url}: ${reason}`)
+    throw new Error(`Не удалось загрузить ${url}: ${reason} (timeout=${options.timeoutMs}ms, maxBytes=${options.maxBytes})`)
   }
 
   try {
@@ -2682,8 +2735,8 @@ function ensureObjectArray(value: unknown): Record<string, unknown>[] {
   return found || []
 }
 
-async function loadTrendAgentDataset(sourceUrl: string, forceRefresh = false): Promise<TrendAgentDataset> {
-  const cacheKey = sourceUrl.trim()
+async function loadTrendAgentDataset(sourceUrl: string, forceRefresh = false, mode: TrendAgentDatasetMode = 'full'): Promise<TrendAgentDataset> {
+  const cacheKey = `${sourceUrl.trim()}::${mode}`
   const cached = trendAgentDatasetCache.get(cacheKey)
   if (!forceRefresh && cached && Date.now() - cached.loadedAt < TRENDAGENT_CACHE_TTL_MS) {
     return cached.dataset
@@ -2693,14 +2746,16 @@ async function loadTrendAgentDataset(sourceUrl: string, forceRefresh = false): P
   const aboutPayload = await fetchJsonValue(aboutUrl)
   const files = extractTrendAgentFileMap(aboutUrl, aboutPayload)
 
-  const required = ['apartments', 'blocks']
+  const required = mode === 'full' ? ['apartments', 'blocks'] : ['blocks']
   for (const key of required) {
     if (!files[key]) {
       throw new Error(`TrendAgent feed is missing required file "${key}.json" in about.json`)
     }
   }
 
-  const names = ['apartments', 'blocks', 'buildings', 'builders', 'regions', 'subways', 'rooms', 'finishings', 'buildingtypes'] as const
+  const names = mode === 'full'
+    ? (['apartments', 'blocks', 'buildings', 'builders', 'regions', 'subways', 'rooms', 'finishings', 'buildingtypes'] as const)
+    : (['blocks', 'regions'] as const)
   const loaded = await Promise.all(
     names.map(async (name) => {
       const fileUrl = files[name]
@@ -2710,20 +2765,20 @@ async function loadTrendAgentDataset(sourceUrl: string, forceRefresh = false): P
     }),
   )
 
-  const entries = Object.fromEntries(loaded) as Record<(typeof names)[number], Record<string, unknown>[]>
+  const entries = Object.fromEntries(loaded) as Partial<Record<(typeof names)[number], Record<string, unknown>[]>>
   const dataset: TrendAgentDataset = {
     sourceUrl,
     aboutUrl,
     files,
-    apartments: entries.apartments || [],
+    apartments: mode === 'full' ? (entries.apartments || []) : [],
     blocks: entries.blocks || [],
-    buildings: entries.buildings || [],
-    builders: entries.builders || [],
+    buildings: mode === 'full' ? (entries.buildings || []) : [],
+    builders: mode === 'full' ? (entries.builders || []) : [],
     regions: entries.regions || [],
-    subways: entries.subways || [],
-    rooms: entries.rooms || [],
-    finishings: entries.finishings || [],
-    buildingtypes: entries.buildingtypes || [],
+    subways: mode === 'full' ? (entries.subways || []) : [],
+    rooms: mode === 'full' ? (entries.rooms || []) : [],
+    finishings: mode === 'full' ? (entries.finishings || []) : [],
+    buildingtypes: mode === 'full' ? (entries.buildingtypes || []) : [],
   }
 
   trendAgentDatasetCache.set(cacheKey, { loadedAt: Date.now(), dataset })
@@ -2752,6 +2807,19 @@ function buildTrendAgentComplexOptions(dataset: TrendAgentDataset): TrendAgentCo
       developerCounts: Map<string, number>
     }
   >()
+
+  for (const [blockId, block] of blocksById.entries()) {
+    const district = regionsById.get(stringValue(block.district))
+    const address = compactAddress(block.address)
+    const title = stringValue(block.name) || blockId
+    buckets.set(blockId, {
+      count: 0,
+      district: district || undefined,
+      address: address || undefined,
+      title,
+      developerCounts: new Map<string, number>(),
+    })
+  }
 
   for (const row of dataset.apartments) {
     const blockId = stringValue(row.block_id)
