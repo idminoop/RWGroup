@@ -2625,8 +2625,20 @@ function toAbsoluteUrl(baseUrl: string, relativeOrAbsolute: string): string {
 }
 
 async function fetchJsonValue(url: string): Promise<unknown> {
-  const buffer = await fetchFeedBuffer(url)
-  return JSON.parse(buffer.toString('utf-8'))
+  let buffer: Buffer
+  try {
+    buffer = await fetchFeedBuffer(url)
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'unknown error'
+    throw new Error(`Не удалось загрузить ${url}: ${reason}`)
+  }
+
+  try {
+    return JSON.parse(buffer.toString('utf-8'))
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'invalid json'
+    throw new Error(`Некорректный JSON в ${url}: ${reason}`)
+  }
 }
 
 function extractTrendAgentFileMap(aboutUrl: string, aboutPayload: unknown): Record<string, string> {

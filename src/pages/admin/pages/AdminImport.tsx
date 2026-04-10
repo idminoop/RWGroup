@@ -355,6 +355,10 @@ export default function AdminImportPage() {
         .some((value) => String(value).toLowerCase().includes(q)),
     )
   }, [trendagentOptions, trendagentQuery])
+  const isTrendAgentAboutSource = useMemo(() => {
+    const url = activeImportSource?.url?.toLowerCase() || ''
+    return url.includes('about.json')
+  }, [activeImportSource?.url])
 
 
   // --- Feed Management Functions ---
@@ -630,13 +634,23 @@ export default function AdminImportPage() {
   const handleStartImport = useCallback((feed: FeedSource, autoPreview = false) => {
     selectFeed(feed)
     if (autoPreview && feed.mode === 'url') {
-      void runPreviewForFeed(feed)
+      if ((feed.url || '').toLowerCase().includes('about.json')) {
+        setImportInputMode('url')
+        void loadTrendagentComplexes(false)
+      } else {
+        void runPreviewForFeed(feed)
+      }
     }
-  }, [runPreviewForFeed, selectFeed])
+  }, [runPreviewForFeed, selectFeed, loadTrendagentComplexes])
 
   const runPreview = async () => {
     if (!activeImportSource) {
       setError('Выберите источник')
+      return
+    }
+    if (importInputMode === 'url' && isTrendAgentAboutSource) {
+      setError(null)
+      await loadTrendagentComplexes(false)
       return
     }
     await runPreviewForFeed(activeImportSource, file, importInputMode)
@@ -1161,7 +1175,7 @@ export default function AdminImportPage() {
                   || (importInputMode === 'url' && !activeImportSource?.url)
                 }
               >
-                {loading ? 'Анализ…' : 'Предпросмотр'}
+                {loading ? 'Загрузка…' : (importInputMode === 'url' && isTrendAgentAboutSource ? 'Загрузить список ЖК' : 'Предпросмотр')}
               </Button>
               {activeImportSource?.url && (
                 <Button
@@ -1192,7 +1206,16 @@ export default function AdminImportPage() {
                 </div>
               </div>
 
-              {trendagentError ? <div className="text-xs text-rose-600">{trendagentError}</div> : null}
+              {trendagentError ? (
+                <div className="space-y-1">
+                  <div className="text-xs text-rose-600">{trendagentError}</div>
+                  {trendagentError.toLowerCase().includes('fetch failed') && (
+                    <div className="text-[11px] text-amber-700">
+                      Сервер не может скачать фид по URL. Проверьте доступ из backend-контейнера к dataout.trendagent.ru и лимиты RW_FEED_FETCH_*.
+                    </div>
+                  )}
+                </div>
+              ) : null}
 
               {trendagentOptions.length > 0 && (
                 <div className="space-y-2">
