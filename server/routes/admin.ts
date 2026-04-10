@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express'
+﻿import { Router, type Request, type Response } from 'express'
 import multer from 'multer'
 import { z } from 'zod'
 import {
@@ -72,6 +72,8 @@ const TRENDAGENT_DEFAULT_TIMEOUT_MS = 120_000
 const TRENDAGENT_DEFAULT_MAX_BYTES = 250 * 1024 * 1024
 const TRENDAGENT_APARTMENTS_TIMEOUT_MS = 180_000
 const TRENDAGENT_APARTMENTS_MAX_BYTES = 600 * 1024 * 1024
+const TRENDAGENT_FETCH_RETRIES_DEFAULT = 2
+const TRENDAGENT_FETCH_RETRY_DELAY_MS_DEFAULT = 1200
 
 type TrendAgentDataset = {
   sourceUrl: string
@@ -158,19 +160,19 @@ function resolveFeedRefreshSettings(input: FeedRefreshInput): FeedRefreshResult 
   }
 
   if (!url) {
-    return { ok: false, error: 'Для автообновления укажите URL фида' }
+    return { ok: false, error: 'Р”Р»СЏ Р°РІС‚РѕРѕР±РЅРѕРІР»РµРЅРёСЏ СѓРєР°Р¶РёС‚Рµ URL С„РёРґР°' }
   }
 
   try {
     const parsed = new URL(url)
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return { ok: false, error: 'URL фида должен использовать http/https' }
+      return { ok: false, error: 'URL С„РёРґР° РґРѕР»Р¶РµРЅ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ http/https' }
     }
     if (parsed.username || parsed.password) {
-      return { ok: false, error: 'URL фида не должен содержать логин/пароль' }
+      return { ok: false, error: 'URL С„РёРґР° РЅРµ РґРѕР»Р¶РµРЅ СЃРѕРґРµСЂР¶Р°С‚СЊ Р»РѕРіРёРЅ/РїР°СЂРѕР»СЊ' }
     }
   } catch {
-    return { ok: false, error: 'Некорректный URL фида' }
+    return { ok: false, error: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ URL С„РёРґР°' }
   }
 
   const interval =
@@ -299,7 +301,7 @@ router.post('/login', (req: Request, res: Response) => {
   }
 
   const token = issueAdminToken(identity)
-  addAuditLog(identity.id, identity.login, 'login', 'user', identity.id, `Вход в систему: ${identity.login}`)
+  addAuditLog(identity.id, identity.login, 'login', 'user', identity.id, `Р’С…РѕРґ РІ СЃРёСЃС‚РµРјСѓ: ${identity.login}`)
   res.json({
     success: true,
     data: {
@@ -381,7 +383,7 @@ router.post('/users', requireAdminPermission('admin_users.write'), (req: Request
     return
   }
 
-  addAuditLog(req.admin!.id, req.admin!.login, 'create', 'user', created.id, `Создан пользователь: ${created.login}`)
+  addAuditLog(req.admin!.id, req.admin!.login, 'create', 'user', created.id, `РЎРѕР·РґР°РЅ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ: ${created.login}`)
   res.json({ success: true, data: toAdminUserPublic(created) })
 })
 
@@ -454,7 +456,7 @@ router.put('/users/:id', requireAdminPermission('admin_users.write'), (req: Requ
     return
   }
 
-  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'user', updated.id, `Обновлён пользователь: ${updated.login}`)
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'user', updated.id, `РћР±РЅРѕРІР»С‘РЅ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ: ${updated.login}`)
   res.json({ success: true, data: toAdminUserPublic(updated) })
 })
 
@@ -480,7 +482,7 @@ router.delete('/users/:id', requireAdminPermission('admin_users.write'), (req: R
     return
   }
 
-  addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'user', targetId, `Удалён пользователь (id: ${targetId})`)
+  addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'user', targetId, `РЈРґР°Р»С‘РЅ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ (id: ${targetId})`)
   res.json({ success: true })
 })
 
@@ -589,7 +591,7 @@ router.get('/yandex-key/check', requireAdminAnyPermission('home.read', 'home.wri
 
   async function testGeocoder(): Promise<'ok' | 'auth_error' | 'error'> {
     try {
-      const params = new URLSearchParams({ apikey: apiKey, geocode: 'Москва', format: 'json', results: '1', lang: 'ru_RU' })
+      const params = new URLSearchParams({ apikey: apiKey, geocode: 'РњРѕСЃРєРІР°', format: 'json', results: '1', lang: 'ru_RU' })
       const response = await fetchYandexWithRetry(`https://geocode-maps.yandex.ru/1.x/?${params}`)
       if (!response) return 'error'
       if (response.status === 403 || response.status === 401) return 'auth_error'
@@ -602,7 +604,7 @@ router.get('/yandex-key/check', requireAdminAnyPermission('home.read', 'home.wri
   async function testSearch(): Promise<'ok' | 'auth_error' | 'error'> {
     try {
       const params = new URLSearchParams({
-        text: 'кофейня',
+        text: 'РєРѕС„РµР№РЅСЏ',
         ll: '37.617,55.755',
         spn: '0.05,0.05',
         results: '1',
@@ -633,7 +635,7 @@ router.put('/home', requireAdminPermission('home.write'), (req: Request, res: Re
   withDb((db) => {
     db.home = { ...db.home, ...(parsed.data.home as DbShape['home']), updated_at: new Date().toISOString() }
   })
-  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'home', undefined, 'Обновлена витрина')
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'home', undefined, 'РћР±РЅРѕРІР»РµРЅР° РІРёС‚СЂРёРЅР°')
   res.json({ success: true })
 })
 
@@ -644,7 +646,7 @@ router.get('/publish/status', (req: Request, res: Response) => {
 
 router.post('/publish/apply', (req: Request, res: Response) => {
   publishDraft()
-  addAuditLog(req.admin!.id, req.admin!.login, 'publish', 'settings', undefined, 'Применены изменения на сайт')
+  addAuditLog(req.admin!.id, req.admin!.login, 'publish', 'settings', undefined, 'РџСЂРёРјРµРЅРµРЅС‹ РёР·РјРµРЅРµРЅРёСЏ РЅР° СЃР°Р№С‚')
   const status = getPublishStatus()
   res.json({ success: true, data: status })
 })
@@ -654,7 +656,7 @@ router.get('/backups', async (req: Request, res: Response) => {
     const backups = await listBackups()
     res.json({ success: true, data: backups })
   } catch {
-    res.status(500).json({ success: false, error: 'Не удалось загрузить список бекапов' })
+    res.status(500).json({ success: false, error: 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ СЃРїРёСЃРѕРє Р±РµРєР°РїРѕРІ' })
   }
 })
 
@@ -680,12 +682,12 @@ router.post('/backups', requireAdminPermission('publish.apply'), async (req: Req
       'create',
       'settings',
       created.id,
-      `Создан бекап: ${created.id}`,
+      `РЎРѕР·РґР°РЅ Р±РµРєР°Рї: ${created.id}`,
       created.label ? `label=${created.label}` : undefined,
     )
     res.json({ success: true, data: created })
   } catch {
-    res.status(500).json({ success: false, error: 'Не удалось создать бекап' })
+    res.status(500).json({ success: false, error: 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ Р±РµРєР°Рї' })
   }
 })
 
@@ -703,12 +705,12 @@ router.post('/backups/:id/restore', requireAdminPermission('publish.apply'), asy
       'update',
       'settings',
       restored.id,
-      `Восстановлен бекап: ${restored.id}`,
+      `Р’РѕСЃСЃС‚Р°РЅРѕРІР»РµРЅ Р±РµРєР°Рї: ${restored.id}`,
       restored.label ? `label=${restored.label}` : undefined,
     )
     res.json({ success: true, data: restored })
   } catch {
-    res.status(500).json({ success: false, error: 'Не удалось восстановить бекап' })
+    res.status(500).json({ success: false, error: 'РќРµ СѓРґР°Р»РѕСЃСЊ РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ Р±РµРєР°Рї' })
   }
 })
 
@@ -720,10 +722,10 @@ router.delete('/backups/:id', requireAdminPermission('publish.apply'), async (re
       res.status(404).json({ success: false, error: 'Not found' })
       return
     }
-    addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'settings', id, `Удален бекап: ${id}`)
+    addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'settings', id, `РЈРґР°Р»РµРЅ Р±РµРєР°Рї: ${id}`)
     res.json({ success: true, data: { id } })
   } catch {
-    res.status(500).json({ success: false, error: 'Не удалось удалить бекап' })
+    res.status(500).json({ success: false, error: 'РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ Р±РµРєР°Рї' })
   }
 })
 
@@ -746,7 +748,7 @@ router.get('/leads/processing-backups', requireAdminAnyPermission('leads.read', 
     const backups = await listLeadProcessingBackups()
     res.json({ success: true, data: backups })
   } catch {
-    res.status(500).json({ success: false, error: 'Не удалось загрузить бекапы для лидов' })
+    res.status(500).json({ success: false, error: 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ Р±РµРєР°РїС‹ РґР»СЏ Р»РёРґРѕРІ' })
   }
 })
 
@@ -773,12 +775,12 @@ router.post('/leads/restore-processing', requireAdminPermission('leads.write'), 
       'update',
       'lead',
       result.backup_id,
-      `Восстановлена обработка лидов из бекапа: ${result.backup_id}`,
+      `Р’РѕСЃСЃС‚Р°РЅРѕРІР»РµРЅР° РѕР±СЂР°Р±РѕС‚РєР° Р»РёРґРѕРІ РёР· Р±РµРєР°РїР°: ${result.backup_id}`,
       `applied=${result.applied}; unchanged=${result.unchanged}; missing=${result.missing}; snapshot=${result.total_snapshot}`,
     )
     res.json({ success: true, data: result })
   } catch {
-    res.status(500).json({ success: false, error: 'Не удалось восстановить обработку лидов' })
+    res.status(500).json({ success: false, error: 'РќРµ СѓРґР°Р»РѕСЃСЊ РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РѕР±СЂР°Р±РѕС‚РєСѓ Р»РёРґРѕРІ' })
   }
 })
 
@@ -826,7 +828,7 @@ router.put('/leads/:id', requireAdminPermission('leads.write'), (req: Request, r
     res.status(404).json({ success: false, error: 'Not found' })
     return
   }
-  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'lead', id, `Обновлён лид: ${updatedLead.name}`)
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'lead', id, `РћР±РЅРѕРІР»С‘РЅ Р»РёРґ: ${updatedLead.name}`)
   res.json({ success: true, data: updatedLead })
 })
 
@@ -959,12 +961,12 @@ router.get('/feeds/diagnostics', (req: Request, res: Response) => {
       let reason: string | undefined
 
       if (!lastRun) {
-        if (!feed.is_active) reason = 'Источник отключен'
-        else if (feed.mode === 'url' && !feed.url) reason = 'URL не указан'
-        else if (feed.mode === 'upload') reason = 'Ожидается загрузка файла'
-        else if (items.total > 0) reason = 'Данные есть, но нет записей об импорте'
-        else if (feed.auto_refresh) reason = 'Автообновление еще не запускалось'
-        else reason = 'Импорт не запускался'
+        if (!feed.is_active) reason = 'РСЃС‚РѕС‡РЅРёРє РѕС‚РєР»СЋС‡РµРЅ'
+        else if (feed.mode === 'url' && !feed.url) reason = 'URL РЅРµ СѓРєР°Р·Р°РЅ'
+        else if (feed.mode === 'upload') reason = 'РћР¶РёРґР°РµС‚СЃСЏ Р·Р°РіСЂСѓР·РєР° С„Р°Р№Р»Р°'
+        else if (items.total > 0) reason = 'Р”Р°РЅРЅС‹Рµ РµСЃС‚СЊ, РЅРѕ РЅРµС‚ Р·Р°РїРёСЃРµР№ РѕР± РёРјРїРѕСЂС‚Рµ'
+        else if (feed.auto_refresh) reason = 'РђРІС‚РѕРѕР±РЅРѕРІР»РµРЅРёРµ РµС‰Рµ РЅРµ Р·Р°РїСѓСЃРєР°Р»РѕСЃСЊ'
+        else reason = 'РРјРїРѕСЂС‚ РЅРµ Р·Р°РїСѓСЃРєР°Р»СЃСЏ'
       } else if (lastRun.status !== 'success' && lastRun.error_log) {
         reason = String(lastRun.error_log).split('\n')[0]
       }
@@ -1020,7 +1022,7 @@ router.post('/feeds', requireAdminPermission('feeds.write'), (req: Request, res:
     })
   })
   if (duplicate) {
-    res.status(409).json({ success: false, error: 'Такой фид уже существует' })
+    res.status(409).json({ success: false, error: 'РўР°РєРѕР№ С„РёРґ СѓР¶Рµ СЃСѓС‰РµСЃС‚РІСѓРµС‚' })
     return
   }
   const id = newId()
@@ -1038,7 +1040,7 @@ router.post('/feeds', requireAdminPermission('feeds.write'), (req: Request, res:
       created_at: new Date().toISOString(),
     })
   })
-  addAuditLog(req.admin!.id, req.admin!.login, 'create', 'feed', id, `Создан источник: ${parsed.data.name}`)
+  addAuditLog(req.admin!.id, req.admin!.login, 'create', 'feed', id, `РЎРѕР·РґР°РЅ РёСЃС‚РѕС‡РЅРёРє: ${parsed.data.name}`)
   res.json({ success: true, data: { id } })
 })
 
@@ -1092,7 +1094,7 @@ router.put('/feeds/:id', requireAdminPermission('feeds.write'), (req: Request, r
       return false
     })
     if (conflict) {
-      return { ok: false as const, code: 409 as const, error: 'Такой фид уже существует' }
+      return { ok: false as const, code: 409 as const, error: 'РўР°РєРѕР№ С„РёРґ СѓР¶Рµ СЃСѓС‰РµСЃС‚РІСѓРµС‚' }
     }
 
     return {
@@ -1118,7 +1120,7 @@ router.put('/feeds/:id', requireAdminPermission('feeds.write'), (req: Request, r
     res.status(404).json({ success: false, error: 'Not found' })
     return
   }
-  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'feed', id, `Обновлён источник (id: ${id})`)
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'feed', id, `РћР±РЅРѕРІР»С‘РЅ РёСЃС‚РѕС‡РЅРёРє (id: ${id})`)
   res.json({ success: true })
 })
 
@@ -1163,14 +1165,14 @@ router.delete('/feeds/:id', requireAdminPermission('feeds.write'), (req: Request
         finished_at: new Date().toISOString(),
         status: 'failed',
         stats: { inserted: 0, updated: 0, hidden: 0 },
-        error_log: 'Источник удален',
+        error_log: 'РСЃС‚РѕС‡РЅРёРє СѓРґР°Р»РµРЅ',
         feed_name: snapshot.name,
         feed_url: snapshot.url,
         action: 'delete',
       })
     })
   }
-  addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'feed', id, `Удалён источник: ${snapshot?.name || id}`)
+  addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'feed', id, `РЈРґР°Р»С‘РЅ РёСЃС‚РѕС‡РЅРёРє: ${snapshot?.name || id}`)
   res.json({ success: true })
 })
 
@@ -1228,7 +1230,7 @@ router.post('/collections', requireAdminPermission('collections.write'), (req: R
       updated_at: new Date().toISOString(),
     })
   })
-  addAuditLog(req.admin!.id, req.admin!.login, 'create', 'collection', id, `Создана подборка: ${parsed.data.title}`)
+  addAuditLog(req.admin!.id, req.admin!.login, 'create', 'collection', id, `РЎРѕР·РґР°РЅР° РїРѕРґР±РѕСЂРєР°: ${parsed.data.title}`)
   res.json({ success: true, data: { id } })
 })
 
@@ -1285,7 +1287,7 @@ router.put('/collections/:id', requireAdminPermission('collections.write'), (req
     res.status(404).json({ success: false, error: 'Not found' })
     return
   }
-  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'collection', id, `Обновлена подборка (id: ${id})`)
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', 'collection', id, `РћР±РЅРѕРІР»РµРЅР° РїРѕРґР±РѕСЂРєР° (id: ${id})`)
   res.json({ success: true })
 })
 
@@ -1300,7 +1302,7 @@ router.delete('/collections/:id', requireAdminPermission('collections.write'), (
     res.status(404).json({ success: false, error: 'Not found' })
     return
   }
-  addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'collection', id, `Удалена подборка (id: ${id})`)
+  addAuditLog(req.admin!.id, req.admin!.login, 'delete', 'collection', id, `РЈРґР°Р»РµРЅР° РїРѕРґР±РѕСЂРєР° (id: ${id})`)
   res.json({ success: true })
 })
 
@@ -1552,14 +1554,14 @@ router.get('/catalog/complex/:id', (req: Request, res: Response) => {
 router.post('/catalog/complex/:id/nearby/generate', requireAdminPermission('catalog.write'), async (req: Request, res: Response) => {
   res.status(410).json({
     success: false,
-    error: 'Автопоиск мест отключен. Используйте ручное редактирование раздела «Места поблизости».',
+    error: 'РђРІС‚РѕРїРѕРёСЃРє РјРµСЃС‚ РѕС‚РєР»СЋС‡РµРЅ. РСЃРїРѕР»СЊР·СѓР№С‚Рµ СЂСѓС‡РЅРѕРµ СЂРµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ СЂР°Р·РґРµР»Р° В«РњРµСЃС‚Р° РїРѕР±Р»РёР·РѕСЃС‚РёВ».',
   })
 })
 
 router.post('/catalog/complex/:id/nearby/photo-variants', requireAdminPermission('catalog.write'), async (req: Request, res: Response) => {
   res.status(410).json({
     success: false,
-    error: 'Автоподбор фото отключен. Добавляйте изображения вручную (URL или загрузка файла).',
+    error: 'РђРІС‚РѕРїРѕРґР±РѕСЂ С„РѕС‚Рѕ РѕС‚РєР»СЋС‡РµРЅ. Р”РѕР±Р°РІР»СЏР№С‚Рµ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ РІСЂСѓС‡РЅСѓСЋ (URL РёР»Рё Р·Р°РіСЂСѓР·РєР° С„Р°Р№Р»Р°).',
   })
 })
 
@@ -1849,7 +1851,7 @@ router.put('/catalog/items/:type/:id', requireAdminPermission('catalog.write'), 
   const restoreDetails = type === 'complex' && restoredLinkedDraftProperties > 0
     ? `; restored linked properties=${restoredLinkedDraftProperties}`
     : ''
-  addAuditLog(req.admin!.id, req.admin!.login, 'update', entityType, id, `Обновлён ${type === 'property' ? 'лот' : 'ЖК'} (id: ${id})${restoreDetails}`)
+  addAuditLog(req.admin!.id, req.admin!.login, 'update', entityType, id, `РћР±РЅРѕРІР»С‘РЅ ${type === 'property' ? 'Р»РѕС‚' : 'Р–Рљ'} (id: ${id})${restoreDetails}`)
   res.json({ success: true })
 })
 
@@ -1962,7 +1964,7 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
   }
   const lockKey = `${parsed.data.source_id}:${parsed.data.entity}`
   if (importLocks.has(lockKey)) {
-    res.status(409).json({ success: false, error: 'Импорт уже выполняется для этого источника' })
+    res.status(409).json({ success: false, error: 'РРјРїРѕСЂС‚ СѓР¶Рµ РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ РґР»СЏ СЌС‚РѕРіРѕ РёСЃС‚РѕС‡РЅРёРєР°' })
     return
   }
   importLocks.set(lockKey, Date.now())
@@ -2048,9 +2050,9 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
 
     if (stats.errors.length > 0) {
       run.status = stats.errors.length === rows.length ? 'failed' : 'partial'
-      errorLog = `${stats.errors.length} строк с ошибками:\n` +
+      errorLog = `${stats.errors.length} СЃС‚СЂРѕРє СЃ РѕС€РёР±РєР°РјРё:\n` +
         stats.errors.slice(0, 50).map(e =>
-          `Строка ${e.rowIndex}${e.externalId ? ` (${e.externalId})` : ''}: ${e.error}`
+          `РЎС‚СЂРѕРєР° ${e.rowIndex}${e.externalId ? ` (${e.externalId})` : ''}: ${e.error}`
         ).join('\n')
     }
   } catch (e) {
@@ -2337,7 +2339,7 @@ function previewProperties(rows: Record<string, unknown>[]): PreviewResult {
 
     const externalId = asString(row.external_id || row.id || row.externalId)
     if (!externalId) {
-      errors.push('Отсутствует external_id (или id/externalId)')
+      errors.push('РћС‚СЃСѓС‚СЃС‚РІСѓРµС‚ external_id (РёР»Рё id/externalId)')
     } else {
       mappedFields.push('external_id')
       if (i < previewCount) trackFieldMapping(fieldMappings, 'external_id', row)
@@ -2345,7 +2347,7 @@ function previewProperties(rows: Record<string, unknown>[]): PreviewResult {
 
     const bedrooms = asNumber(row.bedrooms ?? row.rooms)
     if (typeof bedrooms !== 'number') {
-      errors.push('Отсутствует или некорректное значение bedrooms (или rooms)')
+      errors.push('РћС‚СЃСѓС‚СЃС‚РІСѓРµС‚ РёР»Рё РЅРµРєРѕСЂСЂРµРєС‚РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ bedrooms (РёР»Рё rooms)')
     } else {
       mappedFields.push('bedrooms')
       if (i < previewCount) trackFieldMapping(fieldMappings, 'bedrooms', row)
@@ -2353,14 +2355,14 @@ function previewProperties(rows: Record<string, unknown>[]): PreviewResult {
 
     const price = asNumber(row.price)
     if (typeof price !== 'number') {
-      errors.push('Отсутствует или некорректное значение price')
+      errors.push('РћС‚СЃСѓС‚СЃС‚РІСѓРµС‚ РёР»Рё РЅРµРєРѕСЂСЂРµРєС‚РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ price')
     } else {
       mappedFields.push('price')
     }
 
     const area = asNumber(row.area_total ?? row.area)
     if (typeof area !== 'number') {
-      errors.push('Отсутствует или некорректное значение area_total (или area)')
+      errors.push('РћС‚СЃСѓС‚СЃС‚РІСѓРµС‚ РёР»Рё РЅРµРєРѕСЂСЂРµРєС‚РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ area_total (РёР»Рё area)')
     } else {
       mappedFields.push('area_total')
       if (i < previewCount) trackFieldMapping(fieldMappings, 'area_total', row)
@@ -2369,7 +2371,7 @@ function previewProperties(rows: Record<string, unknown>[]): PreviewResult {
     // District validation
     const district = asString(row.district)
     if (!district) {
-      warnings.push('Отсутствует район (district) - фильтры по району работать не будут')
+      warnings.push('РћС‚СЃСѓС‚СЃС‚РІСѓРµС‚ СЂР°Р№РѕРЅ (district) - С„РёР»СЊС‚СЂС‹ РїРѕ СЂР°Р№РѕРЅСѓ СЂР°Р±РѕС‚Р°С‚СЊ РЅРµ Р±СѓРґСѓС‚')
     } else {
       mappedFields.push('district')
     }
@@ -2377,7 +2379,7 @@ function previewProperties(rows: Record<string, unknown>[]): PreviewResult {
     // Category validation
     const category = asString(row.category)
     if (!category || !['newbuild', 'secondary', 'rent'].includes(category)) {
-      warnings.push('Некорректная или отсутствующая категория (category) - по умолчанию будет newbuild')
+      warnings.push('РќРµРєРѕСЂСЂРµРєС‚РЅР°СЏ РёР»Рё РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‰Р°СЏ РєР°С‚РµРіРѕСЂРёСЏ (category) - РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ Р±СѓРґРµС‚ newbuild')
     } else {
       mappedFields.push('category')
     }
@@ -2385,7 +2387,7 @@ function previewProperties(rows: Record<string, unknown>[]): PreviewResult {
     // Deal type validation
     const dealType = asString(row.deal_type)
     if (!dealType || !['sale', 'rent'].includes(dealType)) {
-      warnings.push('Некорректный или отсутствующий тип сделки (deal_type) - по умолчанию будет sale')
+      warnings.push('РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёР»Рё РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‰РёР№ С‚РёРї СЃРґРµР»РєРё (deal_type) - РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ Р±СѓРґРµС‚ sale')
     } else {
       mappedFields.push('deal_type')
     }
@@ -2396,13 +2398,13 @@ function previewProperties(rows: Record<string, unknown>[]): PreviewResult {
     }
 
     if (!row.title && !row.name) {
-      warnings.push('Нет поля title/name - будет сгенерировано автоматически')
+      warnings.push('РќРµС‚ РїРѕР»СЏ title/name - Р±СѓРґРµС‚ СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё')
     } else {
       mappedFields.push('title')
     }
 
     if (!row.images && !row.image_urls && !row.photos && !row.image) {
-      warnings.push('Изображения не предоставлены')
+      warnings.push('РР·РѕР±СЂР°Р¶РµРЅРёСЏ РЅРµ РїСЂРµРґРѕСЃС‚Р°РІР»РµРЅС‹')
     } else {
       mappedFields.push('images')
       if (i < previewCount) trackFieldMapping(fieldMappings, 'images', row)
@@ -2446,18 +2448,18 @@ function previewComplexes(rows: Record<string, unknown>[], mapping?: Record<stri
 
     const externalId = asString(row.external_id || row.id || row.externalId)
     if (!externalId) {
-      errors.push('Отсутствует external_id (или id/externalId)')
+      errors.push('РћС‚СЃСѓС‚СЃС‚РІСѓРµС‚ external_id (РёР»Рё id/externalId)')
     } else {
       mappedFields.push('external_id')
       if (i < previewCount) trackFieldMapping(fieldMappings, 'external_id', row)
     }
 
     if (!row.title && !row.name) {
-      warnings.push('Нет поля title/name - будет использован external_id')
+      warnings.push('РќРµС‚ РїРѕР»СЏ title/name - Р±СѓРґРµС‚ РёСЃРїРѕР»СЊР·РѕРІР°РЅ external_id')
     }
 
     if (!row.images && !row.image_urls && !row.photos) {
-      warnings.push('Изображения не предоставлены')
+      warnings.push('РР·РѕР±СЂР°Р¶РµРЅРёСЏ РЅРµ РїСЂРµРґРѕСЃС‚Р°РІР»РµРЅС‹')
     } else {
       mappedFields.push('images')
       if (i < previewCount) trackFieldMapping(fieldMappings, 'images', row)
@@ -2608,6 +2610,20 @@ function getTrendAgentFetchOptions(url: string): { timeoutMs: number; maxBytes: 
   return { timeoutMs, maxBytes }
 }
 
+function isTransientFetchError(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase()
+  return (
+    message.includes('fetch failed')
+    || message.includes('host lookup failed')
+    || message.includes('timed out')
+    || message.includes('timeout')
+    || message.includes('eai_again')
+    || message.includes('enotfound')
+    || message.includes('socket hang up')
+    || message.includes('network')
+  )
+}
+
 function compactAddress(value: unknown): string {
   if (typeof value === 'string') return value.trim()
   const rec = asRecord(value)
@@ -2684,10 +2700,30 @@ function toAbsoluteUrl(baseUrl: string, relativeOrAbsolute: string): string {
 async function fetchJsonValue(url: string): Promise<unknown> {
   let buffer: Buffer
   const options = getTrendAgentFetchOptions(url)
-  try {
-    buffer = await fetchFeedBuffer(url, options)
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : 'unknown error'
+  const retries = parsePositiveIntEnv(process.env.RW_TRENDAGENT_FETCH_RETRIES) ?? TRENDAGENT_FETCH_RETRIES_DEFAULT
+  const retryDelayMs = parsePositiveIntEnv(process.env.RW_TRENDAGENT_FETCH_RETRY_DELAY_MS) ?? TRENDAGENT_FETCH_RETRY_DELAY_MS_DEFAULT
+  let lastError: unknown = null
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      buffer = await fetchFeedBuffer(url, options)
+      lastError = null
+      break
+    } catch (error) {
+      lastError = error
+      const canRetry = attempt < retries && isTransientFetchError(error)
+      if (canRetry) {
+        const backoffMs = retryDelayMs * (attempt + 1)
+        await new Promise((resolve) => setTimeout(resolve, backoffMs))
+        continue
+      }
+      const reason = error instanceof Error ? error.message : 'unknown error'
+      throw new Error(`Не удалось загрузить ${url}: ${reason} (timeout=${options.timeoutMs}ms, maxBytes=${options.maxBytes})`)
+    }
+  }
+
+  if (!buffer!) {
+    const reason = lastError instanceof Error ? lastError.message : 'unknown error'
     throw new Error(`Не удалось загрузить ${url}: ${reason} (timeout=${options.timeoutMs}ms, maxBytes=${options.maxBytes})`)
   }
 
@@ -2740,16 +2776,27 @@ function ensureObjectArray(value: unknown): Record<string, unknown>[] {
   return found || []
 }
 
+function getFreshTrendAgentCacheEntry(cacheKey: string): { loadedAt: number; dataset: TrendAgentDataset } | null {
+  const entry = trendAgentDatasetCache.get(cacheKey)
+  if (!entry) return null
+  if (Date.now() - entry.loadedAt >= TRENDAGENT_CACHE_TTL_MS) return null
+  return entry
+}
+
 async function loadTrendAgentDataset(sourceUrl: string, forceRefresh = false, mode: TrendAgentDatasetMode = 'full'): Promise<TrendAgentDataset> {
-  const cacheKey = `${sourceUrl.trim()}::${mode}`
-  const cached = trendAgentDatasetCache.get(cacheKey)
-  if (!forceRefresh && cached && Date.now() - cached.loadedAt < TRENDAGENT_CACHE_TTL_MS) {
+  const sourceKey = sourceUrl.trim()
+  const cacheKey = `${sourceKey}::${mode}`
+  const cached = getFreshTrendAgentCacheEntry(cacheKey)
+  if (!forceRefresh && cached) {
     return cached.dataset
   }
 
-  const aboutUrl = normalizeTrendAgentAboutUrl(sourceUrl)
-  const aboutPayload = await fetchJsonValue(aboutUrl)
-  const files = extractTrendAgentFileMap(aboutUrl, aboutPayload)
+  const reusedCache = !forceRefresh
+    ? getFreshTrendAgentCacheEntry(`${sourceKey}::full`) || getFreshTrendAgentCacheEntry(`${sourceKey}::list`)
+    : null
+
+  const aboutUrl = reusedCache?.dataset.aboutUrl || normalizeTrendAgentAboutUrl(sourceUrl)
+  const files = reusedCache?.dataset.files || extractTrendAgentFileMap(aboutUrl, await fetchJsonValue(aboutUrl))
 
   const required = mode === 'full' ? ['apartments', 'blocks'] : ['blocks']
   for (const key of required) {
@@ -2890,7 +2937,7 @@ function parseTrendAgentBedrooms(roomCode: unknown, roomName: string): { bedroom
   const normalized = roomName.toLowerCase()
   const match = normalized.match(/(\d+)/)
   const bedrooms = match ? Math.max(0, Number(match[1])) : 1
-  return { bedrooms, isEuroflat: /[еe]/i.test(normalized) }
+  return { bedrooms, isEuroflat: /[Рµe]/i.test(normalized) }
 }
 
 function isTrendAgentManifestRows(rows: Record<string, unknown>[]): boolean {
@@ -2933,10 +2980,10 @@ function buildTrendAgentImportRows(dataset: TrendAgentDataset, selectedBlockIds:
     const blockName = stringValue(apt.block_name) || (block ? stringValue(block.name) : '') || blockId
     const title =
       parsedBedrooms.bedrooms === 0
-        ? `Студия в ${blockName}`
+        ? `РЎС‚СѓРґРёСЏ РІ ${blockName}`
         : parsedBedrooms.isEuroflat
-          ? `${parsedBedrooms.bedrooms}Е в ${blockName}`
-          : `${parsedBedrooms.bedrooms}-комн. в ${blockName}`
+          ? `${parsedBedrooms.bedrooms}Р• РІ ${blockName}`
+          : `${parsedBedrooms.bedrooms}-РєРѕРјРЅ. РІ ${blockName}`
 
     const finishingId = stringValue(apt.finishing)
     const buildingTypeId = stringValue(apt.building_type)
@@ -3003,7 +3050,7 @@ function parseRows(buffer: Buffer, ext: 'csv' | 'xlsx' | 'xml' | 'json'): Record
   if (Array.isArray(obj)) {
     const rows = obj.filter(isPlainObject) as Record<string, unknown>[]
     if (isTrendAgentManifestRows(rows)) {
-      throw new Error('Обнаружен TrendAgent about.json. Используйте блок выбора ЖК в админке и импорт выбранных комплексов.')
+      throw new Error('РћР±РЅР°СЂСѓР¶РµРЅ TrendAgent about.json. РСЃРїРѕР»СЊР·СѓР№С‚Рµ Р±Р»РѕРє РІС‹Р±РѕСЂР° Р–Рљ РІ Р°РґРјРёРЅРєРµ Рё РёРјРїРѕСЂС‚ РІС‹Р±СЂР°РЅРЅС‹С… РєРѕРјРїР»РµРєСЃРѕРІ.')
     }
     assertFeedRowLimit(rows.length)
     return rows
@@ -3011,7 +3058,7 @@ function parseRows(buffer: Buffer, ext: 'csv' | 'xlsx' | 'xml' | 'json'): Record
   const arr = findFirstObjectArray(obj)
   const rows = arr || []
   if (isTrendAgentManifestRows(rows)) {
-    throw new Error('Обнаружен TrendAgent about.json. Используйте блок выбора ЖК в админке и импорт выбранных комплексов.')
+    throw new Error('РћР±РЅР°СЂСѓР¶РµРЅ TrendAgent about.json. РСЃРїРѕР»СЊР·СѓР№С‚Рµ Р±Р»РѕРє РІС‹Р±РѕСЂР° Р–Рљ РІ Р°РґРјРёРЅРєРµ Рё РёРјРїРѕСЂС‚ РІС‹Р±СЂР°РЅРЅС‹С… РєРѕРјРїР»РµРєСЃРѕРІ.')
   }
   assertFeedRowLimit(rows.length)
   return rows
@@ -3036,3 +3083,4 @@ function findFirstObjectArray(obj: unknown): Record<string, unknown>[] | null {
 }
 
 export default router
+
