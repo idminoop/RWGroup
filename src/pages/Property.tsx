@@ -251,14 +251,79 @@ export default function PropertyPage() {
           </div>
 
           {/* Additional Info Section */}
-          {(data.property.building_section || data.property.building_state || data.complex?.developer) && (
+          {(data.property.building_section ||
+            data.property.building_state ||
+            data.complex?.developer ||
+            data.complex?.address ||
+            data.property.building_type ||
+            data.complex?.building_type ||
+            typeof data.property.building_queue === 'number' ||
+            typeof data.complex?.queue_min === 'number' ||
+            typeof data.property.mortgage_available === 'boolean' ||
+            typeof data.complex?.mortgage_available === 'boolean' ||
+            typeof data.property.installment_available === 'boolean' ||
+            typeof data.complex?.installment_available === 'boolean' ||
+            typeof data.property.subsidy_available === 'boolean' ||
+            typeof data.complex?.subsidy_available === 'boolean' ||
+            typeof data.property.military_mortgage_available === 'boolean' ||
+            typeof data.complex?.military_mortgage_available === 'boolean') && (
             <Card className="mt-6 border-slate-200 bg-white p-4 sm:p-6">
-              <Heading size="h3" className="mb-4">Дополнительная информация</Heading>
+              <Heading size="h3" className="mb-4">Условия покупки и параметры дома</Heading>
               <div className="grid gap-3 text-sm md:grid-cols-2">
+                {(typeof data.property.mortgage_available === 'boolean' || typeof data.complex?.mortgage_available === 'boolean') && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-slate-500">Ипотека:</span>
+                    <span className="font-medium text-slate-900">
+                      {(data.property.mortgage_available ?? data.complex?.mortgage_available) ? 'Доступна' : 'Нет'}
+                    </span>
+                  </div>
+                )}
+                {(typeof data.property.installment_available === 'boolean' || typeof data.complex?.installment_available === 'boolean') && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-slate-500">Рассрочка:</span>
+                    <span className="font-medium text-slate-900">
+                      {(data.property.installment_available ?? data.complex?.installment_available) ? 'Доступна' : 'Нет'}
+                    </span>
+                  </div>
+                )}
+                {(typeof data.property.subsidy_available === 'boolean' || typeof data.complex?.subsidy_available === 'boolean') && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-slate-500">Субсидия:</span>
+                    <span className="font-medium text-slate-900">
+                      {(data.property.subsidy_available ?? data.complex?.subsidy_available) ? 'Доступна' : 'Нет'}
+                    </span>
+                  </div>
+                )}
+                {(typeof data.property.military_mortgage_available === 'boolean' || typeof data.complex?.military_mortgage_available === 'boolean') && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-slate-500">Военная ипотека:</span>
+                    <span className="font-medium text-slate-900">
+                      {(data.property.military_mortgage_available ?? data.complex?.military_mortgage_available) ? 'Доступна' : 'Нет'}
+                    </span>
+                  </div>
+                )}
                 {data.complex?.developer && (
                   <div className="flex items-start gap-2">
                     <span className="text-slate-500">Застройщик:</span>
                     <span className="font-medium text-slate-900">{data.complex.developer}</span>
+                  </div>
+                )}
+                {data.complex?.address && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-slate-500">Адрес ЖК:</span>
+                    <span className="font-medium text-slate-900">{data.complex.address}</span>
+                  </div>
+                )}
+                {(data.property.building_type || data.complex?.building_type) && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-slate-500">Тип дома:</span>
+                    <span className="font-medium text-slate-900">{data.property.building_type || data.complex?.building_type}</span>
+                  </div>
+                )}
+                {(typeof data.property.building_queue === 'number' || typeof data.complex?.queue_min === 'number') && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-slate-500">Очередь:</span>
+                    <span className="font-medium text-slate-900">{data.property.building_queue ?? data.complex?.queue_min}</span>
                   </div>
                 )}
                 {data.property.building_section && (

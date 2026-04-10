@@ -647,6 +647,13 @@ export default function ComplexPage() {
     navigate(`/catalog?${params.toString()}`)
   }
 
+  const hasComplexPurchaseInfo =
+    Boolean(c?.address || c?.building_type || typeof c?.queue_min === 'number') ||
+    typeof c?.mortgage_available === 'boolean' ||
+    typeof c?.installment_available === 'boolean' ||
+    typeof c?.subsidy_available === 'boolean' ||
+    typeof c?.military_mortgage_available === 'boolean'
+
   return (
     <SiteLayout>
       {complexLd && <JsonLd data={complexLd} />}
@@ -697,6 +704,15 @@ export default function ComplexPage() {
                 </span>
               </div>
 
+              {(c.mortgage_available || c.installment_available || c.subsidy_available || c.military_mortgage_available) && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {c.mortgage_available && <Badge variant="secondary" className="bg-white/15 text-white">Ипотека</Badge>}
+                  {c.installment_available && <Badge variant="secondary" className="bg-white/15 text-white">Рассрочка</Badge>}
+                  {c.subsidy_available && <Badge variant="secondary" className="bg-white/15 text-white">Субсидия</Badge>}
+                  {c.military_mortgage_available && <Badge variant="secondary" className="bg-white/15 text-white">Военная ипотека</Badge>}
+                </div>
+              )}
+
               <div className="mt-6 flex flex-col items-start gap-3 sm:mt-8 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                 <div className="rounded-xl border border-white/20 bg-black/35 px-5 py-3 backdrop-blur">
                   <div className="text-xs uppercase tracking-[0.1em] text-white/45">Цена от</div>
@@ -733,6 +749,34 @@ export default function ComplexPage() {
           </section>
 
           <div className="mx-auto w-full max-w-6xl px-4 pb-14">
+            {hasComplexPurchaseInfo && (
+              <section className="mt-8 rounded-3xl border border-white/10 p-4 md:p-6" style={{ backgroundColor: surface }}>
+                <Heading size="h3" className="text-white">Условия покупки и параметры дома</Heading>
+                <div className="mt-4 grid gap-3 text-sm text-white/85 md:grid-cols-2">
+                  {typeof c.mortgage_available === 'boolean' && (
+                    <div><span className="text-white/55">Ипотека:</span> {c.mortgage_available ? 'Доступна' : 'Нет'}</div>
+                  )}
+                  {typeof c.installment_available === 'boolean' && (
+                    <div><span className="text-white/55">Рассрочка:</span> {c.installment_available ? 'Доступна' : 'Нет'}</div>
+                  )}
+                  {typeof c.subsidy_available === 'boolean' && (
+                    <div><span className="text-white/55">Субсидия:</span> {c.subsidy_available ? 'Доступна' : 'Нет'}</div>
+                  )}
+                  {typeof c.military_mortgage_available === 'boolean' && (
+                    <div><span className="text-white/55">Военная ипотека:</span> {c.military_mortgage_available ? 'Доступна' : 'Нет'}</div>
+                  )}
+                  {c.address && (
+                    <div><span className="text-white/55">Адрес:</span> {c.address}</div>
+                  )}
+                  {c.building_type && (
+                    <div><span className="text-white/55">Тип дома:</span> {c.building_type}</div>
+                  )}
+                  {typeof c.queue_min === 'number' && (
+                    <div><span className="text-white/55">Минимальная очередь:</span> {c.queue_min}</div>
+                  )}
+                </div>
+              </section>
+            )}
             <section className="mt-8 rounded-3xl border border-white/10 p-4 md:p-6" style={{ backgroundColor: surface }}>
               <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-5">

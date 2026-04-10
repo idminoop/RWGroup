@@ -1,4 +1,4 @@
-﻿﻿﻿﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Button from '@/components/ui/Button'
 import { useNavigate } from 'react-router-dom'
 import Select from '@/components/ui/Select'
@@ -103,6 +103,7 @@ export default function AdminImportPage() {
   const [activeImportSource, setActiveImportSource] = useState<FeedSource | null>(null)
   const [entity, setEntity] = useState<'property' | 'complex'>('property')
   const [file, setFile] = useState<File | null>(null)
+  const [importInputMode, setImportInputMode] = useState<'url' | 'file'>('url')
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [isPreviewMode, setIsPreviewMode] = useState(false)
   const [previewContext, setPreviewContext] = useState<{
@@ -254,6 +255,7 @@ export default function AdminImportPage() {
 
   const selectFeed = useCallback((feed: FeedSource | null) => {
     setActiveImportSource(feed)
+    setImportInputMode(feed?.mode === 'upload' ? 'file' : 'url')
     setFile(null)
     setPreview(null)
     setIsPreviewMode(false)
@@ -416,12 +418,14 @@ export default function AdminImportPage() {
 
   // --- Import Functions ---
 
-  const runPreviewForFeed = useCallback(async (feed: FeedSource, fileOverride?: File | null) => {
-    if (feed.mode === 'upload' && !fileOverride) {
+  const runPreviewForFeed = useCallback(async (feed: FeedSource, fileOverride?: File | null, inputModeOverride?: 'url' | 'file') => {
+    const inputMode = inputModeOverride || (feed.mode === 'upload' ? 'file' : 'url')
+
+    if (inputMode === 'file' && !fileOverride) {
       setError('Для загрузки файла выберите файл перед предпросмотром.')
       return
     }
-    if (feed.mode === 'url' && !feed.url) {
+    if (inputMode === 'url' && !feed.url) {
       setError('У источника не указан URL.')
       return
     }
@@ -434,17 +438,17 @@ export default function AdminImportPage() {
       sourceId: feed.id,
       sourceName: feed.name,
       entity,
-      mode: feed.mode,
-      url: feed.url,
+      mode: inputMode === 'file' ? 'upload' : 'url',
+      url: inputMode === 'url' ? feed.url : undefined,
       fileName: fileOverride?.name,
     })
 
     try {
       const fd = new FormData()
-      if (fileOverride) fd.append('file', fileOverride)
+      if (inputMode === 'file' && fileOverride) fd.append('file', fileOverride)
       fd.append('source_id', feed.id)
       fd.append('entity', entity)
-      if (feed.mode === 'url' && feed.url) {
+      if (inputMode === 'url' && feed.url) {
         fd.append('url', feed.url)
       }
 
@@ -480,7 +484,7 @@ export default function AdminImportPage() {
       setError('Выберите источник')
       return
     }
-    await runPreviewForFeed(activeImportSource, file)
+    await runPreviewForFeed(activeImportSource, file, importInputMode)
   }
 
   useEffect(() => {
@@ -509,22 +513,33 @@ export default function AdminImportPage() {
     setError(null)
     try {
       const fd = new FormData()
-      // If we have preview data, use it as source of truth for rows (to include edits)
-      if (preview && preview.sampleRows.length > 0) {
+      const canImportEditedPreviewRows = Boolean(preview && preview.totalRows === preview.sampleRows.length && preview.sampleRows.length > 0)
+      // Use edited rows only when preview contains all source rows.
+      if (canImportEditedPreviewRows && preview) {
         const rows = preview.sampleRows.map(r => r.data)
         fd.append('rows', JSON.stringify(rows))
         fd.append('source_id', sourceId)
         fd.append('entity', previewContext?.entity || entity)
         fd.append('hide_invalid', String(hideInvalid))
       } else {
-        if (file) fd.append('file', file)
+        const effectiveMode: 'upload' | 'url' =
+          previewContext?.mode || (importInputMode === 'file' ? 'upload' : 'url')
+
+        if (effectiveMode === 'upload' && file) fd.append('file', file)
         fd.append('source_id', sourceId)
         fd.append('entity', previewContext?.entity || entity)
         fd.append('hide_invalid', String(hideInvalid))
-        if (previewContext?.mode === 'url' && previewContext.url) {
+        if (effectiveMode === 'url' && previewContext?.url) {
           fd.append('url', previewContext.url)
-        } else if (activeImportSource?.mode === 'url' && activeImportSource.url) {
+        } else if (effectiveMode === 'url' && activeImportSource?.url) {
           fd.append('url', activeImportSource.url)
+        }
+
+        if (effectiveMode === 'upload' && !file) {
+          throw new Error('File is required for file import mode.')
+        }
+        if (effectiveMode === 'url' && !fd.get('url')) {
+          throw new Error('URL is required for URL import mode.')
         }
       }
 
@@ -587,12 +602,20 @@ export default function AdminImportPage() {
 
   const handleEdit = (index: number) => {
     if (!preview) return
+    if (preview.totalRows > preview.sampleRows.length) {
+      setError('Редактирование отключено: предпросмотр показывает только часть источника. Для правок загрузите меньший файл.')
+      return
+    }
     setEditingIndex(index)
     setEditForm({ ...preview.sampleRows[index].data })
   }
 
   const handleSaveEdit = () => {
     if (!preview || editingIndex === null) return
+    if (preview.totalRows > preview.sampleRows.length) {
+      setEditingIndex(null)
+      return
+    }
     
     // Update sampleRows
     const newSampleRows = [...preview.sampleRows]
@@ -782,6 +805,7 @@ export default function AdminImportPage() {
                                 const selected = e.target.files?.[0] || null
                                 if (!selected) return
                                 setFile(selected)
+                                setImportInputMode('file')
                                 handleStartImport(f)
                               }}
                             />
@@ -909,7 +933,7 @@ export default function AdminImportPage() {
             </div>
           </div>
 
-          <div className="grid min-w-0 grid-cols-1 items-end gap-3 md:grid-cols-4">
+          <div className="grid min-w-0 grid-cols-1 items-end gap-3 md:grid-cols-5">
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Источник</label>
               <Select
@@ -937,7 +961,20 @@ export default function AdminImportPage() {
                 <option value="complex">Жилые Комплексы</option>
               </Select>
             </div>
-            {activeImportSource?.mode === 'upload' && (
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Загрузка данных</label>
+              <Select
+                value={importInputMode}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (v === 'url' || v === 'file') setImportInputMode(v)
+                }}
+              >
+                <option value="url" disabled={!activeImportSource?.url}>По ссылке</option>
+                <option value="file">Файлом</option>
+              </Select>
+            </div>
+            {importInputMode === 'file' && (
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Файл ({activeImportSource?.format})</label>
                 <input
@@ -948,8 +985,27 @@ export default function AdminImportPage() {
                 />
               </div>
             )}
+            {importInputMode === 'url' && (
+              <div className="text-xs text-slate-500">
+                {activeImportSource?.url ? (
+                  <div className="rounded border border-slate-200 bg-slate-50 px-2 py-2 break-all">{activeImportSource.url}</div>
+                ) : (
+                  <div className="rounded border border-amber-200 bg-amber-50 px-2 py-2 text-amber-700">
+                    URL не указан в настройках источника.
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex gap-2">
-              <Button onClick={runPreview} disabled={loading || !activeImportSource || (activeImportSource?.mode === 'upload' && !file)}>
+              <Button
+                onClick={runPreview}
+                disabled={
+                  loading
+                  || !activeImportSource
+                  || (importInputMode === 'file' && !file)
+                  || (importInputMode === 'url' && !activeImportSource?.url)
+                }
+              >
                 {loading ? 'Анализ…' : 'Предпросмотр'}
               </Button>
             </div>
@@ -1051,7 +1107,7 @@ export default function AdminImportPage() {
 
                 {preview.totalRows > preview.sampleRows.length && (
                   <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 p-2 rounded">
-                    Внимание: Показаны первые {preview.sampleRows.length} записей. Ручные правки применятся только к ним.
+                    Внимание: показаны только первые {preview.sampleRows.length} записей из {preview.totalRows}. Редактирование отключено, импорт будет выполнен по полному исходному файлу/URL.
                   </div>
                 )}
 
@@ -1077,7 +1133,15 @@ export default function AdminImportPage() {
                         )}
                       >
                         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button size="sm" variant="secondary" onClick={() => handleEdit(index)}>Ред.</Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={preview.totalRows > preview.sampleRows.length}
+                            title={preview.totalRows > preview.sampleRows.length ? 'Редактирование недоступно для частичного предпросмотра' : 'Редактировать'}
+                            onClick={() => handleEdit(index)}
+                          >
+                            Ред.
+                          </Button>
                         </div>
                         
                         <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
@@ -1107,7 +1171,14 @@ export default function AdminImportPage() {
                       <div key={index} className="group relative min-w-0">
                         {entity === 'property' ? <PropertyCard item={item as Property} showStatusBadge /> : <ComplexCard item={item as Complex} showStatusBadge />}
                         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                          <Button size="sm" onClick={() => handleEdit(index)}>Ред.</Button>
+                          <Button
+                            size="sm"
+                            disabled={preview.totalRows > preview.sampleRows.length}
+                            title={preview.totalRows > preview.sampleRows.length ? 'Редактирование недоступно для частичного предпросмотра' : 'Редактировать'}
+                            onClick={() => handleEdit(index)}
+                          >
+                            Ред.
+                          </Button>
                         </div>
                       </div>
                     ))}

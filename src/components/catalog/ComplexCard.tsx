@@ -18,6 +18,12 @@ const UI = {
   pricePerM2: '\u0426\u0435\u043d\u0430 \u0437\u0430 \u043c\u00b2',
   view: '\u0421\u043c\u043e\u0442\u0440\u0435\u0442\u044c',
   details: '\u0423\u0437\u043d\u0430\u0442\u044c \u0434\u0435\u0442\u0430\u043b\u0438',
+  mortgage: '\u0418\u043f\u043e\u0442\u0435\u043a\u0430',
+  installment: '\u0420\u0430\u0441\u0441\u0440\u043e\u0447\u043a\u0430',
+  subsidy: '\u0421\u0443\u0431\u0441\u0438\u0434\u0438\u044f',
+  militaryMortgage: '\u0412\u043e\u0435\u043d\u043d\u0430\u044f \u0438\u043f\u043e\u0442\u0435\u043a\u0430',
+  queue: '\u041e\u0447\u0435\u0440\u0435\u0434\u044c',
+  buildingType: '\u0422\u0438\u043f \u0434\u043e\u043c\u0430',
 }
 
 function toFiniteNumber(value: unknown): number | undefined {
@@ -47,6 +53,14 @@ export default function ComplexCard({
     item.status === 'archived'
       ? 'bg-slate-700/90 text-white shadow-sm backdrop-blur-sm'
       : 'bg-amber-600/90 text-white shadow-sm backdrop-blur-sm'
+  const financeBadges = [
+    item.mortgage_available ? UI.mortgage : null,
+    item.installment_available ? UI.installment : null,
+    item.subsidy_available ? UI.subsidy : null,
+    item.military_mortgage_available ? UI.militaryMortgage : null,
+  ].filter((label): label is string => Boolean(label))
+  const queueLabel = typeof item.queue_min === 'number' ? `${UI.queue} ${item.queue_min}` : ''
+  const buildingTypeLabel = item.building_type || ''
 
   return (
     <Card className="flex h-full flex-col overflow-hidden border-slate-200 bg-white transition-shadow hover:shadow-md">
@@ -91,6 +105,25 @@ export default function ComplexCard({
             {item.metro?.[0] ? ` \u2022 ${item.metro[0]}` : ''}
           </span>
         </div>
+        {(financeBadges.length > 0 || queueLabel || buildingTypeLabel) && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {financeBadges.map((label) => (
+              <Badge key={label} variant="secondary" className="bg-slate-100 text-slate-700">
+                {label}
+              </Badge>
+            ))}
+            {queueLabel && (
+              <Badge variant="outline" className="border-slate-200 text-slate-600">
+                {queueLabel}
+              </Badge>
+            )}
+            {buildingTypeLabel && (
+              <Badge variant="outline" className="border-slate-200 text-slate-600">
+                {UI.buildingType}: {buildingTypeLabel}
+              </Badge>
+            )}
+          </div>
+        )}
         <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
           <div>
             <div className="text-slate-400">{UI.priceFrom}</div>

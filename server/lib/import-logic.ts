@@ -14,6 +14,25 @@ export function asNumber(v: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined
 }
 
+export function asBoolean(v: unknown): boolean | undefined {
+  if (typeof v === 'boolean') return v
+  if (typeof v === 'number') {
+    if (v === 1) return true
+    if (v === 0) return false
+  }
+  const s = asString(v).toLowerCase().trim()
+  if (!s) return undefined
+  if (['1', 'true', 'yes', 'on', 'да', 'истина'].includes(s)) return true
+  if (['0', 'false', 'no', 'off', 'нет', 'ложь'].includes(s)) return false
+  return undefined
+}
+
+function asInteger(v: unknown): number | undefined {
+  const n = asNumber(v)
+  if (typeof n !== 'number') return undefined
+  return Number.isFinite(n) ? Math.trunc(n) : undefined
+}
+
 export function asStringArray(v: unknown): string[] {
   if (Array.isArray(v)) return v.map((x) => asString(x)).map((s) => s.trim()).filter(Boolean)
   const s = asString(v)
@@ -88,6 +107,31 @@ export function normalizeCategory(v: unknown): Category {
 export function normalizeDealType(v: unknown): 'sale' | 'rent' {
   const s = asString(v).toLowerCase().trim()
   return s === 'rent' ? 'rent' : 'sale'
+}
+
+function extractGeoPoint(value: unknown): { lat?: number; lon?: number } {
+  if (!value || typeof value !== 'object') return {}
+  const record = value as Record<string, unknown>
+
+  const directLat = asNumber(record.lat ?? record.latitude)
+  const directLon = asNumber(record.lon ?? record.lng ?? record.longitude)
+  if (typeof directLat === 'number' && typeof directLon === 'number') {
+    return { lat: directLat, lon: directLon }
+  }
+
+  const geometry = (record.geometry ?? record.block_geometry ?? record.geo) as Record<string, unknown> | undefined
+  if (geometry && typeof geometry === 'object') {
+    const coords = geometry.coordinates
+    if (Array.isArray(coords) && coords.length >= 2) {
+      const lon = asNumber(coords[0])
+      const lat = asNumber(coords[1])
+      if (typeof lat === 'number' && typeof lon === 'number') {
+        return { lat, lon }
+      }
+    }
+  }
+
+  return {}
 }
 
 function normalizeKey(value: unknown): string {
@@ -347,16 +391,25 @@ export function aggregateComplexesFromRows(rows: Record<string, unknown>[], sour
     district?: string
     metro: Set<string>
     description?: string
+    address?: string
+    mortgage_available?: boolean
+    installment_available?: boolean
+    subsidy_available?: boolean
+    military_mortgage_available?: boolean
+    queue_min?: number
+    building_type?: string
+    geo_lat?: number
+    geo_lon?: number
   }>()
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
-    let complexId = asString(getField(row, 'complex_external_id', mapping, ['complexExternalId', 'complex_id', 'building-name', 'yandex-building-id']))
+    let complexId = asString(getField(row, 'complex_external_id', mapping, ['complexExternalId', 'complex_id', 'building-name', 'yandex-building-id', 'block_id']))
     const isChild = !!complexId
     
     // Fallback: if no complex_id found, assume the row itself represents a complex and use its ID
     if (!complexId) {
-      complexId = asString(getField(row, 'external_id', mapping, ['id', 'externalId']))
+      complexId = asString(getField(row, 'external_id', mapping, ['id', 'externalId', '_id']))
     }
 
     if (!complexId) continue
@@ -386,7 +439,7 @@ export function aggregateComplexesFromRows(rows: Record<string, unknown>[], sour
 
     // Title: look for complex name
     // If it's a lot feed, 'title' might be "2-room apt", so we prefer 'building-name'
-    const complexTitle = asString(getField(row, 'complex_title', mapping, ['building-name', 'complex_name', 'zhk_name', 'complexName']))
+    const complexTitle = asString(getField(row, 'complex_title', mapping, ['building-name', 'complex_name', 'zhk_name', 'complexName', 'block_name']))
     // If no complex title, maybe use the row title (if this is a complex feed)
     const rowTitle = asString(getField(row, 'title', mapping, ['name']))
     
@@ -400,29 +453,67 @@ export function aggregateComplexesFromRows(rows: Record<string, unknown>[], sour
       c.title = complexId
     }
 
-    const imgs = asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos']))
+    const imgs = asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos', 'renderer', 'block_renderer']))
     imgs.forEach(img => c.images.add(img))
 
-    const dev = asString(getField(row, 'developer', mapping))
+    const dev = asString(getField(row, 'developer', mapping, ['block_builder_name']))
     if (dev) c.developer = dev
 
-    const date = asString(getField(row, 'handover_date', mapping, ['handoverDate']))
+    const date = asString(getField(row, 'handover_date', mapping, ['handoverDate', 'building_deadline']))
     if (date) c.handover_date = date
 
-    const district = normalizeLocationValue(getField(row, 'district', mapping, ['area', 'region']))
+    const district = normalizeLocationValue(getField(row, 'district', mapping, ['area', 'region', 'block_district_name']))
     if (district) c.district = district
 
-    const metros = asStringArray(getField(row, 'metro', mapping))
+    const metros = asStringArray(getField(row, 'metro', mapping, ['block_subway_name']))
     metros.forEach(m => c.metro.add(m))
 
-    const desc = asString(getField(row, 'description', mapping))
+    const desc = asString(getField(row, 'description', mapping, ['block_description']))
     if (desc && !c.description) c.description = desc
+
+    const address = asString(getField(row, 'address', mapping, ['block_address']))
+    if (address && !c.address) c.address = address
 
     const classType = asString(getField(row, 'class', mapping, ['class_type', 'housing_class']))
     if (classType && !c.class) c.class = classType
 
-    const finishType = asString(getField(row, 'finish_type', mapping, ['finishType', 'finishing']))
+    const finishType = asString(getField(row, 'finish_type', mapping, ['finishType', 'renovation', 'finishing_name', 'finishing']))
     if (finishType && !c.finish_type) c.finish_type = finishType
+
+    const mortgageAvailable = asBoolean(getField(row, 'mortgage_available', mapping, ['building_mortgage', 'mortgage']))
+    if (mortgageAvailable === true) c.mortgage_available = true
+    if (mortgageAvailable === false && c.mortgage_available === undefined) c.mortgage_available = false
+
+    const installmentAvailable = asBoolean(getField(row, 'installment_available', mapping, ['building_installment', 'installment']))
+    if (installmentAvailable === true) c.installment_available = true
+    if (installmentAvailable === false && c.installment_available === undefined) c.installment_available = false
+
+    const subsidyAvailable = asBoolean(getField(row, 'subsidy_available', mapping, ['building_subsidy', 'subsidy']))
+    if (subsidyAvailable === true) c.subsidy_available = true
+    if (subsidyAvailable === false && c.subsidy_available === undefined) c.subsidy_available = false
+
+    const militaryMortgageAvailable = asBoolean(getField(row, 'military_mortgage_available', mapping, ['building_voen_mortgage', 'military_mortgage']))
+    if (militaryMortgageAvailable === true) c.military_mortgage_available = true
+    if (militaryMortgageAvailable === false && c.military_mortgage_available === undefined) c.military_mortgage_available = false
+
+    const queue = asInteger(getField(row, 'queue_min', mapping, ['building_queue', 'queue']))
+    if (typeof queue === 'number' && queue > 0 && (typeof c.queue_min !== 'number' || queue < c.queue_min)) c.queue_min = queue
+
+    const buildingType = asString(getField(row, 'building_type', mapping, ['buildingType', 'building_type_name']))
+    if (buildingType && !c.building_type) c.building_type = buildingType
+
+    const geoLat = asNumber(getField(row, 'geo_lat', mapping, ['lat']))
+    const geoLon = asNumber(getField(row, 'geo_lon', mapping, ['lon', 'lng']))
+    if (typeof geoLat === 'number' && typeof geoLon === 'number') {
+      c.geo_lat = geoLat
+      c.geo_lon = geoLon
+    } else {
+      const point = extractGeoPoint(row)
+      if (typeof point.lat === 'number' && typeof point.lon === 'number') {
+        c.geo_lat = point.lat
+        c.geo_lon = point.lon
+      }
+    }
   }
 
   const result: Omit<Complex, 'id'>[] = []
@@ -444,8 +535,15 @@ export function aggregateComplexesFromRows(rows: Record<string, unknown>[], sour
       finish_type: data.finish_type,
       handover_date: data.handover_date,
       description: data.description,
-      geo_lat: undefined,
-      geo_lon: undefined,
+      address: data.address,
+      mortgage_available: data.mortgage_available,
+      installment_available: data.installment_available,
+      subsidy_available: data.subsidy_available,
+      military_mortgage_available: data.military_mortgage_available,
+      queue_min: data.queue_min,
+      building_type: data.building_type,
+      geo_lat: data.geo_lat,
+      geo_lon: data.geo_lon,
       last_seen_at: now,
       updated_at: now,
     })
@@ -585,20 +683,20 @@ export function upsertProperties(
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
     try {
-      const externalId = asString(getField(row, 'external_id', mapping, ['id', 'externalId']))
+      const externalId = asString(getField(row, 'external_id', mapping, ['id', 'externalId', '_id']))
       if (!externalId) {
         errors.push({ rowIndex: i + 1, error: 'Отсутствует external_id' })
         continue
       }
       seen.add(externalId)
 
-      const title = asString(getField(row, 'title', mapping, ['name']))
-      const complexExternal = asString(getField(row, 'complex_external_id', mapping, ['complexExternalId', 'complex_id']))
+      const title = asString(getField(row, 'title', mapping, ['name', 'block_name']))
+      const complexExternal = asString(getField(row, 'complex_external_id', mapping, ['complexExternalId', 'complex_id', 'block_id']))
       const complexId = complexExternal ? complexByExternal.get(complexExternal)?.id : undefined
       const cat = normalizeCategory(getField(row, 'category', mapping))
       const dealType = normalizeDealType(getField(row, 'deal_type', mapping, ['dealType']))
 
-      const bedrooms = asNumber(getField(row, 'bedrooms', mapping, ['rooms']))
+      const bedrooms = asNumber(getField(row, 'bedrooms', mapping, ['rooms', 'room']))
       const price = asNumber(getField(row, 'price', mapping))
       const area = asNumber(getField(row, 'area_total', mapping, ['area']))
       if (typeof bedrooms !== 'number' || typeof price !== 'number' || typeof area !== 'number') {
@@ -613,7 +711,7 @@ export function upsertProperties(
             source_id: sourceId,
             external_id: externalId,
             slug: slugify(fallbackTitle),
-            lot_number: asString(getField(row, 'lot_number', mapping, ['lotNumber', 'apartment'])),
+            lot_number: asString(getField(row, 'lot_number', mapping, ['lotNumber', 'apartment', 'number'])),
             complex_id: complexId,
             complex_external_id: complexExternal || undefined,
             deal_type: dealType,
@@ -624,20 +722,26 @@ export function upsertProperties(
             old_price: asNumber(getField(row, 'old_price', mapping, ['oldPrice', 'oldprice'])) || undefined,
             price_period: dealType === 'rent' ? 'month' : undefined,
             area_total: typeof area === 'number' ? area : 0,
-            area_living: asNumber(getField(row, 'area_living', mapping, ['areaLiving', 'living_space'])) || undefined,
+            area_living: asNumber(getField(row, 'area_living', mapping, ['areaLiving', 'living_space', 'area_rooms_total'])) || undefined,
             area_kitchen: asNumber(getField(row, 'area_kitchen', mapping, ['areaKitchen', 'kitchen_space'])) || undefined,
             floor: asNumber(getField(row, 'floor', mapping)) || undefined,
-            floors_total: asNumber(getField(row, 'floors_total', mapping, ['floorsTotal', 'floors-total'])) || undefined,
-            district: normalizeLocationValue(getField(row, 'district', mapping, ['area', 'region'])),
-            metro: asStringArray(getField(row, 'metro', mapping)),
-            images: asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos'])),
-            renovation: asString(getField(row, 'renovation', mapping)) || undefined,
+            floors_total: asNumber(getField(row, 'floors_total', mapping, ['floorsTotal', 'floors-total', 'floors'])) || undefined,
+            district: normalizeLocationValue(getField(row, 'district', mapping, ['area', 'region', 'block_district_name'])),
+            metro: asStringArray(getField(row, 'metro', mapping, ['block_subway_name'])),
+            images: asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos', 'plan'])),
+            renovation: asString(getField(row, 'renovation', mapping, ['finishing_name', 'finishing'])) || undefined,
             is_euroflat: asString(getField(row, 'is_euroflat', mapping, ['euroflat'])) === 'true' || asString(getField(row, 'is_euroflat', mapping, ['euroflat'])) === '1' || false,
-            building_section: asString(getField(row, 'building_section', mapping, ['buildingSection', 'building-section'])) || undefined,
+            building_section: asString(getField(row, 'building_section', mapping, ['buildingSection', 'building-section', 'building_name'])) || undefined,
             building_state: asString(getField(row, 'building_state', mapping, ['buildingState', 'building-state'])) || undefined,
             ready_quarter: asNumber(getField(row, 'ready_quarter', mapping, ['readyQuarter', 'ready-quarter'])) || undefined,
             built_year: asNumber(getField(row, 'built_year', mapping, ['builtYear', 'built-year'])) || undefined,
-            description: asString(getField(row, 'description', mapping)) || undefined,
+            description: asString(getField(row, 'description', mapping, ['block_description'])) || undefined,
+            mortgage_available: asBoolean(getField(row, 'mortgage_available', mapping, ['building_mortgage', 'mortgage'])) ?? undefined,
+            installment_available: asBoolean(getField(row, 'installment_available', mapping, ['building_installment', 'installment'])) ?? undefined,
+            subsidy_available: asBoolean(getField(row, 'subsidy_available', mapping, ['building_subsidy', 'subsidy'])) ?? undefined,
+            military_mortgage_available: asBoolean(getField(row, 'military_mortgage_available', mapping, ['building_voen_mortgage', 'military_mortgage'])) ?? undefined,
+            building_queue: asInteger(getField(row, 'building_queue', mapping, ['queue', 'building_queue'])) || undefined,
+            building_type: asString(getField(row, 'building_type', mapping, ['buildingType', 'building_type_name'])) || undefined,
             status: 'hidden',
             last_seen_at: now,
             updated_at: now,
@@ -667,7 +771,7 @@ export function upsertProperties(
         source_id: sourceId,
         external_id: externalId,
         slug: slugify(title || externalId),
-        lot_number: asString(getField(row, 'lot_number', mapping, ['lotNumber', 'apartment'])),
+        lot_number: asString(getField(row, 'lot_number', mapping, ['lotNumber', 'apartment', 'number'])),
         complex_id: complexId,
         complex_external_id: complexExternal || undefined,
         deal_type: dealType,
@@ -678,20 +782,26 @@ export function upsertProperties(
         old_price: asNumber(getField(row, 'old_price', mapping, ['oldPrice', 'oldprice'])) || undefined,
         price_period: dealType === 'rent' ? 'month' : undefined,
         area_total: area,
-        area_living: asNumber(getField(row, 'area_living', mapping, ['areaLiving', 'living_space'])) || undefined,
+        area_living: asNumber(getField(row, 'area_living', mapping, ['areaLiving', 'living_space', 'area_rooms_total'])) || undefined,
         area_kitchen: asNumber(getField(row, 'area_kitchen', mapping, ['areaKitchen', 'kitchen_space'])) || undefined,
         floor: asNumber(getField(row, 'floor', mapping)) || undefined,
-        floors_total: asNumber(getField(row, 'floors_total', mapping, ['floorsTotal', 'floors-total'])) || undefined,
-        district: normalizeLocationValue(getField(row, 'district', mapping, ['area', 'region'])),
-        metro: asStringArray(getField(row, 'metro', mapping)),
-        images: asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos'])),
-        renovation: asString(getField(row, 'renovation', mapping)) || undefined,
+        floors_total: asNumber(getField(row, 'floors_total', mapping, ['floorsTotal', 'floors-total', 'floors'])) || undefined,
+        district: normalizeLocationValue(getField(row, 'district', mapping, ['area', 'region', 'block_district_name'])),
+        metro: asStringArray(getField(row, 'metro', mapping, ['block_subway_name'])),
+        images: asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos', 'plan'])),
+        renovation: asString(getField(row, 'renovation', mapping, ['finishing_name', 'finishing'])) || undefined,
         is_euroflat: asString(getField(row, 'is_euroflat', mapping, ['euroflat'])) === 'true' || asString(getField(row, 'is_euroflat', mapping, ['euroflat'])) === '1' || false,
-        building_section: asString(getField(row, 'building_section', mapping, ['buildingSection', 'building-section'])) || undefined,
+        building_section: asString(getField(row, 'building_section', mapping, ['buildingSection', 'building-section', 'building_name'])) || undefined,
         building_state: asString(getField(row, 'building_state', mapping, ['buildingState', 'building-state'])) || undefined,
         ready_quarter: asNumber(getField(row, 'ready_quarter', mapping, ['readyQuarter', 'ready-quarter'])) || undefined,
         built_year: asNumber(getField(row, 'built_year', mapping, ['builtYear', 'built-year'])) || undefined,
-        description: asString(getField(row, 'description', mapping)) || undefined,
+        description: asString(getField(row, 'description', mapping, ['block_description'])) || undefined,
+        mortgage_available: asBoolean(getField(row, 'mortgage_available', mapping, ['building_mortgage', 'mortgage'])) ?? undefined,
+        installment_available: asBoolean(getField(row, 'installment_available', mapping, ['building_installment', 'installment'])) ?? undefined,
+        subsidy_available: asBoolean(getField(row, 'subsidy_available', mapping, ['building_subsidy', 'subsidy'])) ?? undefined,
+        military_mortgage_available: asBoolean(getField(row, 'military_mortgage_available', mapping, ['building_voen_mortgage', 'military_mortgage'])) ?? undefined,
+        building_queue: asInteger(getField(row, 'building_queue', mapping, ['queue', 'building_queue'])) || undefined,
+        building_type: asString(getField(row, 'building_type', mapping, ['buildingType', 'building_type_name'])) || undefined,
         status: normalizeStatus(getField(row, 'status', mapping)),
         last_seen_at: now,
         updated_at: now,
@@ -713,7 +823,7 @@ export function upsertProperties(
     } catch (e) {
       errors.push({
         rowIndex: i + 1,
-        externalId: asString(getField(row, 'external_id', mapping, ['id', 'externalId'])),
+        externalId: asString(getField(row, 'external_id', mapping, ['id', 'externalId', '_id'])),
         error: e instanceof Error ? e.message : 'Неизвестная ошибка'
       })
     }
@@ -733,8 +843,8 @@ export function upsertProperties(
 }
 
 export function mapRowToProperty(row: Record<string, unknown>, mapping?: Record<string, string>): Property {
-  const title = asString(getField(row, 'title', mapping, ['name']))
-  const externalId = asString(getField(row, 'external_id', mapping, ['id', 'externalId']))
+  const title = asString(getField(row, 'title', mapping, ['name', 'block_name']))
+  const externalId = asString(getField(row, 'external_id', mapping, ['id', 'externalId', '_id']))
 
   return {
     id: externalId, // Temporary ID for preview
@@ -744,33 +854,42 @@ export function mapRowToProperty(row: Record<string, unknown>, mapping?: Record<
     title: title || externalId || '\u0411\u0435\u0437 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044f',
     category: normalizeCategory(getField(row, 'category', mapping)),
     deal_type: normalizeDealType(getField(row, 'deal_type', mapping, ['dealType'])),
-    bedrooms: asNumber(getField(row, 'bedrooms', mapping, ['rooms'])) || 0,
+    bedrooms: asNumber(getField(row, 'bedrooms', mapping, ['rooms', 'room'])) || 0,
     price: asNumber(getField(row, 'price', mapping)) || 0,
     old_price: asNumber(getField(row, 'old_price', mapping, ['oldPrice', 'oldprice'])),
     area_total: asNumber(getField(row, 'area_total', mapping, ['area'])) || 0,
-    area_living: asNumber(getField(row, 'area_living', mapping, ['areaLiving', 'living_space'])),
+    area_living: asNumber(getField(row, 'area_living', mapping, ['areaLiving', 'living_space', 'area_rooms_total'])),
     area_kitchen: asNumber(getField(row, 'area_kitchen', mapping, ['areaKitchen', 'kitchen_space'])),
-    district: normalizeLocationValue(getField(row, 'district', mapping, ['area', 'region'])) || '\u041d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d',
-    metro: asStringArray(getField(row, 'metro', mapping)),
-    images: asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos'])),
+    district: normalizeLocationValue(getField(row, 'district', mapping, ['area', 'region', 'block_district_name'])) || '\u041d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d',
+    metro: asStringArray(getField(row, 'metro', mapping, ['block_subway_name'])),
+    images: asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos', 'plan'])),
     status: normalizeStatus(getField(row, 'status', mapping)),
     floor: asNumber(getField(row, 'floor', mapping)),
-    floors_total: asNumber(getField(row, 'floors_total', mapping, ['floorsTotal', 'floors-total'])),
-    renovation: asString(getField(row, 'renovation', mapping)),
+    floors_total: asNumber(getField(row, 'floors_total', mapping, ['floorsTotal', 'floors-total', 'floors'])),
+    renovation: asString(getField(row, 'renovation', mapping, ['finishing_name', 'finishing'])),
     is_euroflat: asString(getField(row, 'is_euroflat', mapping, ['euroflat'])) === 'true' || asString(getField(row, 'is_euroflat', mapping, ['euroflat'])) === '1',
-    building_section: asString(getField(row, 'building_section', mapping, ['buildingSection', 'building-section'])),
+    building_section: asString(getField(row, 'building_section', mapping, ['buildingSection', 'building-section', 'building_name'])),
     building_state: asString(getField(row, 'building_state', mapping, ['buildingState', 'building-state'])),
     ready_quarter: asNumber(getField(row, 'ready_quarter', mapping, ['readyQuarter', 'ready-quarter'])),
     built_year: asNumber(getField(row, 'built_year', mapping, ['builtYear', 'built-year'])),
-    description: asString(getField(row, 'description', mapping)),
-    lot_number: asString(getField(row, 'lot_number', mapping, ['lotNumber', 'apartment'])),
+    description: asString(getField(row, 'description', mapping, ['block_description'])),
+    lot_number: asString(getField(row, 'lot_number', mapping, ['lotNumber', 'apartment', 'number'])),
+    mortgage_available: asBoolean(getField(row, 'mortgage_available', mapping, ['building_mortgage', 'mortgage'])),
+    installment_available: asBoolean(getField(row, 'installment_available', mapping, ['building_installment', 'installment'])),
+    subsidy_available: asBoolean(getField(row, 'subsidy_available', mapping, ['building_subsidy', 'subsidy'])),
+    military_mortgage_available: asBoolean(getField(row, 'military_mortgage_available', mapping, ['building_voen_mortgage', 'military_mortgage'])),
+    building_queue: asInteger(getField(row, 'building_queue', mapping, ['queue', 'building_queue'])),
+    building_type: asString(getField(row, 'building_type', mapping, ['buildingType', 'building_type_name'])),
     updated_at: new Date().toISOString()
   }
 }
 
 export function mapRowToComplex(row: Record<string, unknown>, mapping?: Record<string, string>): Complex {
-  const title = asString(getField(row, 'title', mapping, ['name']))
-  const externalId = asString(getField(row, 'external_id', mapping, ['id', 'externalId']))
+  const title = asString(getField(row, 'title', mapping, ['name', 'complex_title', 'block_name']))
+  const externalId = asString(getField(row, 'external_id', mapping, ['id', 'externalId', 'complex_external_id', 'block_id']))
+  const geoPoint = extractGeoPoint(row)
+  const geoLat = asNumber(getField(row, 'geo_lat', mapping, ['lat'])) ?? geoPoint.lat
+  const geoLon = asNumber(getField(row, 'geo_lon', mapping, ['lon', 'lng'])) ?? geoPoint.lon
 
   return {
     id: externalId, // Temporary ID for preview
@@ -783,8 +902,21 @@ export function mapRowToComplex(row: Record<string, unknown>, mapping?: Record<s
     metro: asStringArray(getField(row, 'metro', mapping)),
     price_from: asNumber(getField(row, 'price_from', mapping, ['priceFrom', 'price_min'])) || asNumber(getField(row, 'price', mapping)),
     area_from: asNumber(getField(row, 'area_from', mapping, ['areaFrom', 'area_min'])) || asNumber(getField(row, 'area_total', mapping, ['area'])),
-    images: asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos'])),
+    images: asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos', 'renderer', 'block_renderer'])),
     status: normalizeStatus(getField(row, 'status', mapping)),
+    developer: asString(getField(row, 'developer', mapping, ['block_builder_name'])) || undefined,
+    handover_date: asString(getField(row, 'handover_date', mapping, ['handoverDate', 'building_deadline'])) || undefined,
+    finish_type: asString(getField(row, 'finish_type', mapping, ['finishType', 'renovation', 'finishing_name', 'finishing'])) || undefined,
+    description: asString(getField(row, 'description', mapping, ['block_description'])) || undefined,
+    address: asString(getField(row, 'address', mapping, ['block_address'])) || undefined,
+    mortgage_available: asBoolean(getField(row, 'mortgage_available', mapping, ['building_mortgage', 'mortgage'])),
+    installment_available: asBoolean(getField(row, 'installment_available', mapping, ['building_installment', 'installment'])),
+    subsidy_available: asBoolean(getField(row, 'subsidy_available', mapping, ['building_subsidy', 'subsidy'])),
+    military_mortgage_available: asBoolean(getField(row, 'military_mortgage_available', mapping, ['building_voen_mortgage', 'military_mortgage'])),
+    queue_min: asInteger(getField(row, 'queue_min', mapping, ['building_queue', 'queue'])),
+    building_type: asString(getField(row, 'building_type', mapping, ['buildingType', 'building_type_name'])) || undefined,
+    geo_lat: geoLat,
+    geo_lon: geoLon,
     updated_at: new Date().toISOString()
   }
 }

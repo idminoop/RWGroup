@@ -212,6 +212,13 @@ export interface Complex {
   finish_type?: string
   handover_date?: string
   description?: string
+  address?: string
+  mortgage_available?: boolean
+  installment_available?: boolean
+  subsidy_available?: boolean
+  military_mortgage_available?: boolean
+  queue_min?: number
+  building_type?: string
   geo_lat?: number
   geo_lon?: number
   landing?: ComplexLandingConfig
@@ -250,6 +257,12 @@ export interface Property {
   ready_quarter?: number
   built_year?: number
   description?: string
+  mortgage_available?: boolean
+  installment_available?: boolean
+  subsidy_available?: boolean
+  military_mortgage_available?: boolean
+  building_queue?: number
+  building_type?: string
   last_seen_at?: string
   updated_at: string
 }
