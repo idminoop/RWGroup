@@ -67,6 +67,35 @@ const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } })
 const importLocks = new Map<string, number>()
 const DEFAULT_FEED_REFRESH_INTERVAL_HOURS = 24
+const TRENDAGENT_CACHE_TTL_MS = 5 * 60 * 1000
+
+type TrendAgentDataset = {
+  sourceUrl: string
+  aboutUrl: string
+  files: Record<string, string>
+  apartments: Record<string, unknown>[]
+  blocks: Record<string, unknown>[]
+  buildings: Record<string, unknown>[]
+  builders: Record<string, unknown>[]
+  regions: Record<string, unknown>[]
+  subways: Record<string, unknown>[]
+  rooms: Record<string, unknown>[]
+  finishings: Record<string, unknown>[]
+  buildingtypes: Record<string, unknown>[]
+}
+
+type TrendAgentComplexOption = {
+  block_id: string
+  title: string
+  district?: string
+  developer?: string
+  address?: string
+  lots_count: number
+  price_from?: number
+  price_to?: number
+}
+
+const trendAgentDatasetCache = new Map<string, { loadedAt: number; dataset: TrendAgentDataset }>()
 
 function toNumber(v: unknown): number | undefined {
   const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : typeof v === 'number' ? v : NaN
@@ -2049,6 +2078,179 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
   res.json({ success: true, data: run })
 })
 
+router.post('/import/trendagent/complexes', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+  const schema = z.object({
+    source_id: z.string().min(1),
+    force_refresh: z.coerce.boolean().optional(),
+  })
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+
+  const source = withDbRead((db) => db.feed_sources.find((s) => s.id === parsed.data.source_id))
+  if (!source) {
+    res.status(404).json({ success: false, error: 'Source not found' })
+    return
+  }
+  if (!source.url) {
+    res.status(400).json({ success: false, error: 'Source URL is required for TrendAgent selection' })
+    return
+  }
+
+  try {
+    const dataset = await loadTrendAgentDataset(source.url, parsed.data.force_refresh === true)
+    const items = buildTrendAgentComplexOptions(dataset)
+    res.json({
+      success: true,
+      data: {
+        source_id: source.id,
+        source_url: source.url,
+        total: items.length,
+        items,
+      },
+    })
+  } catch (error) {
+    const details = error instanceof Error ? error.message : 'Failed to load TrendAgent feed'
+    res.status(500).json({ success: false, error: 'TrendAgent list failed', details })
+  }
+})
+
+router.post('/import/trendagent/run', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+  const schema = z.object({
+    source_id: z.string().min(1),
+    entity: z.enum(['property', 'complex']),
+    block_ids: z.array(z.string().min(1)).min(1),
+    hide_invalid: z.coerce.boolean().optional(),
+    restore_archived: z.coerce.boolean().optional(),
+    force_refresh: z.coerce.boolean().optional(),
+  })
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+
+  const lockKey = `${parsed.data.source_id}:${parsed.data.entity}:trendagent`
+  if (importLocks.has(lockKey)) {
+    res.status(409).json({ success: false, error: 'Import already running for this source' })
+    return
+  }
+  importLocks.set(lockKey, Date.now())
+
+  const sourceSnapshot = withDbRead((db) => db.feed_sources.find((s) => s.id === parsed.data.source_id))
+  if (!sourceSnapshot) {
+    importLocks.delete(lockKey)
+    res.status(404).json({ success: false, error: 'Source not found' })
+    return
+  }
+  if (!sourceSnapshot.url) {
+    importLocks.delete(lockKey)
+    res.status(400).json({ success: false, error: 'Source URL is required for TrendAgent import' })
+    return
+  }
+
+  const run: {
+    id: string
+    source_id: string
+    entity: 'property' | 'complex'
+    started_at: string
+    status: 'success' | 'failed' | 'partial'
+    stats: { inserted: number; updated: number; hidden: number }
+    feed_name?: string
+    feed_url?: string
+    target_complex_id?: string
+    action?: 'import' | 'preview' | 'delete'
+  } = {
+    id: newId(),
+    source_id: parsed.data.source_id,
+    entity: parsed.data.entity,
+    started_at: new Date().toISOString(),
+    status: 'success',
+    stats: { inserted: 0, updated: 0, hidden: 0 },
+    feed_name: sourceSnapshot.name,
+    feed_url: sourceSnapshot.url,
+    action: 'import',
+  }
+
+  let errorLog = ''
+  try {
+    const selectedBlockIds = new Set(parsed.data.block_ids.map((id) => id.trim()).filter(Boolean))
+    if (selectedBlockIds.size === 0) {
+      throw new Error('At least one block_id is required')
+    }
+
+    const dataset = await loadTrendAgentDataset(sourceSnapshot.url, parsed.data.force_refresh === true)
+    const rows = buildTrendAgentImportRows(dataset, selectedBlockIds)
+    if (rows.length === 0) {
+      throw new Error('No apartments found for selected complexes')
+    }
+    assertFeedRowLimit(rows.length)
+
+    const restoreArchived = parsed.data.restore_archived !== false
+    const stats = withDb((db) => {
+      const source = db.feed_sources.find((s) => s.id === parsed.data.source_id)
+      const mapping = source?.mapping
+
+      if (parsed.data.entity === 'complex') {
+        return upsertComplexes(db, parsed.data.source_id, rows, mapping, { restoreArchived })
+      }
+
+      const complexStats = upsertComplexesFromProperties(db, parsed.data.source_id, rows, mapping, { restoreArchived })
+      const propertyStats = upsertProperties(db, parsed.data.source_id, rows, mapping, {
+        hideInvalid: parsed.data.hide_invalid,
+        restoreArchived,
+      })
+      return { ...propertyStats, targetComplexId: complexStats.targetComplexId }
+    })
+
+    run.stats = { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden }
+    const targetComplexId = (stats as { targetComplexId?: string }).targetComplexId
+    if (typeof targetComplexId === 'string' && targetComplexId) {
+      run.target_complex_id = targetComplexId
+    }
+
+    if (stats.errors.length > 0) {
+      run.status = stats.errors.length === rows.length ? 'failed' : 'partial'
+      errorLog =
+        `${stats.errors.length} rows with errors:\n` +
+        stats.errors
+          .slice(0, 50)
+          .map((item) => `Row ${item.rowIndex}${item.externalId ? ` (${item.externalId})` : ''}: ${item.error}`)
+          .join('\n')
+    }
+  } catch (error) {
+    run.status = 'failed'
+    errorLog = error instanceof Error ? error.message : 'Unknown error'
+  } finally {
+    importLocks.delete(lockKey)
+    withDb((db) => {
+      db.import_runs.unshift({
+        ...run,
+        finished_at: new Date().toISOString(),
+        error_log: errorLog || undefined,
+      })
+      appendAuditLog(
+        db,
+        req.admin!.id,
+        req.admin!.login,
+        'import',
+        'property',
+        run.source_id,
+        `TrendAgent selected import (${run.entity}): ${run.status} +${run.stats.inserted}/${run.stats.updated}/${run.stats.hidden}`,
+        run.feed_name || undefined,
+      )
+    })
+  }
+
+  if (run.status === 'failed') {
+    res.status(500).json({ success: false, error: 'Import failed', details: errorLog })
+    return
+  }
+  res.json({ success: true, data: run })
+})
+
 // Preview interfaces
 interface PreviewRow {
   rowIndex: number
@@ -2073,6 +2275,7 @@ function trackFieldMapping(
   field: string,
   row: Record<string, unknown>
 ) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return
   if (!mappings[field]) mappings[field] = []
   const aliases: Record<string, string[]> = {
     external_id: ['external_id', 'id', 'externalId'],
@@ -2335,6 +2538,311 @@ async function getBuffer(req: Request, url?: string): Promise<Buffer> {
   throw new Error('No file provided')
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function numberValue(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return undefined
+}
+
+function compactAddress(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  const rec = asRecord(value)
+  if (!rec) return ''
+  const parts = ['street', 'house', 'housing', 'building']
+    .map((key) => stringValue(rec[key]))
+    .filter(Boolean)
+  return parts.join(', ')
+}
+
+function normalizeTrendAgentAboutUrl(sourceUrl: string): string {
+  const parsed = new URL(sourceUrl)
+  const pathname = parsed.pathname || '/'
+  if (pathname.endsWith('/about.json') || pathname.endsWith('about.json')) {
+    return parsed.toString()
+  }
+  if (pathname.endsWith('.json')) {
+    return parsed.toString()
+  }
+  parsed.pathname = pathname.endsWith('/') ? `${pathname}about.json` : `${pathname}/about.json`
+  parsed.search = ''
+  parsed.hash = ''
+  return parsed.toString()
+}
+
+function toAbsoluteUrl(baseUrl: string, relativeOrAbsolute: string): string {
+  return new URL(relativeOrAbsolute, baseUrl).toString()
+}
+
+async function fetchJsonValue(url: string): Promise<unknown> {
+  const buffer = await fetchFeedBuffer(url)
+  return JSON.parse(buffer.toString('utf-8'))
+}
+
+function extractTrendAgentFileMap(aboutUrl: string, aboutPayload: unknown): Record<string, string> {
+  const map: Record<string, string> = {}
+
+  const assignEntry = (entry: unknown) => {
+    const record = asRecord(entry)
+    if (!record) return
+    const name = stringValue(record.name).toLowerCase()
+    const fileUrl = stringValue(record.url)
+    if (!name || !fileUrl) return
+    map[name] = toAbsoluteUrl(aboutUrl, fileUrl)
+  }
+
+  if (Array.isArray(aboutPayload)) {
+    for (const entry of aboutPayload) assignEntry(entry)
+  } else {
+    const record = asRecord(aboutPayload)
+    if (record) {
+      const nestedArray = findFirstObjectArray(record)
+      if (nestedArray) {
+        for (const entry of nestedArray) assignEntry(entry)
+      }
+      for (const [key, value] of Object.entries(record)) {
+        if (typeof value !== 'string') continue
+        const normalizedKey = key.toLowerCase()
+        if (!normalizedKey) continue
+        if (normalizedKey.endsWith('.json') || value.endsWith('.json')) {
+          map[normalizedKey.replace(/\.json$/i, '')] = toAbsoluteUrl(aboutUrl, value)
+        }
+      }
+    }
+  }
+
+  return map
+}
+
+function ensureObjectArray(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) return value.filter(isPlainObject) as Record<string, unknown>[]
+  const found = findFirstObjectArray(value)
+  return found || []
+}
+
+async function loadTrendAgentDataset(sourceUrl: string, forceRefresh = false): Promise<TrendAgentDataset> {
+  const cacheKey = sourceUrl.trim()
+  const cached = trendAgentDatasetCache.get(cacheKey)
+  if (!forceRefresh && cached && Date.now() - cached.loadedAt < TRENDAGENT_CACHE_TTL_MS) {
+    return cached.dataset
+  }
+
+  const aboutUrl = normalizeTrendAgentAboutUrl(sourceUrl)
+  const aboutPayload = await fetchJsonValue(aboutUrl)
+  const files = extractTrendAgentFileMap(aboutUrl, aboutPayload)
+
+  const required = ['apartments', 'blocks']
+  for (const key of required) {
+    if (!files[key]) {
+      throw new Error(`TrendAgent feed is missing required file "${key}.json" in about.json`)
+    }
+  }
+
+  const names = ['apartments', 'blocks', 'buildings', 'builders', 'regions', 'subways', 'rooms', 'finishings', 'buildingtypes'] as const
+  const loaded = await Promise.all(
+    names.map(async (name) => {
+      const fileUrl = files[name]
+      if (!fileUrl) return [name, [] as Record<string, unknown>[]] as const
+      const payload = await fetchJsonValue(fileUrl)
+      return [name, ensureObjectArray(payload)] as const
+    }),
+  )
+
+  const entries = Object.fromEntries(loaded) as Record<(typeof names)[number], Record<string, unknown>[]>
+  const dataset: TrendAgentDataset = {
+    sourceUrl,
+    aboutUrl,
+    files,
+    apartments: entries.apartments || [],
+    blocks: entries.blocks || [],
+    buildings: entries.buildings || [],
+    builders: entries.builders || [],
+    regions: entries.regions || [],
+    subways: entries.subways || [],
+    rooms: entries.rooms || [],
+    finishings: entries.finishings || [],
+    buildingtypes: entries.buildingtypes || [],
+  }
+
+  trendAgentDatasetCache.set(cacheKey, { loadedAt: Date.now(), dataset })
+  return dataset
+}
+
+function buildTrendAgentComplexOptions(dataset: TrendAgentDataset): TrendAgentComplexOption[] {
+  const blocksById = new Map<string, Record<string, unknown>>(
+    dataset.blocks.map((block) => [stringValue(block._id), block] as const).filter(([id]) => Boolean(id)),
+  )
+  const regionsById = new Map<string, string>(
+    dataset.regions
+      .map((region) => [stringValue(region._id), stringValue(region.name)] as const)
+      .filter(([id]) => Boolean(id)),
+  )
+
+  const buckets = new Map<
+    string,
+    {
+      count: number
+      minPrice?: number
+      maxPrice?: number
+      district?: string
+      address?: string
+      title?: string
+      developerCounts: Map<string, number>
+    }
+  >()
+
+  for (const row of dataset.apartments) {
+    const blockId = stringValue(row.block_id)
+    if (!blockId) continue
+    const bucket = buckets.get(blockId) || {
+      count: 0,
+      developerCounts: new Map<string, number>(),
+    }
+    bucket.count += 1
+    const price = numberValue(row.price)
+    if (typeof price === 'number') {
+      bucket.minPrice = typeof bucket.minPrice === 'number' ? Math.min(bucket.minPrice, price) : price
+      bucket.maxPrice = typeof bucket.maxPrice === 'number' ? Math.max(bucket.maxPrice, price) : price
+    }
+    const district = stringValue(row.block_district_name)
+    if (district && !bucket.district) bucket.district = district
+    const address = compactAddress(row.block_address)
+    if (address && !bucket.address) bucket.address = address
+    const title = stringValue(row.block_name)
+    if (title && !bucket.title) bucket.title = title
+    const developer = stringValue(row.block_builder_name)
+    if (developer) {
+      bucket.developerCounts.set(developer, (bucket.developerCounts.get(developer) || 0) + 1)
+    }
+    buckets.set(blockId, bucket)
+  }
+
+  const options: TrendAgentComplexOption[] = []
+  for (const [blockId, bucket] of buckets.entries()) {
+    const block = blocksById.get(blockId)
+    const blockDistrict = block ? regionsById.get(stringValue(block.district)) : undefined
+    const district = bucket.district || blockDistrict || undefined
+    const address = bucket.address || (block ? compactAddress(block.address) : '') || undefined
+    const title = bucket.title || (block ? stringValue(block.name) : '') || blockId
+    const developer = [...bucket.developerCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+
+    options.push({
+      block_id: blockId,
+      title,
+      district,
+      developer: developer || undefined,
+      address,
+      lots_count: bucket.count,
+      price_from: bucket.minPrice,
+      price_to: bucket.maxPrice,
+    })
+  }
+
+  return options.sort((a, b) => {
+    if (b.lots_count !== a.lots_count) return b.lots_count - a.lots_count
+    return a.title.localeCompare(b.title, 'ru')
+  })
+}
+
+function parseTrendAgentBedrooms(roomCode: unknown, roomName: string): { bedrooms: number; isEuroflat: boolean } {
+  const code = numberValue(roomCode)
+  if (typeof code === 'number') {
+    const euroMap: Record<number, number> = { 22: 2, 23: 3, 24: 4, 25: 5 }
+    if (euroMap[Math.trunc(code)]) {
+      return { bedrooms: euroMap[Math.trunc(code)], isEuroflat: true }
+    }
+  }
+  const normalized = roomName.toLowerCase()
+  const match = normalized.match(/(\d+)/)
+  const bedrooms = match ? Math.max(0, Number(match[1])) : 1
+  return { bedrooms, isEuroflat: /[еe]/i.test(normalized) }
+}
+
+function buildTrendAgentImportRows(dataset: TrendAgentDataset, selectedBlockIds: Set<string>): Record<string, unknown>[] {
+  const roomNameByCode = new Map<string, string>()
+  for (const room of dataset.rooms) {
+    const name = stringValue(room.name)
+    const crmId = room.crm_id
+    const id = stringValue(room._id)
+    if (crmId !== undefined && crmId !== null) roomNameByCode.set(String(crmId), name)
+    if (id) roomNameByCode.set(id, name)
+  }
+  const finishingNameById = new Map<string, string>(
+    dataset.finishings.map((item) => [stringValue(item._id), stringValue(item.name)] as const).filter(([id]) => Boolean(id)),
+  )
+  const buildingTypeNameById = new Map<string, string>(
+    dataset.buildingtypes.map((item) => [stringValue(item._id), stringValue(item.name)] as const).filter(([id]) => Boolean(id)),
+  )
+  const blockById = new Map<string, Record<string, unknown>>(
+    dataset.blocks.map((item) => [stringValue(item._id), item] as const).filter(([id]) => Boolean(id)),
+  )
+
+  const rows: Record<string, unknown>[] = []
+  for (const apt of dataset.apartments) {
+    const blockId = stringValue(apt.block_id)
+    if (!blockId || !selectedBlockIds.has(blockId)) continue
+    const block = blockById.get(blockId)
+
+    const roomCode = apt.room
+    const roomName = roomNameByCode.get(String(roomCode ?? '')) || ''
+    const parsedBedrooms = parseTrendAgentBedrooms(roomCode, roomName)
+    const blockName = stringValue(apt.block_name) || (block ? stringValue(block.name) : '') || blockId
+    const title =
+      parsedBedrooms.bedrooms === 0
+        ? `Студия в ${blockName}`
+        : parsedBedrooms.isEuroflat
+          ? `${parsedBedrooms.bedrooms}Е в ${blockName}`
+          : `${parsedBedrooms.bedrooms}-комн. в ${blockName}`
+
+    const finishingId = stringValue(apt.finishing)
+    const buildingTypeId = stringValue(apt.building_type)
+    const images = []
+    if (typeof apt.plan === 'string' && apt.plan.trim()) images.push(apt.plan.trim())
+    if (Array.isArray(apt.block_renderer)) {
+      for (const value of apt.block_renderer) {
+        if (typeof value === 'string' && value.trim()) images.push(value.trim())
+      }
+    } else if (block && Array.isArray(block.renderer)) {
+      for (const value of block.renderer) {
+        if (typeof value === 'string' && value.trim()) images.push(value.trim())
+      }
+    }
+
+    rows.push({
+      ...apt,
+      external_id: stringValue(apt._id),
+      complex_external_id: blockId,
+      title,
+      bedrooms: parsedBedrooms.bedrooms,
+      is_euroflat: parsedBedrooms.isEuroflat,
+      lot_number: stringValue(apt.number),
+      area_living: numberValue(apt.area_rooms_total),
+      floors_total: numberValue(apt.floors),
+      renovation: finishingNameById.get(finishingId) || finishingId || undefined,
+      building_type_name: buildingTypeNameById.get(buildingTypeId) || buildingTypeId || undefined,
+      building_type: buildingTypeNameById.get(buildingTypeId) || buildingTypeId || undefined,
+      building_section: stringValue(apt.building_name) || undefined,
+      block_description: block ? stringValue(block.description) : undefined,
+      block_address: block ? compactAddress(block.address) : compactAddress(apt.block_address),
+      images,
+      deal_type: 'sale',
+      category: 'newbuild',
+    })
+  }
+  return rows
+}
+
 function parseRows(buffer: Buffer, ext: 'csv' | 'xlsx' | 'xml' | 'json'): Record<string, unknown>[] {
   if (ext === 'csv') {
     const raw = buffer.toString('utf-8')
@@ -2354,8 +2862,8 @@ function parseRows(buffer: Buffer, ext: 'csv' | 'xlsx' | 'xml' | 'json'): Record
   if (ext === 'xml') {
     const parser = new XMLParser({ ignoreAttributes: false })
     const obj = parser.parse(buffer.toString('utf-8'))
-    const arr = findFirstArray(obj)
-    const rows = (arr || []) as Record<string, unknown>[]
+    const arr = findFirstObjectArray(obj)
+    const rows = arr || []
     assertFeedRowLimit(rows.length)
     // Normalize Yandex Realty XML format
     return rows.map(row => normalizeYandexRealty(row))
@@ -2363,20 +2871,29 @@ function parseRows(buffer: Buffer, ext: 'csv' | 'xlsx' | 'xml' | 'json'): Record
 
   const obj = JSON.parse(buffer.toString('utf-8'))
   if (Array.isArray(obj)) {
-    assertFeedRowLimit(obj.length)
-    return obj as Record<string, unknown>[]
+    const rows = obj.filter(isPlainObject) as Record<string, unknown>[]
+    assertFeedRowLimit(rows.length)
+    return rows
   }
-  const arr = findFirstArray(obj)
-  const rows = (arr || []) as Record<string, unknown>[]
+  const arr = findFirstObjectArray(obj)
+  const rows = arr || []
   assertFeedRowLimit(rows.length)
   return rows
 }
 
-function findFirstArray(obj: unknown): unknown[] | null {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isArrayOfObjects(value: unknown): value is Record<string, unknown>[] {
+  return Array.isArray(value) && (value.length === 0 || value.every(isPlainObject))
+}
+
+function findFirstObjectArray(obj: unknown): Record<string, unknown>[] | null {
   if (!obj || typeof obj !== 'object') return null
-  if (Array.isArray(obj)) return obj
+  if (isArrayOfObjects(obj)) return obj
   for (const v of Object.values(obj as Record<string, unknown>)) {
-    const found = findFirstArray(v)
+    const found = findFirstObjectArray(v)
     if (found) return found
   }
   return null

@@ -64,6 +64,7 @@ function pickLocationText(loc: Record<string, unknown>): string {
 }
 
 export function getField(row: Record<string, unknown>, field: string, mapping?: Record<string, string>, aliases: string[] = []): unknown {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return undefined
   if (mapping && mapping[field]) {
     return row[mapping[field]]
   }
