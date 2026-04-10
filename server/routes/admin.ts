@@ -2663,6 +2663,11 @@ function normalizeTrendAgentAboutUrl(sourceUrl: string): string {
   if (pathname.endsWith('/about.json') || pathname.endsWith('about.json')) {
     return parsed.toString()
   }
+  const hasFileExt = /\.[a-z0-9]+$/i.test(pathname)
+  const isJsonFile = /\.json$/i.test(pathname)
+  if (hasFileExt && !isJsonFile) {
+    throw new Error('TrendAgent: source URL must point to about.json or a directory containing about.json')
+  }
   if (pathname.endsWith('.json')) {
     return parsed.toString()
   }

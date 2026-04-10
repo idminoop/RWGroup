@@ -572,9 +572,10 @@ export default function AdminImportPage() {
     if (!activeImportSource?.id) return
     if (!activeImportSource.url) return
     if (importInputMode !== 'url') return
+    if (!isTrendAgentAboutSource) return
     if (trendagentLoadedSourceId === activeImportSource.id) return
     void loadTrendagentComplexes(false, 1, trendagentQuery)
-  }, [activeImportSource?.id, activeImportSource?.url, importInputMode, trendagentLoadedSourceId])
+  }, [activeImportSource?.id, activeImportSource?.url, importInputMode, isTrendAgentAboutSource, trendagentLoadedSourceId, trendagentQuery])
 
   const runPreviewForFeed = useCallback(async (feed: FeedSource, fileOverride?: File | null, inputModeOverride?: 'url' | 'file') => {
     const inputMode = inputModeOverride || (feed.mode === 'upload' ? 'file' : 'url')
@@ -1010,88 +1011,6 @@ export default function AdminImportPage() {
             </table>
           </div>
 
-          <div>
-            <div className="mb-3 text-sm font-semibold text-slate-900">История импорта</div>
-            <div className="overflow-x-auto rounded-lg border border-slate-200 max-h-[360px] overflow-y-auto">
-              <table className="w-full min-w-[720px] md:min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs text-slate-600">
-                  <tr>
-                    <th className="px-3 py-2">Время</th>
-                    <th className="px-3 py-2">Источник</th>
-                    <th className="px-3 py-2">Действие</th>
-                    <th className="px-3 py-2">Сущность</th>
-                    <th className="px-3 py-2">Статус</th>
-                    <th className="px-3 py-2">Статистика</th>
-                    <th className="px-3 py-2">Ошибки</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedRuns.map((r) => (
-                    <tr key={r.id} className="border-t border-slate-200">
-                      <td className="px-3 py-2 text-slate-700">
-                        {new Date(r.started_at).toLocaleString('ru-RU')}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {r.feed_name || r.feed_file || r.feed_url || r.source_id}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {r.action === 'preview' ? 'Предпросмотр' : r.action === 'delete' ? 'Удаление' : 'Импорт'}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">{r.entity}</td>
-                      <td className="px-3 py-2 sticky right-0 bg-white shadow-[-1px_0_0_#e2e8f0]">
-                        <Badge
-                          variant={
-                            r.status === 'success' ? 'default' :
-                            r.status === 'partial' ? 'warning' :
-                            'destructive'
-                          }
-                        >
-                          {statusLabel(r.status, r.action)}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        +{r.stats.inserted} / обновл. {r.stats.updated} / скрыто {r.stats.hidden}
-                      </td>
-                      <td className="px-3 py-2 sticky right-0 bg-white shadow-[-1px_0_0_#e2e8f0]">
-                        {r.error_log ? (
-                          <details>
-                            <summary className="cursor-pointer text-rose-600 hover:text-rose-700">
-                              Детали
-                            </summary>
-                            <pre className="mt-2 p-2 bg-slate-50 rounded text-xs max-w-md overflow-x-auto whitespace-pre-wrap">
-                              {r.error_log}
-                            </pre>
-                          </details>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {runs.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="px-3 py-8 text-center text-slate-500">
-                        История пуста
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            {runs.length > 0 && (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-                <span>Страница {runsPage} из {runsTotalPages}</span>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => setRunsPage((p) => Math.max(1, p - 1))} disabled={runsPage === 1}>
-                    Назад
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => setRunsPage((p) => Math.min(runsTotalPages, p + 1))} disabled={runsPage === runsTotalPages}>
-                    Вперёд
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
       {/* Import View */}
@@ -1183,7 +1102,7 @@ export default function AdminImportPage() {
               >
                 {loading ? 'Загрузка…' : (importInputMode === 'url' && isTrendAgentAboutSource ? 'Загрузить список ЖК' : 'Предпросмотр')}
               </Button>
-              {activeImportSource?.url && (
+              {activeImportSource?.url && isTrendAgentAboutSource && (
                 <Button
                   variant="secondary"
                   onClick={() => {
@@ -1227,7 +1146,8 @@ export default function AdminImportPage() {
                   <div className="text-xs text-rose-600">{trendagentError}</div>
                   {trendagentError.toLowerCase().includes('fetch failed') && (
                     <div className="text-[11px] text-amber-700">
-                      Сервер не может скачать фид по URL. Проверьте доступ из backend-контейнера к dataout.trendagent.ru и лимиты RW_FEED_FETCH_*.
+                      Сервер не может скачать фид по URL. Проверьте сетевой доступ backend-контейнера к этому хосту и лимиты
+                      RW_TRENDAGENT_FETCH_*/RW_TRENDAGENT_APARTMENTS_* (при необходимости также RW_FEED_FETCH_*).
                     </div>
                   )}
                 </div>
@@ -1559,6 +1479,89 @@ export default function AdminImportPage() {
               )}
             </Modal>
           )}
+      </div>
+
+      <div className="space-y-3 border-t border-slate-200 pt-6">
+        <div className="text-sm font-semibold text-slate-900">История импорта</div>
+        <div className="overflow-x-auto rounded-lg border border-slate-200 max-h-[360px] overflow-y-auto">
+          <table className="w-full min-w-[720px] md:min-w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs text-slate-600">
+              <tr>
+                <th className="px-3 py-2">Время</th>
+                <th className="px-3 py-2">Источник</th>
+                <th className="px-3 py-2">Действие</th>
+                <th className="px-3 py-2">Сущность</th>
+                <th className="px-3 py-2">Статус</th>
+                <th className="px-3 py-2">Статистика</th>
+                <th className="px-3 py-2">Ошибки</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedRuns.map((r) => (
+                <tr key={r.id} className="border-t border-slate-200">
+                  <td className="px-3 py-2 text-slate-700">
+                    {new Date(r.started_at).toLocaleString('ru-RU')}
+                  </td>
+                  <td className="px-3 py-2 text-slate-700">
+                    {r.feed_name || r.feed_file || r.feed_url || r.source_id}
+                  </td>
+                  <td className="px-3 py-2 text-slate-700">
+                    {r.action === 'preview' ? 'Предпросмотр' : r.action === 'delete' ? 'Удаление' : 'Импорт'}
+                  </td>
+                  <td className="px-3 py-2 text-slate-700">{r.entity}</td>
+                  <td className="px-3 py-2 sticky right-0 bg-white shadow-[-1px_0_0_#e2e8f0]">
+                    <Badge
+                      variant={
+                        r.status === 'success' ? 'default' :
+                        r.status === 'partial' ? 'warning' :
+                        'destructive'
+                      }
+                    >
+                      {statusLabel(r.status, r.action)}
+                    </Badge>
+                  </td>
+                  <td className="px-3 py-2 text-slate-700">
+                    +{r.stats.inserted} / обновл. {r.stats.updated} / скрыто {r.stats.hidden}
+                  </td>
+                  <td className="px-3 py-2 sticky right-0 bg-white shadow-[-1px_0_0_#e2e8f0]">
+                    {r.error_log ? (
+                      <details>
+                        <summary className="cursor-pointer text-rose-600 hover:text-rose-700">
+                          Детали
+                        </summary>
+                        <pre className="mt-2 p-2 bg-slate-50 rounded text-xs max-w-md overflow-x-auto whitespace-pre-wrap">
+                          {r.error_log}
+                        </pre>
+                      </details>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {runs.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-8 text-center text-slate-500">
+                    История пуста
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {runs.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+            <span>Страница {runsPage} из {runsTotalPages}</span>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setRunsPage((p) => Math.max(1, p - 1))} disabled={runsPage === 1}>
+                Назад
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setRunsPage((p) => Math.min(runsTotalPages, p + 1))} disabled={runsPage === runsTotalPages}>
+                Вперёд
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
       {/* Edit Row Modal */}
       {editingIndex !== null && (
