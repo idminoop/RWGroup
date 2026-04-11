@@ -8,6 +8,7 @@ import {
   requireAdminPermission,
 } from '../middleware/adminAuth.js'
 import {
+  flushStorage,
   getPublishStatus,
   publishDraft,
   readDb,
@@ -655,8 +656,9 @@ router.get('/publish/status', (req: Request, res: Response) => {
   res.json({ success: true, data: status })
 })
 
-router.post('/publish/apply', (req: Request, res: Response) => {
+router.post('/publish/apply', async (req: Request, res: Response) => {
   publishDraft()
+  await flushStorage()
   addAuditLog(req.admin!.id, req.admin!.login, 'publish', 'settings', undefined, 'РџСЂРёРјРµРЅРµРЅС‹ РёР·РјРµРЅРµРЅРёСЏ РЅР° СЃР°Р№С‚')
   const status = getPublishStatus()
   res.json({ success: true, data: status })
@@ -1967,6 +1969,7 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
     rows: z.string().optional(),
     hide_invalid: z.coerce.boolean().optional(),
     restore_archived: z.coerce.boolean().optional(),
+    auto_publish: z.coerce.boolean().optional(),
   })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) {
@@ -2002,6 +2005,7 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
     stats: { inserted: 0, updated: 0, hidden: 0 },
     action: 'import',
   }
+  const shouldAutoPublish = parsed.data.auto_publish !== false
 
   let errorLog = ''
   const sourceSnapshot = withDbRead((db) => db.feed_sources.find(s => s.id === parsed.data.source_id))
@@ -2089,6 +2093,25 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
         run.feed_name || undefined,
       )
     })
+
+    if (shouldAutoPublish && run.status !== 'failed') {
+      try {
+        publishDraft()
+      } catch (publishError) {
+        run.status = 'failed'
+        const message = publishError instanceof Error ? publishError.message : 'Unknown publish error'
+        errorLog = errorLog ? `${errorLog}\nPublish failed: ${message}` : `Publish failed: ${message}`
+        withDb((db) => {
+          const storedRun = db.import_runs.find((item) => item.id === run.id)
+          if (storedRun) {
+            storedRun.status = 'failed'
+            storedRun.error_log = errorLog
+          }
+        })
+      }
+    }
+
+    await flushStorage()
   }
   if (run.status === 'failed') {
     res.status(500).json({ success: false, error: 'Import failed', details: errorLog })
@@ -2167,6 +2190,7 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
     hide_invalid: z.coerce.boolean().optional(),
     restore_archived: z.coerce.boolean().optional(),
     force_refresh: z.coerce.boolean().optional(),
+    auto_publish: z.coerce.boolean().optional(),
   })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) {
@@ -2194,6 +2218,7 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
   }
   const adminId = req.admin!.id
   const adminLogin = req.admin!.login
+  const shouldAutoPublish = parsed.data.auto_publish !== false
 
   const run: {
     id: string
@@ -2321,6 +2346,25 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
           run.feed_name || undefined,
         )
       })
+
+      if (shouldAutoPublish && run.status !== 'failed') {
+        try {
+          publishDraft()
+        } catch (publishError) {
+          run.status = 'failed'
+          const message = publishError instanceof Error ? publishError.message : 'Unknown publish error'
+          errorLog = errorLog ? `${errorLog}\nPublish failed: ${message}` : `Publish failed: ${message}`
+          withDb((db) => {
+            const storedRun = db.import_runs.find((item) => item.id === run.id)
+            if (storedRun) {
+              storedRun.status = 'failed'
+              storedRun.error_log = errorLog
+            }
+          })
+        }
+      }
+
+      await flushStorage()
     }
     return errorLog
   }
@@ -3058,7 +3102,7 @@ function parseTrendAgentBedrooms(roomCode: unknown, roomName: string): { bedroom
   const normalized = roomName.toLowerCase()
   const match = normalized.match(/(\d+)/)
   const bedrooms = match ? Math.max(0, Number(match[1])) : 1
-  return { bedrooms, isEuroflat: /[Рµe]/i.test(normalized) }
+  return { bedrooms, isEuroflat: /[еe]/i.test(normalized) }
 }
 
 function isTrendAgentManifestRows(rows: Record<string, unknown>[]): boolean {
@@ -3353,10 +3397,10 @@ function buildTrendAgentImportRows(dataset: TrendAgentDataset, selectedBlockIds:
     const blockName = stringValue(apt.block_name) || (block ? stringValue(block.name) : '') || blockId
     const title =
       parsedBedrooms.bedrooms === 0
-        ? `РЎС‚СѓРґРёСЏ РІ ${blockName}`
+        ? `Студия в ${blockName}`
         : parsedBedrooms.isEuroflat
-          ? `${parsedBedrooms.bedrooms}Р• РІ ${blockName}`
-          : `${parsedBedrooms.bedrooms}-РєРѕРјРЅ. РІ ${blockName}`
+          ? `${parsedBedrooms.bedrooms}Е в ${blockName}`
+          : `${parsedBedrooms.bedrooms}-комн. в ${blockName}`
 
     const finishingId = stringValue(apt.finishing)
     const buildingTypeId = stringValue(apt.building_type) || stringValue(building?.building_type)

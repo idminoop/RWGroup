@@ -139,6 +139,29 @@ function normalizeKey(value: unknown): string {
   return asString(value).trim().toLowerCase()
 }
 
+const LAYOUT_IMAGE_RX = /(^|[\/_.-])(plan|plans|planirovka|layout|preset|floorplan|floor-plan|room-plan|flat-plan|unit-plan)([\/_.-]|$)/i
+
+function isLikelyLayoutImageUrl(value: string): boolean {
+  const source = value.trim()
+  if (!source) return false
+  const lower = source.toLowerCase()
+  if (lower.includes('/preset/') || lower.includes('/layout/')) return true
+  if (LAYOUT_IMAGE_RX.test(lower)) return true
+
+  try {
+    const parsed = new URL(source)
+    const path = decodeURIComponent(parsed.pathname).toLowerCase()
+    if (path.includes('/preset/') || path.includes('/layout/')) return true
+    if (LAYOUT_IMAGE_RX.test(path)) return true
+    const query = decodeURIComponent(parsed.search).toLowerCase()
+    if (LAYOUT_IMAGE_RX.test(query)) return true
+  } catch {
+    // keep best-effort checks above
+  }
+
+  return false
+}
+
 function canMergeComplexAcrossSources(
   existing: Complex,
   incoming: Omit<Complex, 'id'>,
@@ -455,7 +478,9 @@ export function aggregateComplexesFromRows(rows: Record<string, unknown>[], sour
     }
 
     const imgs = asStringArray(getField(row, 'images', mapping, ['image_urls', 'photos', 'renderer', 'block_renderer']))
-    imgs.forEach(img => c.images.add(img))
+    imgs
+      .filter((img) => !isLikelyLayoutImageUrl(img))
+      .forEach((img) => c.images.add(img))
 
     const dev = asString(getField(row, 'developer', mapping, ['block_builder_name']))
     if (dev) c.developer = dev

@@ -10,7 +10,6 @@ type ComplexCoverSource = {
 }
 
 const BLOCKED_IMAGE_HOSTS = new Set(['images.unsplash.com'])
-const LOCAL_IMAGE_FALLBACK = '/images/hero-bg.jpg'
 const LAYOUT_IMAGE_RX = /(^|[\/_.-])(plan|plans|planirovka|layout|preset|floorplan|floor-plan|room-plan|flat-plan|unit-plan)([\/_.-]|$)/i
 
 function normalizeImageUrl(url: string | undefined): string {
@@ -20,7 +19,7 @@ function normalizeImageUrl(url: string | undefined): string {
   try {
     const parsed = new URL(value)
     if (BLOCKED_IMAGE_HOSTS.has(parsed.hostname.toLowerCase())) {
-      return LOCAL_IMAGE_FALLBACK
+      return ''
     }
     return parsed.toString()
   } catch {
@@ -86,9 +85,12 @@ function getImagePriority(url: string): number {
 export function selectCoverImage(images: string[] | undefined): string | undefined {
   if (!images || images.length === 0) return undefined
 
+  const normalized = images.map((url) => normalizeImageUrl(url)).filter(Boolean)
+  if (normalized.length === 0) return undefined
+
   // Sort by priority (highest first) and return first
-  const sorted = [...images].sort((a, b) => getImagePriority(b) - getImagePriority(a))
-  return normalizeImageUrl(sorted[0]) || undefined
+  const sorted = [...normalized].sort((a, b) => getImagePriority(b) - getImagePriority(a))
+  return sorted[0] || undefined
 }
 
 /**
@@ -120,9 +122,10 @@ export function getLayoutImages(images: string[] | undefined): string[] {
  */
 export function selectPropertyCoverImage(images: string[] | undefined): string | undefined {
   if (!images || images.length === 0) return undefined
-  const firstLayout = images.find((url) => isLayoutImage(url))
-  if (firstLayout) return normalizeImageUrl(firstLayout) || undefined
-  return selectCoverImage(images)
+  const normalized = images.map((url) => normalizeImageUrl(url)).filter(Boolean)
+  const firstLayout = normalized.find((url) => isLayoutImage(url))
+  if (firstLayout) return firstLayout
+  return selectCoverImage(normalized)
 }
 
 /**
@@ -156,14 +159,14 @@ export function promoteImageToFront(images: string[] | undefined, imageUrl: stri
  * Falls back to landing.hero_image when image array has only layout images.
  */
 export function selectComplexCoverImage(complex: ComplexCoverSource): string | undefined {
-  const images = complex.images
-  if (images && images.length > 0) {
-    const firstPresentation = images.find((url) => !isLayoutImage(url))
-    if (firstPresentation) return normalizeImageUrl(firstPresentation) || undefined
+  const normalizedImages = (complex.images || []).map((url) => normalizeImageUrl(url)).filter(Boolean)
+  if (normalizedImages.length > 0) {
+    const firstPresentation = normalizedImages.find((url) => !isLayoutImage(url))
+    if (firstPresentation) return firstPresentation
   }
 
   const heroImage = normalizeImageUrl(complex.landing?.hero_image)
   if (heroImage) return heroImage
 
-  return selectCoverImage(images)
+  return selectCoverImage(normalizedImages)
 }

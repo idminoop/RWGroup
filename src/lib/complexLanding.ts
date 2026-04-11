@@ -20,7 +20,6 @@ const DEFAULT_ACCENT = '#C2A87A'
 const DEFAULT_SURFACE = '#071520'
 const KREMLIN_COORDS = { lat: 55.752023, lon: 37.617499 }
 const BLOCKED_IMAGE_HOSTS = new Set(['images.unsplash.com'])
-const LOCAL_IMAGE_FALLBACK = '/images/hero-bg.jpg'
 export const MAX_LANDING_FACTS = 12
 export const MAX_LANDING_ACCORDION_ITEMS = 1
 export const MAX_LANDING_INFO_CARDS = 12
@@ -28,16 +27,7 @@ const MAX_NEARBY_CANDIDATES = 63 // up to 3 per category × 21 categories
 const MAX_NEARBY_SELECTED = 20
 const MAX_NEARBY_IMAGE_VARIANTS = 24
 
-export const FACT_IMAGE_PRESETS = [
-  '/images/hero-bg.jpg',
-  '/hero-bg.png',
-  '/images/hero-bg.jpg',
-  '/hero-bg.png',
-  '/images/hero-bg.jpg',
-  '/hero-bg.png',
-  '/images/hero-bg.jpg',
-  '/hero-bg.png',
-]
+export const FACT_IMAGE_PRESETS: string[] = []
 
 export type LandingFeaturePreset = {
   key: string
@@ -74,11 +64,17 @@ function sanitizeImageUrl(value: unknown): string {
 
   try {
     const parsed = new URL(text)
-    if (BLOCKED_IMAGE_HOSTS.has(parsed.hostname.toLowerCase())) return LOCAL_IMAGE_FALLBACK
+    if (BLOCKED_IMAGE_HOSTS.has(parsed.hostname.toLowerCase())) return ''
     return parsed.toString()
   } catch {
     return text
   }
+}
+
+function getFactPresetImage(index: number): string | undefined {
+  if (!FACT_IMAGE_PRESETS.length) return undefined
+  const raw = FACT_IMAGE_PRESETS[index % FACT_IMAGE_PRESETS.length]
+  return sanitizeImageUrl(raw) || undefined
 }
 
 function toFiniteNumber(value: unknown): number | undefined {
@@ -531,7 +527,7 @@ function buildAutoFacts(complex: Complex, properties: Property[]): ComplexLandin
 
   return cards
     .slice(0, MAX_LANDING_FACTS)
-    .map((fact, idx) => createLandingFact({ ...fact, image: FACT_IMAGE_PRESETS[idx % FACT_IMAGE_PRESETS.length] }))
+    .map((fact, idx) => createLandingFact({ ...fact, image: getFactPresetImage(idx) }))
 }
 
 function buildAutoFeatures(complex: Complex): ComplexLandingFeature[] {
@@ -589,7 +585,7 @@ function fromLegacyLanding(
     .map((line, idx) => createLandingFact({
       title: idx < 6 ? fallback.facts[idx]?.title || 'Факт' : 'Детали',
       value: line,
-      image: FACT_IMAGE_PRESETS[idx % FACT_IMAGE_PRESETS.length],
+      image: getFactPresetImage(idx),
     }))
 
   const galleryImages = safeArray<string>(gallery?.images)
@@ -651,7 +647,7 @@ export function normalizeLandingConfig(
   const facts = safeArray<Partial<ComplexLandingFact>>(candidate.facts)
     .map((item, idx) => createLandingFact({
       ...item,
-      image: toText(item.image) || FACT_IMAGE_PRESETS[idx % FACT_IMAGE_PRESETS.length],
+      image: toText(item.image) || getFactPresetImage(idx),
     }))
     .slice(0, MAX_LANDING_FACTS)
 

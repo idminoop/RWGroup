@@ -12,10 +12,9 @@ import {
 const DB_FILE = path.join(DATA_DIR, 'db.json')
 const PUBLISHED_DB_FILE = path.join(DATA_DIR, 'db.published.json')
 
-type PublishSnapshot = Omit<DbShape, 'admin_users' | 'leads' | 'import_runs' | 'audit_logs'> & {
+type PublishSnapshot = Omit<DbShape, 'admin_users' | 'leads' | 'audit_logs'> & {
   admin_users: []
   leads: []
-  import_runs: []
   audit_logs: []
 }
 
@@ -24,7 +23,6 @@ function toPublishSnapshot(db: DbShape): PublishSnapshot {
     ...db,
     admin_users: [],
     leads: [],
-    import_runs: [],
     audit_logs: [],
   }
 }
@@ -264,6 +262,21 @@ export async function initializeStorage(): Promise<void> {
     console.log(
       '[storage] PostgreSQL is empty. Local bootstrap is disabled (set RW_PG_BOOTSTRAP_FROM_LOCAL=true for one-time import).',
     )
+  }
+
+  if (!draftDbCache && publishedDbCache) {
+    const restoredDraft = deepClone(publishedDbCache)
+    if (!Array.isArray(restoredDraft.admin_users)) restoredDraft.admin_users = []
+    if (!Array.isArray(restoredDraft.leads)) restoredDraft.leads = []
+    if (!Array.isArray(restoredDraft.import_runs)) restoredDraft.import_runs = []
+    if (!Array.isArray(restoredDraft.audit_logs)) restoredDraft.audit_logs = []
+    draftDbCache = restoredDraft
+    const meta = await repo.saveState(draftDbCache, publishedDbCache, {
+      persistDraft: true,
+      persistPublished: false,
+    })
+    draftUpdatedAt = meta.draftUpdatedAt || draftUpdatedAt || nowIso()
+    console.warn('[storage] Restored missing draft state from published snapshot')
   }
 
   if (!draftDbCache) {
