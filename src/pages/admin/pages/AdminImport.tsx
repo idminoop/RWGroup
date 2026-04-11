@@ -574,7 +574,7 @@ export default function AdminImportPage() {
     }
   }
 
-  const runTrendagentSelectedImport = async () => {
+  const runTrendagentImport = async (scope: 'selected' | 'full_city') => {
     if (trendagentImportInFlightRef.current) {
       setTrendagentError('Импорт уже выполняется для этого источника. Подождите завершения и попробуйте снова.')
       return
@@ -584,12 +584,18 @@ export default function AdminImportPage() {
       return
     }
     if (!activeImportSource.url || !isTrendAgentAboutSource) {
-      setTrendagentError('Для импорта выбранных ЖК нужен источник TrendAgent с URL на about.json.')
+      setTrendagentError('Для TrendAgent-импорта нужен источник с URL на about.json.')
       return
     }
-    if (trendagentSelectedIds.length === 0) {
+    if (scope === 'selected' && trendagentSelectedIds.length === 0) {
       setTrendagentError('Выберите хотя бы один ЖК')
       return
+    }
+    if (scope === 'full_city') {
+      const confirmed = window.confirm(
+        'Запустить импорт всего города? Это может занять несколько минут и обновит все объекты этого источника.',
+      )
+      if (!confirmed) return
     }
     trendagentImportInFlightRef.current = true
     setTrendagentLoading(true)
@@ -605,7 +611,8 @@ export default function AdminImportPage() {
         body: JSON.stringify({
           source_id: activeImportSource.id,
           entity,
-          block_ids: trendagentSelectedIds,
+          full_city: scope === 'full_city',
+          block_ids: scope === 'selected' ? trendagentSelectedIds : undefined,
           hide_invalid: hideInvalid,
         }),
       })
@@ -626,6 +633,9 @@ export default function AdminImportPage() {
       setTrendagentLoading(false)
     }
   }
+
+  const runTrendagentSelectedImport = async () => runTrendagentImport('selected')
+  const runTrendagentFullCityImport = async () => runTrendagentImport('full_city')
 
   useEffect(() => {
     if (!activeImportSource?.id) return
@@ -1178,7 +1188,10 @@ export default function AdminImportPage() {
           {activeImportSource?.url && importInputMode === 'url' && isTrendAgentAboutSource && (
             <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-slate-900">Выбор ЖК из большого TrendAgent-фида</div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Выбор ЖК из большого TrendAgent-фида</div>
+                  <div className="text-xs text-slate-500">Поддерживается точечный импорт по ЖК и импорт всего города одним запуском.</div>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     size="sm"
@@ -1330,7 +1343,14 @@ export default function AdminImportPage() {
                     </div>
                   </div>
 
-                  <div className="flex justify-end">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={runTrendagentFullCityImport}
+                      disabled={trendagentLoading}
+                    >
+                      {trendagentLoading ? 'Импорт…' : 'Импортировать весь город'}
+                    </Button>
                     <Button
                       onClick={runTrendagentSelectedImport}
                       disabled={trendagentLoading || trendagentSelectedIds.length === 0}

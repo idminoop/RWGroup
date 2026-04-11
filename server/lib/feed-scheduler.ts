@@ -14,6 +14,15 @@ import type { FeedSource } from '../../shared/types.js'
 const CHECK_INTERVAL_MS = 60_000 // Check every minute
 const inFlightFeedIds = new Set<string>()
 
+function isTrendAgentAboutUrl(value: string): boolean {
+  try {
+    const pathname = new URL(value).pathname.toLowerCase()
+    return pathname.endsWith('/about.json') || pathname.endsWith('about.json')
+  } catch {
+    return value.toLowerCase().includes('about.json')
+  }
+}
+
 function guessExt(name: string): 'csv' | 'xlsx' | 'xml' | 'json' {
   let lc = name.toLowerCase()
   try {
@@ -89,12 +98,19 @@ async function refreshFeed(feed: FeedSource): Promise<void> {
   let errorLog = ''
   let rows: Record<string, unknown>[] = []
   let shouldApply = false
+  let skippedTrendAgentManifest = false
 
   try {
-    const buffer = await fetchFeedBuffer(feed.url)
-    const ext = guessExt(feed.url)
-    rows = parseRows(buffer, ext)
-    shouldApply = true
+    if (isTrendAgentAboutUrl(feed.url)) {
+      skippedTrendAgentManifest = true
+      status = 'failed'
+      errorLog = 'TrendAgent about.json is a manifest file. Auto-refresh is disabled; use manual TrendAgent import.'
+    } else {
+      const buffer = await fetchFeedBuffer(feed.url)
+      const ext = guessExt(feed.url)
+      rows = parseRows(buffer, ext)
+      shouldApply = true
+    }
   } catch (e) {
     status = 'failed'
     errorLog = e instanceof Error ? e.message : 'Unknown error'
@@ -117,10 +133,11 @@ async function refreshFeed(feed: FeedSource): Promise<void> {
               ).join('\n')
           }
 
-          const currentFeed = db.feed_sources.find((source) => source.id === feed.id)
-          if (currentFeed) {
-            currentFeed.last_auto_refresh = finishedAt
-          }
+        }
+
+        const currentFeed = db.feed_sources.find((source) => source.id === feed.id)
+        if (currentFeed && (shouldApply || skippedTrendAgentManifest)) {
+          currentFeed.last_auto_refresh = finishedAt
         }
 
         db.import_runs.unshift({

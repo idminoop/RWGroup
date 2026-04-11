@@ -2162,7 +2162,8 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
   const schema = z.object({
     source_id: z.string().min(1),
     entity: z.enum(['property', 'complex']),
-    block_ids: z.array(z.string().min(1)).min(1),
+    block_ids: z.array(z.string().min(1)).optional(),
+    full_city: z.coerce.boolean().optional(),
     hide_invalid: z.coerce.boolean().optional(),
     restore_archived: z.coerce.boolean().optional(),
     force_refresh: z.coerce.boolean().optional(),
@@ -2217,20 +2218,32 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
 
   let errorLog = ''
   try {
-    const selectedBlockIds = new Set(parsed.data.block_ids.map((id) => id.trim()).filter(Boolean))
-    if (selectedBlockIds.size === 0) {
-      throw new Error('At least one block_id is required')
+    const dataset = await loadTrendAgentDataset(
+      sourceSnapshot.url,
+      parsed.data.force_refresh === true,
+      parsed.data.entity === 'complex' ? 'complex' : 'full',
+    )
+
+    let selectedBlockIds: Set<string>
+    if (parsed.data.full_city === true) {
+      selectedBlockIds = new Set(
+        dataset.blocks
+          .map((block) => stringValue(block._id))
+          .filter(Boolean),
+      )
+      if (selectedBlockIds.size === 0) {
+        throw new Error('No blocks found in TrendAgent feed')
+      }
+    } else {
+      selectedBlockIds = new Set((parsed.data.block_ids || []).map((id) => id.trim()).filter(Boolean))
+      if (selectedBlockIds.size === 0) {
+        throw new Error('At least one block_id is required')
+      }
     }
 
     const rows = parsed.data.entity === 'complex'
-      ? buildTrendAgentComplexImportRows(
-          await loadTrendAgentDataset(sourceSnapshot.url, parsed.data.force_refresh === true, 'complex'),
-          selectedBlockIds,
-        )
-      : buildTrendAgentImportRows(
-          await loadTrendAgentDataset(sourceSnapshot.url, parsed.data.force_refresh === true, 'full'),
-          selectedBlockIds,
-        )
+      ? buildTrendAgentComplexImportRows(dataset, selectedBlockIds)
+      : buildTrendAgentImportRows(dataset, selectedBlockIds)
     if (rows.length === 0) {
       throw new Error(
         parsed.data.entity === 'complex'
@@ -2290,7 +2303,7 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
         'import',
         'property',
         run.source_id,
-        `TrendAgent selected import (${run.entity}): ${run.status} +${run.stats.inserted}/${run.stats.updated}/${run.stats.hidden}`,
+        `TrendAgent ${parsed.data.full_city === true ? 'full-city' : 'selected'} import (${run.entity}): ${run.status} +${run.stats.inserted}/${run.stats.updated}/${run.stats.hidden}`,
         run.feed_name || undefined,
       )
     })
