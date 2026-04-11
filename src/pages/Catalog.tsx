@@ -274,7 +274,7 @@ export default function CatalogPage() {
               </div>
               <div className="relative hidden w-1/2 overflow-hidden sm:block">
                 <img
-                  src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80"
+                  src="/images/hero-bg.jpg"
                   alt={UI.buy}
                   className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
@@ -298,7 +298,7 @@ export default function CatalogPage() {
               </div>
               <div className="relative hidden w-1/2 overflow-hidden sm:block">
                 <img
-                  src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=80"
+                  src="/hero-bg.png"
                   alt={UI.sell}
                   className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
@@ -322,7 +322,7 @@ export default function CatalogPage() {
               </div>
               <div className="relative hidden w-1/2 overflow-hidden sm:block">
                 <img
-                  src="https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=800&q=80"
+                  src="/images/hero-bg.jpg"
                   alt={UI.rentOut}
                   className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import JsonLd from '@/components/seo/JsonLd'
 import { setPageMeta } from '@/lib/meta'
 import { apiGet } from '@/lib/api'
+import { toSafeImageUrl } from '@/lib/images'
 import type { Collection as CollectionType, Complex, Property } from '../../shared/types'
 import PropertyCard from '@/components/catalog/PropertyCard'
 import ComplexCard from '@/components/catalog/ComplexCard'
@@ -30,7 +31,7 @@ export default function CollectionPage() {
     setPageMeta({
       title: `${data.collection.title} — подборка недвижимости`,
       description: data.collection.description?.slice(0, 160) || `Подборка: ${data.collection.title}`,
-      ogImage: data.collection.cover_image || undefined,
+      ogImage: toSafeImageUrl(data.collection.cover_image),
     })
   }, [data])
 
@@ -60,8 +61,8 @@ export default function CollectionPage() {
         ) : (
           <>
             <Card className="overflow-hidden border-slate-200 bg-white">
-              {data.collection.cover_image ? (
-                <img src={data.collection.cover_image} alt={data.collection.title} className="h-56 w-full object-cover sm:h-64 md:h-72" />
+              {toSafeImageUrl(data.collection.cover_image) ? (
+                <img src={toSafeImageUrl(data.collection.cover_image)} alt={data.collection.title} className="h-56 w-full object-cover sm:h-64 md:h-72" />
               ) : (
                 <div className="h-56 w-full bg-slate-100 sm:h-64 md:h-72" />
               )}

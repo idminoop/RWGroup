@@ -14,11 +14,13 @@ import type {
   ComplexNearbyPlace,
   Property,
 } from '../../shared/types'
+import { isLayoutImage } from './images'
 
 const DEFAULT_ACCENT = '#C2A87A'
 const DEFAULT_SURFACE = '#071520'
 const KREMLIN_COORDS = { lat: 55.752023, lon: 37.617499 }
-const PLAN_IMAGE_RX = /(plan|layout|preset|floor)/i
+const BLOCKED_IMAGE_HOSTS = new Set(['images.unsplash.com'])
+const LOCAL_IMAGE_FALLBACK = '/images/hero-bg.jpg'
 export const MAX_LANDING_FACTS = 12
 export const MAX_LANDING_ACCORDION_ITEMS = 1
 export const MAX_LANDING_INFO_CARDS = 12
@@ -27,14 +29,14 @@ const MAX_NEARBY_SELECTED = 20
 const MAX_NEARBY_IMAGE_VARIANTS = 24
 
 export const FACT_IMAGE_PRESETS = [
-  'https://images.unsplash.com/photo-1515263487990-61b07816b324?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1616046229478-9901c5536a45?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1484154218962-a197022b5858?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1565182999561-18d7dc61c393?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1616486029423-aaa4789e8c9a?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=1200&q=80',
+  '/images/hero-bg.jpg',
+  '/hero-bg.png',
+  '/images/hero-bg.jpg',
+  '/hero-bg.png',
+  '/images/hero-bg.jpg',
+  '/hero-bg.png',
+  '/images/hero-bg.jpg',
+  '/hero-bg.png',
 ]
 
 export type LandingFeaturePreset = {
@@ -64,6 +66,19 @@ function toText(value: unknown): string {
       return _match
     }
   })
+}
+
+function sanitizeImageUrl(value: unknown): string {
+  const text = toText(value)
+  if (!text) return ''
+
+  try {
+    const parsed = new URL(text)
+    if (BLOCKED_IMAGE_HOSTS.has(parsed.hostname.toLowerCase())) return LOCAL_IMAGE_FALLBACK
+    return parsed.toString()
+  } catch {
+    return text
+  }
 }
 
 function toFiniteNumber(value: unknown): number | undefined {
@@ -97,7 +112,7 @@ function normalizeInfoCardRowSpan(value: unknown): 1 | 2 {
 }
 
 function isLikelyPlanImage(url?: string): boolean {
-  return Boolean(url && PLAN_IMAGE_RX.test(url))
+  return Boolean(url && isLayoutImage(url))
 }
 
 function safeArray<T>(value: unknown): T[] {
@@ -156,8 +171,8 @@ function inferFeatureTitles(description?: string): string[] {
 
 function collectPlanPreviewImages(images?: string[]): string[] {
   if (!Array.isArray(images) || !images.length) return []
-  const matched = images.filter((url) => PLAN_IMAGE_RX.test(url))
-  return uniq(matched.length ? matched : images).slice(0, 12)
+  const matched = images.filter((url) => isLayoutImage(url))
+  return uniq(matched).slice(0, 12)
 }
 
 function normalizeNearbyCollectionKey(value?: string): string {
@@ -211,8 +226,8 @@ function inferPlanItems(complex: Complex, properties: Property[]): ComplexLandin
     const previews = collectPlanPreviewImages(property.images)
     previews.forEach((url) => current.previews.add(url))
 
-    if (!current.preview) {
-      current.preview = previews[0] || property.images?.[0]
+    if (!current.preview && previews[0]) {
+      current.preview = previews[0]
     }
 
     grouped.set(bedrooms, current)
@@ -229,7 +244,7 @@ function inferPlanItems(complex: Complex, properties: Property[]): ComplexLandin
       area: formatArea(data.minArea ?? complexMinArea),
       variants: data.variants,
       bedrooms,
-      preview_image: data.preview,
+      preview_image: data.preview || Array.from(data.previews)[0],
       preview_images: Array.from(data.previews).slice(0, 12),
       note: `Доступно ${data.variants} вариантов`,
     }))
@@ -283,7 +298,7 @@ export function createLandingFact(partial?: Partial<ComplexLandingFact>): Comple
     title: toText(partial?.title) || 'Факт',
     value: toText(partial?.value) || 'По запросу',
     subtitle: toText(partial?.subtitle) || undefined,
-    image: toText(partial?.image) || undefined,
+    image: sanitizeImageUrl(partial?.image) || undefined,
     card_col_span: normalizeFactCardColSpan(partial?.card_col_span),
     card_row_span: normalizeFactCardRowSpan(partial?.card_row_span),
   }
@@ -291,8 +306,9 @@ export function createLandingFact(partial?: Partial<ComplexLandingFact>): Comple
 
 export function createLandingFeature(partial?: Partial<ComplexLandingFeature>): ComplexLandingFeature {
   const preset = getFeaturePresetByKey(partial?.preset_key) || getFeaturePresetByTitle(partial?.title)
-  const rawImage = toText(partial?.image)
-  const image = isLikelyPlanImage(rawImage) ? (preset?.image || undefined) : (rawImage || preset?.image || undefined)
+  const rawImage = sanitizeImageUrl(partial?.image)
+  const presetImage = sanitizeImageUrl(preset?.image)
+  const image = isLikelyPlanImage(rawImage) ? (presetImage || undefined) : (rawImage || presetImage || undefined)
   return {
     id: partial?.id || makeId('feature'),
     title: toText(partial?.title) || preset?.title || 'Фишка',
@@ -310,8 +326,8 @@ export function createLandingPlanItem(partial?: Partial<ComplexLandingPlanItem>)
     variants: typeof partial?.variants === 'number' ? partial.variants : 0,
     bedrooms: typeof partial?.bedrooms === 'number' ? partial.bedrooms : undefined,
     note: toText(partial?.note) || undefined,
-    preview_image: toText(partial?.preview_image) || undefined,
-    preview_images: safeArray<string>(partial?.preview_images).map((item) => toText(item)).filter(Boolean),
+    preview_image: sanitizeImageUrl(partial?.preview_image) || undefined,
+    preview_images: safeArray<string>(partial?.preview_images).map((item) => sanitizeImageUrl(item)).filter(Boolean),
   }
 }
 
@@ -320,7 +336,7 @@ export function createLandingAccordionItem(partial?: Partial<ComplexLandingAccor
     id: partial?.id || makeId('accordion'),
     title: toText(partial?.title),
     text: toText(partial?.text),
-    image: toText(partial?.image) || undefined,
+    image: sanitizeImageUrl(partial?.image) || undefined,
     open_by_default: typeof partial?.open_by_default === 'boolean' ? partial.open_by_default : undefined,
   }
 }
@@ -349,10 +365,10 @@ export function createLandingAccordion(partial?: Partial<ComplexLandingAccordion
 }
 
 export function createLandingInfoCard(partial?: Partial<ComplexLandingInfoCard>): ComplexLandingInfoCard {
-  const cover_image = toText(partial?.cover_image) || undefined
+  const cover_image = sanitizeImageUrl(partial?.cover_image) || undefined
   const gallery_images = uniq([
     cover_image || '',
-    ...safeArray<string>(partial?.gallery_images).map((item) => toText(item)),
+    ...safeArray<string>(partial?.gallery_images).map((item) => sanitizeImageUrl(item)),
   ]).slice(0, 24)
 
   return {
@@ -383,7 +399,7 @@ export function createLandingInfoSection(partial?: Partial<ComplexLandingInfoSec
 
 export function createLandingNearbyPlace(partial?: Partial<ComplexNearbyPlace>): ComplexNearbyPlace {
   const imageVariants = safeArray<string>(partial?.image_variants)
-    .map((item) => toText(item))
+    .map((item) => sanitizeImageUrl(item))
     .filter(Boolean)
     .slice(0, MAX_NEARBY_IMAGE_VARIANTS)
 
@@ -401,7 +417,7 @@ export function createLandingNearbyPlace(partial?: Partial<ComplexNearbyPlace>):
     drive_minutes: Math.max(1, Math.round(toFiniteNumber(partial?.drive_minutes) ?? 0)),
     rating: typeof partial?.rating === 'number' && Number.isFinite(partial.rating) ? partial.rating : undefined,
     reviews_count: typeof partial?.reviews_count === 'number' && Number.isFinite(partial.reviews_count) ? partial.reviews_count : undefined,
-    image_url: toText(partial?.image_url) || undefined,
+    image_url: sanitizeImageUrl(partial?.image_url) || undefined,
     image_variants: imageVariants.length ? imageVariants : undefined,
     image_fallback: typeof partial?.image_fallback === 'boolean' ? partial.image_fallback : undefined,
     image_custom: typeof partial?.image_custom === 'boolean' ? partial.image_custom : undefined,
@@ -538,7 +554,7 @@ export function buildAutoLandingConfig(complex: Complex, properties: Property[])
     enabled: true,
     accent_color: DEFAULT_ACCENT,
     surface_color: DEFAULT_SURFACE,
-    hero_image: complex.images?.[0],
+    hero_image: sanitizeImageUrl(complex.images?.[0]) || undefined,
     cta_label: 'Старт продаж',
     tags: [],
     facts: buildAutoFacts(complex, properties),
@@ -590,7 +606,11 @@ function fromLegacyLanding(
     enabled: typeof legacyValue.enabled === 'boolean' ? Boolean(legacyValue.enabled) : fallback.enabled,
     accent_color: toText(legacyValue.accent_color) || fallback.accent_color,
     surface_color: toText(legacyValue.surface_color) || fallback.surface_color,
-    hero_image: toText(legacyValue.hero_image) || toText(gallery?.image) || toText(complex.images?.[0]) || fallback.hero_image,
+    hero_image:
+      sanitizeImageUrl(legacyValue.hero_image)
+      || sanitizeImageUrl(gallery?.image)
+      || sanitizeImageUrl(complex.images?.[0])
+      || fallback.hero_image,
     cta_label: toText(cta?.title) || fallback.cta_label,
     tags,
     facts: facts.length ? facts : fallback.facts,
@@ -666,7 +686,7 @@ export function normalizeLandingConfig(
     enabled: typeof candidate.enabled === 'boolean' ? candidate.enabled : auto.enabled,
     accent_color: toText(candidate.accent_color) || auto.accent_color,
     surface_color: toText(candidate.surface_color) || auto.surface_color,
-    hero_image: toText(candidate.hero_image) || auto.hero_image,
+    hero_image: sanitizeImageUrl(candidate.hero_image) || auto.hero_image,
     preview_photo_label: toText(candidate.preview_photo_label) || auto.preview_photo_label,
     cta_label: toText(candidate.cta_label) || auto.cta_label,
     tags: hasExplicitTags ? tags : auto.tags,

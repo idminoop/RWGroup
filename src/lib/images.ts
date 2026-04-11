@@ -9,16 +9,52 @@ type ComplexCoverSource = {
   }
 }
 
+const BLOCKED_IMAGE_HOSTS = new Set(['images.unsplash.com'])
+const LOCAL_IMAGE_FALLBACK = '/images/hero-bg.jpg'
+const LAYOUT_IMAGE_RX = /(^|[\/_.-])(plan|plans|planirovka|layout|preset|floorplan|floor-plan|room-plan|flat-plan|unit-plan)([\/_.-]|$)/i
+
 function normalizeImageUrl(url: string | undefined): string {
-  return typeof url === 'string' ? url.trim() : ''
+  const value = typeof url === 'string' ? url.trim() : ''
+  if (!value) return ''
+
+  try {
+    const parsed = new URL(value)
+    if (BLOCKED_IMAGE_HOSTS.has(parsed.hostname.toLowerCase())) {
+      return LOCAL_IMAGE_FALLBACK
+    }
+    return parsed.toString()
+  } catch {
+    return value
+  }
+}
+
+export function toSafeImageUrl(url: string | undefined): string | undefined {
+  const normalized = normalizeImageUrl(url)
+  return normalized || undefined
 }
 
 /**
  * Check if image URL is a floor plan/layout (not presentable for cover)
  */
 export function isLayoutImage(url: string): boolean {
-  const lower = url.toLowerCase()
-  return lower.includes('/preset/') || lower.includes('/layout/')
+  const source = (url || '').trim()
+  if (!source) return false
+  const lower = source.toLowerCase()
+  if (lower.includes('/preset/') || lower.includes('/layout/')) return true
+  if (LAYOUT_IMAGE_RX.test(lower)) return true
+
+  try {
+    const parsed = new URL(source)
+    const decodedPath = decodeURIComponent(parsed.pathname).toLowerCase()
+    if (decodedPath.includes('/preset/') || decodedPath.includes('/layout/')) return true
+    if (LAYOUT_IMAGE_RX.test(decodedPath)) return true
+    const query = decodeURIComponent(parsed.search).toLowerCase()
+    if (LAYOUT_IMAGE_RX.test(query)) return true
+  } catch {
+    // ignore parse/decode errors and fall back to simple checks above
+  }
+
+  return false
 }
 
 /**
@@ -52,7 +88,7 @@ export function selectCoverImage(images: string[] | undefined): string | undefin
 
   // Sort by priority (highest first) and return first
   const sorted = [...images].sort((a, b) => getImagePriority(b) - getImagePriority(a))
-  return sorted[0]
+  return normalizeImageUrl(sorted[0]) || undefined
 }
 
 /**
@@ -60,7 +96,10 @@ export function selectCoverImage(images: string[] | undefined): string | undefin
  */
 export function getPresentableImages(images: string[] | undefined): string[] {
   if (!images || images.length === 0) return []
-  return images.filter((url) => !isLayoutImage(url))
+  return images
+    .filter((url) => !isLayoutImage(url))
+    .map((url) => normalizeImageUrl(url))
+    .filter(Boolean)
 }
 
 /**
@@ -68,7 +107,10 @@ export function getPresentableImages(images: string[] | undefined): string[] {
  */
 export function getLayoutImages(images: string[] | undefined): string[] {
   if (!images || images.length === 0) return []
-  return images.filter((url) => isLayoutImage(url))
+  return images
+    .filter((url) => isLayoutImage(url))
+    .map((url) => normalizeImageUrl(url))
+    .filter(Boolean)
 }
 
 /**
@@ -79,7 +121,7 @@ export function getLayoutImages(images: string[] | undefined): string[] {
 export function selectPropertyCoverImage(images: string[] | undefined): string | undefined {
   if (!images || images.length === 0) return undefined
   const firstLayout = images.find((url) => isLayoutImage(url))
-  if (firstLayout) return firstLayout
+  if (firstLayout) return normalizeImageUrl(firstLayout) || undefined
   return selectCoverImage(images)
 }
 
@@ -117,7 +159,7 @@ export function selectComplexCoverImage(complex: ComplexCoverSource): string | u
   const images = complex.images
   if (images && images.length > 0) {
     const firstPresentation = images.find((url) => !isLayoutImage(url))
-    if (firstPresentation) return firstPresentation
+    if (firstPresentation) return normalizeImageUrl(firstPresentation) || undefined
   }
 
   const heroImage = normalizeImageUrl(complex.landing?.hero_image)

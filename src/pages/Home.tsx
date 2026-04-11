@@ -188,7 +188,7 @@ export default function Home() {
               </div>
               <div className="relative hidden w-1/2 overflow-hidden sm:block">
                 <img
-                  src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80"
+                  src="/images/hero-bg.jpg"
                   alt="Купить недвижимость"
                   className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
@@ -211,7 +211,7 @@ export default function Home() {
               </div>
               <div className="relative hidden w-1/2 overflow-hidden sm:block">
                 <img
-                  src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=80"
+                  src="/hero-bg.png"
                   alt="Продать недвижимость"
                   className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
@@ -234,7 +234,7 @@ export default function Home() {
               </div>
               <div className="relative hidden w-1/2 overflow-hidden sm:block">
                 <img
-                  src="https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=800&q=80"
+                  src="/images/hero-bg.jpg"
                   alt="Сдать недвижимость"
                   className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
@@ -378,7 +378,7 @@ export default function Home() {
         {/* Background Image */}
         <div className="absolute inset-0">
           <img
-            src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?ixlib=rb-4.0.3&auto=format&fit=crop&w=1974&q=80"
+            src="/images/hero-bg.jpg"
             alt="Mission Background"
             className="h-full w-full object-cover"
           />
