@@ -116,6 +116,9 @@ function normalizeImportErrorMessage(message: string): string {
   if (lowered.includes('import already running for this source')) {
     return 'Импорт уже выполняется для этого источника. Подождите завершения и попробуйте снова.'
   }
+  if (lowered.includes('no apartments found for selected complexes')) {
+    return 'Для выбранного ЖК не найдено лотов в apartments.json. Выберите другой ЖК и повторите импорт.'
+  }
   if (lowered.includes('unexpected token') || lowered.includes('not valid json')) {
     return 'Сервер вернул не JSON (похоже HTML-страницу). Проверьте прокси и backend-логи.'
   }

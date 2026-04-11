@@ -554,6 +554,7 @@ export function aggregateComplexesFromRows(rows: Record<string, unknown>[], sour
 
 type UpsertBehaviorOptions = {
   restoreArchived?: boolean
+  skipMissingLifecycle?: boolean
 }
 
 export function upsertComplexes(
@@ -565,6 +566,7 @@ export function upsertComplexes(
 ) {
   const now = new Date().toISOString()
   const allowRestoreArchived = options?.restoreArchived === true
+  const skipMissingLifecycle = options?.skipMissingLifecycle === true
   const seen = new Set<string>()
   const index = new Map(db.complexes.filter((c) => c.source_id === sourceId).map((c) => [c.external_id, c]))
   // Global slug index for cross-source deduplication (same ЖК in multiple feeds)
@@ -621,12 +623,14 @@ export function upsertComplexes(
   }
 
   // Lifecycle for complexes missing in the current feed: active -> hidden -> archived
-  for (const c of db.complexes) {
-    if (c.source_id !== sourceId) continue
-    if (!seen.has(c.external_id)) {
-      const transition = transitionMissingRecordStatus(c, now)
-      if (transition === 'hidden') {
-        hidden += 1
+  if (!skipMissingLifecycle) {
+    for (const c of db.complexes) {
+      if (c.source_id !== sourceId) continue
+      if (!seen.has(c.external_id)) {
+        const transition = transitionMissingRecordStatus(c, now)
+        if (transition === 'hidden') {
+          hidden += 1
+        }
       }
     }
   }
@@ -651,10 +655,11 @@ export function upsertProperties(
   sourceId: string,
   rows: Record<string, unknown>[],
   mapping?: Record<string, string>,
-  options?: { hideInvalid?: boolean; restoreArchived?: boolean },
+  options?: { hideInvalid?: boolean; restoreArchived?: boolean; skipMissingLifecycle?: boolean },
 ) {
   const now = new Date().toISOString()
   const allowRestoreArchived = options?.restoreArchived === true
+  const skipMissingLifecycle = options?.skipMissingLifecycle === true
   const seen = new Set<string>()
   // Global index by external_id with collision buckets.
   const index = new Map<string, Property[]>()
@@ -831,12 +836,14 @@ export function upsertProperties(
   }
 
   // Lifecycle for properties missing in the current feed: active -> hidden -> archived
-  for (const p of db.properties) {
-    if (p.source_id !== sourceId) continue
-    if (!seen.has(p.external_id)) {
-      const transition = transitionMissingRecordStatus(p, now)
-      if (transition === 'hidden') {
-        hidden += 1
+  if (!skipMissingLifecycle) {
+    for (const p of db.properties) {
+      if (p.source_id !== sourceId) continue
+      if (!seen.has(p.external_id)) {
+        const transition = transitionMissingRecordStatus(p, now)
+        if (transition === 'hidden') {
+          hidden += 1
+        }
       }
     }
   }

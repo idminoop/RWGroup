@@ -2260,18 +2260,26 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
       importLocks.set(lockKey, Date.now())
 
       const restoreArchived = parsed.data.restore_archived !== false
+      const skipMissingLifecycle = parsed.data.full_city !== true
       const stats = withDb((db) => {
         const source = db.feed_sources.find((s) => s.id === parsed.data.source_id)
         const mapping = source?.mapping
 
         if (parsed.data.entity === 'complex') {
-          return upsertComplexes(db, parsed.data.source_id, rows, mapping, { restoreArchived })
+          return upsertComplexes(db, parsed.data.source_id, rows, mapping, { restoreArchived, skipMissingLifecycle })
         }
 
-        const complexStats = upsertComplexesFromProperties(db, parsed.data.source_id, rows, mapping, { restoreArchived })
+        const complexStats = upsertComplexesFromProperties(
+          db,
+          parsed.data.source_id,
+          rows,
+          mapping,
+          { restoreArchived, skipMissingLifecycle },
+        )
         const propertyStats = upsertProperties(db, parsed.data.source_id, rows, mapping, {
           hideInvalid: parsed.data.hide_invalid,
           restoreArchived,
+          skipMissingLifecycle,
         })
         return { ...propertyStats, targetComplexId: complexStats.targetComplexId }
       })
