@@ -91,6 +91,37 @@ function toReadableError(error: unknown): Error {
   return new Error('Feed request failed')
 }
 
+function extractErrorDetails(error: unknown, seen = new WeakSet<object>()): string | null {
+  if (!error || typeof error !== 'object') return null
+  const record = error as Record<string, unknown>
+  if (seen.has(record)) return 'circular'
+  seen.add(record)
+  const parts: string[] = []
+
+  const code = typeof record.code === 'string' ? record.code : null
+  const errno = typeof record.errno === 'string' || typeof record.errno === 'number' ? String(record.errno) : null
+  const syscall = typeof record.syscall === 'string' ? record.syscall : null
+  const hostname = typeof record.hostname === 'string' ? record.hostname : null
+  const address = typeof record.address === 'string' ? record.address : null
+  const port = typeof record.port === 'number' || typeof record.port === 'string' ? String(record.port) : null
+  const message = typeof record.message === 'string' ? record.message : null
+
+  if (code) parts.push(`code=${code}`)
+  if (errno) parts.push(`errno=${errno}`)
+  if (syscall) parts.push(`syscall=${syscall}`)
+  if (hostname) parts.push(`host=${hostname}`)
+  if (address) parts.push(`address=${address}`)
+  if (port) parts.push(`port=${port}`)
+  if (message) parts.push(`message=${message}`)
+
+  const cause = record.cause
+  const nested = extractErrorDetails(cause, seen)
+  if (nested) parts.push(`cause={${nested}}`)
+
+  if (!parts.length) return null
+  return parts.join(', ')
+}
+
 async function validateFeedUrl(
   parsedUrl: URL,
   allowPrivateHosts: boolean,
@@ -271,7 +302,12 @@ export async function fetchFeedBuffer(url: string, options?: FeedFetchOptions): 
     if (controller.signal.aborted) {
       throw new Error(`Feed request timeout after ${timeoutMs} ms`)
     }
-    throw toReadableError(error)
+    const readable = toReadableError(error)
+    const details = extractErrorDetails(error)
+    if (details && !readable.message.includes(details)) {
+      throw new Error(`${readable.message} (${details})`)
+    }
+    throw readable
   } finally {
     clearTimeout(timeoutId)
   }
