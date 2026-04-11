@@ -2317,7 +2317,9 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
     return errorLog
   }
 
-  if (parsed.data.full_city === true) {
+  const shouldQueueTrendAgentImport = parsed.data.full_city === true || parsed.data.entity === 'property'
+  if (shouldQueueTrendAgentImport) {
+    const scopeLabel = parsed.data.full_city === true ? 'всего города' : 'выбранных ЖК'
     void executeTrendAgentImport()
     res.status(202).json({
       success: true,
@@ -2326,7 +2328,7 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
         run_id: run.id,
         source_id: run.source_id,
         entity: run.entity,
-        message: 'Импорт всего города запущен в фоне. Следите за статусом в журнале импортов.',
+        message: `Импорт ${scopeLabel} запущен в фоне. Следите за статусом в журнале импортов.`,
       },
     })
     return
@@ -2645,6 +2647,32 @@ function numberValue(value: unknown): number | undefined {
   return undefined
 }
 
+function extractTrendAgentBlockLotsCount(block: Record<string, unknown>): number {
+  const candidates = [
+    block.lots_count,
+    block.lot_count,
+    block.apartments_count,
+    block.apartment_count,
+    block.flats_count,
+    block.flat_count,
+    block.units_count,
+    block.unit_count,
+    block.offers_count,
+    block.offer_count,
+    block.count,
+    block.total,
+  ]
+
+  for (const candidate of candidates) {
+    const parsed = numberValue(candidate)
+    if (typeof parsed === 'number' && parsed > 0) {
+      return Math.trunc(parsed)
+    }
+  }
+
+  return 0
+}
+
 function parsePositiveIntEnv(raw: string | undefined): number | undefined {
   if (!raw) return undefined
   const parsed = Number.parseInt(raw.trim(), 10)
@@ -2901,6 +2929,7 @@ async function loadTrendAgentDataset(sourceUrl: string, forceRefresh = false, mo
 }
 
 function buildTrendAgentComplexOptions(dataset: TrendAgentDataset): TrendAgentComplexOption[] {
+  const hasApartmentRows = dataset.apartments.length > 0
   const blocksById = new Map<string, Record<string, unknown>>(
     dataset.blocks.map((block) => [stringValue(block._id), block] as const).filter(([id]) => Boolean(id)),
   )
@@ -2947,8 +2976,9 @@ function buildTrendAgentComplexOptions(dataset: TrendAgentDataset): TrendAgentCo
       || (builderKey ? buildersById.get(builderKey) : '')
     const developerCounts = new Map<string, number>()
     if (builderName) developerCounts.set(builderName, 1)
+    const fallbackLotsCount = hasApartmentRows ? 0 : extractTrendAgentBlockLotsCount(block)
     buckets.set(blockId, {
-      count: 0,
+      count: fallbackLotsCount,
       district: district || undefined,
       address: address || undefined,
       title,
