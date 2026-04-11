@@ -66,7 +66,7 @@ import * as XLSX from 'xlsx'
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } })
 const importLocks = new Map<string, number>()
-const IMPORT_LOCK_STALE_MS = 15 * 60 * 1000
+const IMPORT_LOCK_STALE_MS = 4 * 60 * 60 * 1000
 const DEFAULT_FEED_REFRESH_INTERVAL_HOURS = 24
 const TRENDAGENT_CACHE_TTL_MS = 5 * 60 * 1000
 const TRENDAGENT_DEFAULT_TIMEOUT_MS = 120_000
@@ -2192,6 +2192,8 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
     res.status(400).json({ success: false, error: 'Source URL is required for TrendAgent import' })
     return
   }
+  const adminId = req.admin!.id
+  const adminLogin = req.admin!.login
 
   const run: {
     id: string
@@ -2216,99 +2218,121 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
     action: 'import',
   }
 
-  let errorLog = ''
-  try {
-    const dataset = await loadTrendAgentDataset(
-      sourceSnapshot.url,
-      parsed.data.force_refresh === true,
-      parsed.data.entity === 'complex' ? 'complex' : 'full',
-    )
-
-    let selectedBlockIds: Set<string>
-    if (parsed.data.full_city === true) {
-      selectedBlockIds = new Set(
-        dataset.blocks
-          .map((block) => stringValue(block._id))
-          .filter(Boolean),
+  const executeTrendAgentImport = async (): Promise<string> => {
+    let errorLog = ''
+    try {
+      importLocks.set(lockKey, Date.now())
+      const dataset = await loadTrendAgentDataset(
+        sourceSnapshot.url,
+        parsed.data.force_refresh === true,
+        parsed.data.entity === 'complex' ? 'complex' : 'full',
       )
-      if (selectedBlockIds.size === 0) {
-        throw new Error('No blocks found in TrendAgent feed')
-      }
-    } else {
-      selectedBlockIds = new Set((parsed.data.block_ids || []).map((id) => id.trim()).filter(Boolean))
-      if (selectedBlockIds.size === 0) {
-        throw new Error('At least one block_id is required')
-      }
-    }
+      importLocks.set(lockKey, Date.now())
 
-    const rows = parsed.data.entity === 'complex'
-      ? buildTrendAgentComplexImportRows(dataset, selectedBlockIds)
-      : buildTrendAgentImportRows(dataset, selectedBlockIds)
-    if (rows.length === 0) {
-      throw new Error(
-        parsed.data.entity === 'complex'
-          ? 'No complexes found for selected block_ids'
-          : 'No apartments found for selected complexes',
-      )
-    }
-    assertFeedRowLimit(rows.length)
-
-    const restoreArchived = parsed.data.restore_archived !== false
-    const stats = withDb((db) => {
-      const source = db.feed_sources.find((s) => s.id === parsed.data.source_id)
-      const mapping = source?.mapping
-
-      if (parsed.data.entity === 'complex') {
-        return upsertComplexes(db, parsed.data.source_id, rows, mapping, { restoreArchived })
+      let selectedBlockIds: Set<string>
+      if (parsed.data.full_city === true) {
+        selectedBlockIds = new Set(
+          dataset.blocks
+            .map((block) => stringValue(block._id))
+            .filter(Boolean),
+        )
+        if (selectedBlockIds.size === 0) {
+          throw new Error('No blocks found in TrendAgent feed')
+        }
+      } else {
+        selectedBlockIds = new Set((parsed.data.block_ids || []).map((id) => id.trim()).filter(Boolean))
+        if (selectedBlockIds.size === 0) {
+          throw new Error('At least one block_id is required')
+        }
       }
 
-      const complexStats = upsertComplexesFromProperties(db, parsed.data.source_id, rows, mapping, { restoreArchived })
-      const propertyStats = upsertProperties(db, parsed.data.source_id, rows, mapping, {
-        hideInvalid: parsed.data.hide_invalid,
-        restoreArchived,
+      const rows = parsed.data.entity === 'complex'
+        ? buildTrendAgentComplexImportRows(dataset, selectedBlockIds)
+        : buildTrendAgentImportRows(dataset, selectedBlockIds)
+      if (rows.length === 0) {
+        throw new Error(
+          parsed.data.entity === 'complex'
+            ? 'No complexes found for selected block_ids'
+            : 'No apartments found for selected complexes',
+        )
+      }
+      assertFeedRowLimit(rows.length)
+      importLocks.set(lockKey, Date.now())
+
+      const restoreArchived = parsed.data.restore_archived !== false
+      const stats = withDb((db) => {
+        const source = db.feed_sources.find((s) => s.id === parsed.data.source_id)
+        const mapping = source?.mapping
+
+        if (parsed.data.entity === 'complex') {
+          return upsertComplexes(db, parsed.data.source_id, rows, mapping, { restoreArchived })
+        }
+
+        const complexStats = upsertComplexesFromProperties(db, parsed.data.source_id, rows, mapping, { restoreArchived })
+        const propertyStats = upsertProperties(db, parsed.data.source_id, rows, mapping, {
+          hideInvalid: parsed.data.hide_invalid,
+          restoreArchived,
+        })
+        return { ...propertyStats, targetComplexId: complexStats.targetComplexId }
       })
-      return { ...propertyStats, targetComplexId: complexStats.targetComplexId }
-    })
 
-    run.stats = { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden }
-    const targetComplexId = (stats as { targetComplexId?: string }).targetComplexId
-    if (typeof targetComplexId === 'string' && targetComplexId) {
-      run.target_complex_id = targetComplexId
-    }
+      run.stats = { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden }
+      const targetComplexId = (stats as { targetComplexId?: string }).targetComplexId
+      if (typeof targetComplexId === 'string' && targetComplexId) {
+        run.target_complex_id = targetComplexId
+      }
 
-    if (stats.errors.length > 0) {
-      run.status = stats.errors.length === rows.length ? 'failed' : 'partial'
-      errorLog =
-        `${stats.errors.length} rows with errors:\n` +
-        stats.errors
-          .slice(0, 50)
-          .map((item) => `Row ${item.rowIndex}${item.externalId ? ` (${item.externalId})` : ''}: ${item.error}`)
-          .join('\n')
-    }
-  } catch (error) {
-    run.status = 'failed'
-    errorLog = error instanceof Error ? error.message : 'Unknown error'
-  } finally {
-    importLocks.delete(lockKey)
-    withDb((db) => {
-      db.import_runs.unshift({
-        ...run,
-        finished_at: new Date().toISOString(),
-        error_log: errorLog || undefined,
+      if (stats.errors.length > 0) {
+        run.status = stats.errors.length === rows.length ? 'failed' : 'partial'
+        errorLog =
+          `${stats.errors.length} rows with errors:\n` +
+          stats.errors
+            .slice(0, 50)
+            .map((item) => `Row ${item.rowIndex}${item.externalId ? ` (${item.externalId})` : ''}: ${item.error}`)
+            .join('\n')
+      }
+    } catch (error) {
+      run.status = 'failed'
+      errorLog = error instanceof Error ? error.message : 'Unknown error'
+    } finally {
+      importLocks.delete(lockKey)
+      withDb((db) => {
+        db.import_runs.unshift({
+          ...run,
+          finished_at: new Date().toISOString(),
+          error_log: errorLog || undefined,
+        })
+        appendAuditLog(
+          db,
+          adminId,
+          adminLogin,
+          'import',
+          'property',
+          run.source_id,
+          `TrendAgent ${parsed.data.full_city === true ? 'full-city' : 'selected'} import (${run.entity}): ${run.status} +${run.stats.inserted}/${run.stats.updated}/${run.stats.hidden}`,
+          run.feed_name || undefined,
+        )
       })
-      appendAuditLog(
-        db,
-        req.admin!.id,
-        req.admin!.login,
-        'import',
-        'property',
-        run.source_id,
-        `TrendAgent ${parsed.data.full_city === true ? 'full-city' : 'selected'} import (${run.entity}): ${run.status} +${run.stats.inserted}/${run.stats.updated}/${run.stats.hidden}`,
-        run.feed_name || undefined,
-      )
-    })
+    }
+    return errorLog
   }
 
+  if (parsed.data.full_city === true) {
+    void executeTrendAgentImport()
+    res.status(202).json({
+      success: true,
+      data: {
+        queued: true,
+        run_id: run.id,
+        source_id: run.source_id,
+        entity: run.entity,
+        message: 'Импорт всего города запущен в фоне. Следите за статусом в журнале импортов.',
+      },
+    })
+    return
+  }
+
+  const errorLog = await executeTrendAgentImport()
   if (run.status === 'failed') {
     res.status(500).json({ success: false, error: 'Import failed', details: errorLog })
     return

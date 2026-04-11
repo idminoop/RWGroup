@@ -93,6 +93,20 @@ type ApiEnvelope<T> = {
   details?: string
 }
 
+type TrendAgentImportRunResponse = {
+  id?: string
+  run_id?: string
+  target_complex_id?: string
+  queued?: boolean
+  message?: string
+  status?: ImportRun['status']
+  stats?: ImportRun['stats']
+  error_log?: string
+}
+
+const TRENDAGENT_RUN_POLL_INTERVAL_MS = 5000
+const TRENDAGENT_RUN_POLL_MAX_ATTEMPTS = 720
+
 function normalizeImportErrorMessage(message: string): string {
   const text = message.trim()
   const lowered = text.toLowerCase()
@@ -196,6 +210,7 @@ export default function AdminImportPage() {
   const [hideInvalid, setHideInvalid] = useState(true)
   const [trendagentLoading, setTrendagentLoading] = useState(false)
   const [trendagentError, setTrendagentError] = useState<string | null>(null)
+  const [trendagentInfo, setTrendagentInfo] = useState<string | null>(null)
   const [trendagentOptions, setTrendagentOptions] = useState<TrendAgentComplexOption[]>([])
   const [trendagentSelectedIds, setTrendagentSelectedIds] = useState<string[]>([])
   const [trendagentQuery, setTrendagentQuery] = useState('')
@@ -205,6 +220,8 @@ export default function AdminImportPage() {
   const [trendagentTotalPages, setTrendagentTotalPages] = useState(1)
   const trendagentListInFlightRef = useRef(false)
   const trendagentImportInFlightRef = useRef(false)
+  const trendagentRunPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const trendagentRunPollIdRef = useRef<string | null>(null)
 
   // Edit Preview State
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -267,6 +284,96 @@ export default function AdminImportPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  const stopTrendagentRunWatcher = useCallback(() => {
+    if (trendagentRunPollTimerRef.current) {
+      clearTimeout(trendagentRunPollTimerRef.current)
+      trendagentRunPollTimerRef.current = null
+    }
+    trendagentRunPollIdRef.current = null
+  }, [])
+
+  const startTrendagentRunWatcher = useCallback((
+    runId: string,
+    sourceId: string,
+    scope: 'selected' | 'full_city',
+  ) => {
+    stopTrendagentRunWatcher()
+    trendagentRunPollIdRef.current = runId
+
+    const startedAt = Date.now()
+    let attempt = 0
+    console.info('[TrendAgent import] watcher started', { runId, sourceId, scope })
+
+    const poll = async () => {
+      attempt += 1
+      const currentWatchId = trendagentRunPollIdRef.current
+      if (currentWatchId !== runId) return
+
+      try {
+        const allRuns = await apiGet<ImportRun[]>('/api/admin/import/runs', headers)
+        const completedRun = allRuns.find((item) => item.id === runId)
+
+        if (completedRun) {
+          const elapsedSec = Math.round((Date.now() - startedAt) / 1000)
+          console.info('[TrendAgent import] watcher finished', {
+            runId,
+            sourceId,
+            scope,
+            elapsedSec,
+            status: completedRun.status,
+            stats: completedRun.stats,
+          })
+          if (completedRun.error_log) {
+            console.warn('[TrendAgent import] error log', { runId, error: completedRun.error_log })
+          }
+
+          if (completedRun.status === 'failed') {
+            setTrendagentInfo(null)
+            setTrendagentError(completedRun.error_log || 'Импорт завершился с ошибкой.')
+          } else {
+            setTrendagentInfo(
+              `Импорт завершен: ${statusLabel(completedRun.status)} • +${completedRun.stats.inserted}/${completedRun.stats.updated}/${completedRun.stats.hidden}`,
+            )
+          }
+          await load()
+          stopTrendagentRunWatcher()
+          return
+        }
+
+        const elapsedSec = Math.round((Date.now() - startedAt) / 1000)
+        console.info('[TrendAgent import] watcher tick', {
+          runId,
+          sourceId,
+          scope,
+          attempt,
+          elapsedSec,
+          state: 'still-running',
+        })
+      } catch (watchError) {
+        const message = watchError instanceof Error ? watchError.message : String(watchError)
+        console.warn('[TrendAgent import] watcher poll failed', { runId, sourceId, scope, attempt, message })
+      }
+
+      if (attempt >= TRENDAGENT_RUN_POLL_MAX_ATTEMPTS) {
+        console.warn('[TrendAgent import] watcher timeout', { runId, sourceId, scope, attempts: attempt })
+        stopTrendagentRunWatcher()
+        return
+      }
+
+      trendagentRunPollTimerRef.current = setTimeout(() => {
+        void poll()
+      }, TRENDAGENT_RUN_POLL_INTERVAL_MS)
+    }
+
+    trendagentRunPollTimerRef.current = setTimeout(() => {
+      void poll()
+    }, TRENDAGENT_RUN_POLL_INTERVAL_MS)
+  }, [headers, load, stopTrendagentRunWatcher])
+
+  useEffect(() => () => {
+    stopTrendagentRunWatcher()
+  }, [stopTrendagentRunWatcher])
 
   const runsBySource = useMemo(() => {
     const activeSourceIds = new Set(feeds.map((feed) => feed.id))
@@ -340,6 +447,7 @@ export default function AdminImportPage() {
   }, [urlGroups, runsBySource])
 
   const selectFeed = useCallback((feed: FeedSource | null) => {
+    stopTrendagentRunWatcher()
     setActiveImportSource(feed)
     setImportInputMode(feed?.mode === 'upload' ? 'file' : 'url')
     setFile(null)
@@ -349,6 +457,7 @@ export default function AdminImportPage() {
     setEditingIndex(null)
     setEditForm({})
     setTrendagentError(null)
+    setTrendagentInfo(null)
     setTrendagentOptions([])
     setTrendagentSelectedIds([])
     setTrendagentQuery('')
@@ -357,7 +466,7 @@ export default function AdminImportPage() {
     setTrendagentTotal(0)
     setTrendagentTotalPages(1)
     setError(null)
-  }, [])
+  }, [stopTrendagentRunWatcher])
 
   useEffect(() => {
     if (feeds.length === 0) return
@@ -600,6 +709,7 @@ export default function AdminImportPage() {
     trendagentImportInFlightRef.current = true
     setTrendagentLoading(true)
     setTrendagentError(null)
+    setTrendagentInfo(null)
     setError(null)
     try {
       const res = await fetch('/api/admin/import/trendagent/run', {
@@ -616,9 +726,41 @@ export default function AdminImportPage() {
           hide_invalid: hideInvalid,
         }),
       })
-      const json = await parseApiEnvelope<{ target_complex_id?: string }>(res)
+      const json = await parseApiEnvelope<TrendAgentImportRunResponse>(res)
       if (!res.ok || json.success !== true) {
         throw new Error(normalizeImportErrorMessage(json.details || json.error || 'Import failed'))
+      }
+      if (json.data?.queued) {
+        setTrendagentInfo(json.data.message || 'Импорт запущен в фоне. Следите за статусом в журнале импортов.')
+        const runId = json.data.run_id || json.data.id
+        if (runId) {
+          console.info('[TrendAgent import] queued', {
+            runId,
+            sourceId: activeImportSource.id,
+            scope,
+            entity,
+          })
+          startTrendagentRunWatcher(runId, activeImportSource.id, scope)
+        } else {
+          console.warn('[TrendAgent import] queued response has no run_id', {
+            sourceId: activeImportSource.id,
+            scope,
+            entity,
+          })
+        }
+        await load()
+        return
+      }
+      console.info('[TrendAgent import] completed synchronously', {
+        runId: json.data?.id,
+        sourceId: activeImportSource.id,
+        scope,
+        entity,
+        status: json.data?.status,
+        stats: json.data?.stats,
+      })
+      if (json.data?.error_log) {
+        console.warn('[TrendAgent import] synchronous error log', { runId: json.data?.id, error: json.data.error_log })
       }
       await load()
       const targetComplexId = json.data?.target_complex_id
@@ -627,6 +769,13 @@ export default function AdminImportPage() {
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Ошибка импорта выбранных ЖК'
+      console.error('[TrendAgent import] request failed', {
+        sourceId: activeImportSource.id,
+        scope,
+        entity,
+        message,
+      })
+      setTrendagentInfo(null)
       setTrendagentError(normalizeImportErrorMessage(message))
     } finally {
       trendagentImportInFlightRef.current = false
@@ -1222,6 +1371,9 @@ export default function AdminImportPage() {
                     </div>
                   )}
                 </div>
+              ) : null}
+              {trendagentInfo ? (
+                <div className="text-xs text-emerald-700">{trendagentInfo}</div>
               ) : null}
 
               {trendagentLoadedSourceId === activeImportSource.id && (
