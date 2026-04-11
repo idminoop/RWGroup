@@ -1367,7 +1367,7 @@ export default function AdminImportPage() {
                   {trendagentError.toLowerCase().includes('fetch failed') && (
                     <div className="text-[11px] text-amber-700">
                       Сервер не может скачать фид по URL. Проверьте сетевой доступ backend-контейнера к этому хосту и лимиты
-                      RW_TRENDAGENT_FETCH_*/RW_TRENDAGENT_APARTMENTS_* (при необходимости также RW_FEED_FETCH_*).
+                      RW_TRENDAGENT_FETCH_*/RW_TRENDAGENT_APARTMENTS_* (при необходимости также RW_FEED_FETCH_* и RW_FEED_CONNECT_TIMEOUT_MS).
                     </div>
                   )}
                 </div>

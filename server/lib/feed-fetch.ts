@@ -1,10 +1,12 @@
 ﻿import { lookup } from 'node:dns/promises'
 import net from 'node:net'
+import { Agent } from 'undici'
 
 const DEFAULT_FEED_FETCH_TIMEOUT_MS = 20_000
 const DEFAULT_FEED_FETCH_MAX_BYTES = 20 * 1024 * 1024
 const DEFAULT_FEED_FETCH_MAX_REDIRECTS = 5
 const DEFAULT_FEED_MAX_ROWS = 50_000
+const DEFAULT_FEED_CONNECT_TIMEOUT_MS = 30_000
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 const LOCAL_HOSTNAMES = new Set(['localhost', 'localhost.localdomain'])
 
@@ -12,7 +14,14 @@ type FeedFetchOptions = {
   timeoutMs?: number
   maxBytes?: number
   maxRedirects?: number
+  connectTimeoutMs?: number
 }
+
+type FeedFetchRequestInit = RequestInit & {
+  dispatcher?: Agent
+}
+
+const FEED_FETCH_AGENT_CACHE = new Map<number, Agent>()
 
 function parsePositiveInt(raw: string | undefined): number | undefined {
   if (!raw) return undefined
@@ -122,6 +131,20 @@ function extractErrorDetails(error: unknown, seen = new WeakSet<object>()): stri
   return parts.join(', ')
 }
 
+function getFeedFetchAgent(connectTimeoutMs: number): Agent {
+  const normalizedTimeoutMs = Math.max(1, Math.floor(connectTimeoutMs))
+  const cached = FEED_FETCH_AGENT_CACHE.get(normalizedTimeoutMs)
+  if (cached) return cached
+
+  const agent = new Agent({
+    connect: {
+      timeout: normalizedTimeoutMs,
+    },
+  })
+  FEED_FETCH_AGENT_CACHE.set(normalizedTimeoutMs, agent)
+  return agent
+}
+
 async function validateFeedUrl(
   parsedUrl: URL,
   allowPrivateHosts: boolean,
@@ -173,17 +196,20 @@ async function fetchWithRedirectPolicy(
   url: URL,
   signal: AbortSignal,
   maxRedirects: number,
+  connectTimeoutMs: number,
   allowPrivateHosts: boolean,
   allowedHosts: Set<string> | null,
 ): Promise<Response> {
   let currentUrl = url
   for (let hop = 0; hop <= maxRedirects; hop += 1) {
     await validateFeedUrl(currentUrl, allowPrivateHosts, allowedHosts)
-    const response = await fetch(currentUrl, {
+    const requestInit: FeedFetchRequestInit = {
       method: 'GET',
       signal,
       redirect: 'manual',
-    })
+      dispatcher: getFeedFetchAgent(connectTimeoutMs),
+    }
+    const response = await fetch(currentUrl, requestInit)
 
     if (!REDIRECT_STATUSES.has(response.status)) {
       return response
@@ -256,6 +282,10 @@ export function getFeedFetchMaxRedirects(): number {
   return parsePositiveInt(process.env.RW_FEED_FETCH_MAX_REDIRECTS) ?? DEFAULT_FEED_FETCH_MAX_REDIRECTS
 }
 
+export function getFeedConnectTimeoutMs(): number {
+  return parsePositiveInt(process.env.RW_FEED_CONNECT_TIMEOUT_MS) ?? DEFAULT_FEED_CONNECT_TIMEOUT_MS
+}
+
 export function getFeedMaxRows(): number {
   return parsePositiveInt(process.env.RW_FEED_MAX_ROWS) ?? DEFAULT_FEED_MAX_ROWS
 }
@@ -278,6 +308,8 @@ export async function fetchFeedBuffer(url: string, options?: FeedFetchOptions): 
   const timeoutMs = options?.timeoutMs ?? getFeedFetchTimeoutMs()
   const maxBytes = options?.maxBytes ?? getFeedFetchMaxBytes()
   const maxRedirects = options?.maxRedirects ?? getFeedFetchMaxRedirects()
+  const configuredConnectTimeoutMs = options?.connectTimeoutMs ?? getFeedConnectTimeoutMs()
+  const connectTimeoutMs = Math.max(1, Math.min(timeoutMs, configuredConnectTimeoutMs))
   const allowPrivateHosts = parseBooleanEnv(process.env.RW_FEED_FETCH_ALLOW_PRIVATE_HOSTS) === true
   const allowedHosts = parseAllowedHosts(process.env.RW_FEED_FETCH_ALLOWED_HOSTS)
 
@@ -289,6 +321,7 @@ export async function fetchFeedBuffer(url: string, options?: FeedFetchOptions): 
       parsedUrl,
       controller.signal,
       maxRedirects,
+      connectTimeoutMs,
       allowPrivateHosts,
       allowedHosts,
     )
