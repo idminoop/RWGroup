@@ -106,6 +106,38 @@ type TrendAgentImportRunResponse = {
 
 const TRENDAGENT_RUN_POLL_INTERVAL_MS = 5000
 const TRENDAGENT_RUN_POLL_MAX_ATTEMPTS = 720
+const TRENDAGENT_RUN_POLL_MAX_ATTEMPTS_FULL_CITY = 1440
+
+const TRENDAGENT_WATCHER_SESSION_KEY = 'trendagent_run_watcher'
+
+interface TrendAgentWatcherSession {
+  runId: string
+  sourceId: string
+  scope: 'selected' | 'full_city'
+  startedAt: number
+}
+
+function saveWatcherSession(session: TrendAgentWatcherSession): void {
+  try {
+    sessionStorage.setItem(TRENDAGENT_WATCHER_SESSION_KEY, JSON.stringify(session))
+  } catch { /* ignore storage errors */ }
+}
+
+function loadWatcherSession(): TrendAgentWatcherSession | null {
+  try {
+    const raw = sessionStorage.getItem(TRENDAGENT_WATCHER_SESSION_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (parsed && parsed.runId && parsed.sourceId && parsed.scope) return parsed
+  } catch { /* ignore storage errors */ }
+  return null
+}
+
+function clearWatcherSession(): void {
+  try {
+    sessionStorage.removeItem(TRENDAGENT_WATCHER_SESSION_KEY)
+  } catch { /* ignore storage errors */ }
+}
 
 function normalizeImportErrorMessage(message: string): string {
   const text = message.trim()
@@ -300,12 +332,18 @@ export default function AdminImportPage() {
     runId: string,
     sourceId: string,
     scope: 'selected' | 'full_city',
+    startedAtOverride?: number,
   ) => {
     stopTrendagentRunWatcher()
     trendagentRunPollIdRef.current = runId
 
-    const startedAt = Date.now()
+    const startedAt = startedAtOverride || Date.now()
     let attempt = 0
+    const maxAttempts = scope === 'full_city'
+      ? TRENDAGENT_RUN_POLL_MAX_ATTEMPTS_FULL_CITY
+      : TRENDAGENT_RUN_POLL_MAX_ATTEMPTS
+
+    saveWatcherSession({ runId, sourceId, scope, startedAt })
     console.info('[TrendAgent import] watcher started', { runId, sourceId, scope })
 
     const poll = async () => {
@@ -339,6 +377,7 @@ export default function AdminImportPage() {
               `Импорт завершен: ${statusLabel(completedRun.status)} • +${completedRun.stats.inserted}/${completedRun.stats.updated}/${completedRun.stats.hidden}`,
             )
           }
+          clearWatcherSession()
           await load()
           stopTrendagentRunWatcher()
           return
@@ -358,8 +397,9 @@ export default function AdminImportPage() {
         console.warn('[TrendAgent import] watcher poll failed', { runId, sourceId, scope, attempt, message })
       }
 
-      if (attempt >= TRENDAGENT_RUN_POLL_MAX_ATTEMPTS) {
+      if (attempt >= maxAttempts) {
         console.warn('[TrendAgent import] watcher timeout', { runId, sourceId, scope, attempts: attempt })
+        clearWatcherSession()
         stopTrendagentRunWatcher()
         return
       }
@@ -377,6 +417,14 @@ export default function AdminImportPage() {
   useEffect(() => () => {
     stopTrendagentRunWatcher()
   }, [stopTrendagentRunWatcher])
+
+  // Restore watcher from sessionStorage on mount (survives tab switches)
+  useEffect(() => {
+    const session = loadWatcherSession()
+    if (!session) return
+    console.info('[TrendAgent import] restoring watcher from session', { runId: session.runId, sourceId: session.sourceId, scope: session.scope })
+    startTrendagentRunWatcher(session.runId, session.sourceId, session.scope, session.startedAt)
+  }, [startTrendagentRunWatcher])
 
   const runsBySource = useMemo(() => {
     const activeSourceIds = new Set(feeds.map((feed) => feed.id))
@@ -451,6 +499,7 @@ export default function AdminImportPage() {
 
   const selectFeed = useCallback((feed: FeedSource | null) => {
     stopTrendagentRunWatcher()
+    clearWatcherSession()
     setActiveImportSource(feed)
     setImportInputMode(feed?.mode === 'upload' ? 'file' : 'url')
     setFile(null)
