@@ -225,7 +225,6 @@ export default function AdminImportPage() {
 
   // Import State
   const [activeImportSource, setActiveImportSource] = useState<FeedSource | null>(null)
-  const [entity, setEntity] = useState<'property' | 'complex'>('property')
   const [file, setFile] = useState<File | null>(null)
   const [importInputMode, setImportInputMode] = useState<'url' | 'file'>('url')
   const [preview, setPreview] = useState<ImportPreview | null>(null)
@@ -242,7 +241,6 @@ export default function AdminImportPage() {
   const [cardsPerRow, setCardsPerRow] = useState(3)
   const [isMobilePreview, setIsMobilePreview] = useState(false)
   const [autoPreviewSourceId, setAutoPreviewSourceId] = useState<string | null>(null)
-  const [hideInvalid, setHideInvalid] = useState(true)
   const [trendagentLoading, setTrendagentLoading] = useState(false)
   const [trendagentError, setTrendagentError] = useState<string | null>(null)
   const [trendagentInfo, setTrendagentInfo] = useState<string | null>(null)
@@ -420,6 +418,7 @@ export default function AdminImportPage() {
 
   // Restore watcher from sessionStorage on mount (survives tab switches)
   useEffect(() => {
+    if (trendagentRunPollIdRef.current) return // already watching
     const session = loadWatcherSession()
     if (!session) return
     console.info('[TrendAgent import] restoring watcher from session', { runId: session.runId, sourceId: session.sourceId, scope: session.scope })
@@ -772,10 +771,9 @@ export default function AdminImportPage() {
         },
         body: JSON.stringify({
           source_id: activeImportSource.id,
-          entity,
+          entity: 'property',
           full_city: scope === 'full_city',
           block_ids: scope === 'selected' ? trendagentSelectedIds : undefined,
-          hide_invalid: hideInvalid,
         }),
       })
       const json = await parseApiEnvelope<TrendAgentImportRunResponse>(res)
@@ -790,14 +788,12 @@ export default function AdminImportPage() {
             runId,
             sourceId: activeImportSource.id,
             scope,
-            entity,
           })
           startTrendagentRunWatcher(runId, activeImportSource.id, scope)
         } else {
           console.warn('[TrendAgent import] queued response has no run_id', {
             sourceId: activeImportSource.id,
             scope,
-            entity,
           })
         }
         await load()
@@ -807,7 +803,6 @@ export default function AdminImportPage() {
         runId: json.data?.id,
         sourceId: activeImportSource.id,
         scope,
-        entity,
         status: json.data?.status,
         stats: json.data?.stats,
       })
@@ -816,7 +811,7 @@ export default function AdminImportPage() {
       }
       await load()
       const targetComplexId = json.data?.target_complex_id
-      if (entity === 'complex' && targetComplexId) {
+      if (targetComplexId) {
         navigate(`/admin/complex-settings?complexId=${encodeURIComponent(targetComplexId)}`)
       }
     } catch (e) {
@@ -824,7 +819,6 @@ export default function AdminImportPage() {
       console.error('[TrendAgent import] request failed', {
         sourceId: activeImportSource.id,
         scope,
-        entity,
         message,
       })
       setTrendagentInfo(null)
@@ -866,7 +860,7 @@ export default function AdminImportPage() {
     setPreviewContext({
       sourceId: feed.id,
       sourceName: feed.name,
-      entity,
+      entity: 'property',
       mode: inputMode === 'file' ? 'upload' : 'url',
       url: inputMode === 'url' ? feed.url : undefined,
       fileName: fileOverride?.name,
@@ -876,7 +870,6 @@ export default function AdminImportPage() {
       const fd = new FormData()
       if (inputMode === 'file' && fileOverride) fd.append('file', fileOverride)
       fd.append('source_id', feed.id)
-      fd.append('entity', entity)
       if (inputMode === 'url' && feed.url) {
         fd.append('url', feed.url)
       }
@@ -894,7 +887,6 @@ export default function AdminImportPage() {
 
       setPreview(json.data)
       setViewMode('visual')
-      setHideInvalid(true)
     } catch (e) {
       const message = normalizeImportErrorMessage(e instanceof Error ? e.message : 'Ошибка')
       setError(message)
@@ -908,7 +900,7 @@ export default function AdminImportPage() {
       setLoading(false)
       void load()
     }
-  }, [entity, token, load, trendagentQuery])
+  }, [token, load, trendagentQuery])
 
   const handleStartImport = useCallback((feed: FeedSource, autoPreview = false) => {
     selectFeed(feed)
@@ -967,16 +959,12 @@ export default function AdminImportPage() {
         const rows = preview.sampleRows.map(r => r.data)
         fd.append('rows', JSON.stringify(rows))
         fd.append('source_id', sourceId)
-        fd.append('entity', previewContext?.entity || entity)
-        fd.append('hide_invalid', String(hideInvalid))
       } else {
         const effectiveMode: 'upload' | 'url' =
           previewContext?.mode || (importInputMode === 'file' ? 'upload' : 'url')
 
         if (effectiveMode === 'upload' && file) fd.append('file', file)
         fd.append('source_id', sourceId)
-        fd.append('entity', previewContext?.entity || entity)
-        fd.append('hide_invalid', String(hideInvalid))
         if (effectiveMode === 'url' && previewContext?.url) {
           fd.append('url', previewContext.url)
         } else if (effectiveMode === 'url' && activeImportSource?.url) {
@@ -1000,8 +988,6 @@ export default function AdminImportPage() {
       if (!res.ok || json.success !== true) {
         throw new Error(normalizeImportErrorMessage(json.details || json.error || 'Import failed'))
       }
-      const importedEntity = previewContext?.entity || entity
-      const responseTargetComplexId = json.data?.target_complex_id
 
       setFile(null)
       setPreview(null)
@@ -1009,19 +995,7 @@ export default function AdminImportPage() {
       setPreviewContext(null)
       await load()
 
-      let targetComplexId = responseTargetComplexId || ''
-      if (!targetComplexId && importedEntity === 'complex') {
-        try {
-          const listRes = await apiGet<{ items: Complex[]; total: number; page: number; limit: number }>(
-            `/api/admin/catalog/items?type=complex&source_id=${encodeURIComponent(sourceId)}&page=1&limit=1`,
-            headers,
-          )
-          targetComplexId = listRes.items[0]?.id || ''
-        } catch {
-          // Import is already successful; ignore fallback lookup errors.
-        }
-      }
-
+      const targetComplexId = json.data?.target_complex_id || ''
       if (targetComplexId) {
         navigate(`/admin/complex-settings?complexId=${encodeURIComponent(targetComplexId)}`)
       }
@@ -1082,30 +1056,18 @@ export default function AdminImportPage() {
     // Update mappedItems for visual preview
     const newMappedItems = [...preview.mappedItems]
     const currentItem = newMappedItems[editingIndex]
-    
-    if (entity === 'property') {
-      const p = currentItem as Property
-      const title = getValue(editForm, 'title')
-      if (title) p.title = String(title)
-      const price = getValue(editForm, 'price')
-      if (price) p.price = Number(price)
-      const area = getValue(editForm, 'area_total')
-      if (area) p.area_total = Number(area)
-      const district = getValue(editForm, 'district')
-      if (district) p.district = String(district)
-      const bedrooms = getValue(editForm, 'bedrooms')
-      if (bedrooms) p.bedrooms = Number(bedrooms)
-    } else {
-      const c = currentItem as Complex
-      const title = getValue(editForm, 'title')
-      if (title) c.title = String(title)
-      const priceFrom = getValue(editForm, 'price_from')
-      if (priceFrom) c.price_from = Number(priceFrom)
-      const areaFrom = getValue(editForm, 'area_from')
-      if (areaFrom) c.area_from = Number(areaFrom)
-      const district = getValue(editForm, 'district')
-      if (district) c.district = String(district)
-    }
+
+    const p = currentItem as Property
+    const title = getValue(editForm, 'title')
+    if (title) p.title = String(title)
+    const price = getValue(editForm, 'price')
+    if (price) p.price = Number(price)
+    const area = getValue(editForm, 'area_total')
+    if (area) p.area_total = Number(area)
+    const district = getValue(editForm, 'district')
+    if (district) p.district = String(district)
+    const bedrooms = getValue(editForm, 'bedrooms')
+    if (bedrooms) p.bedrooms = Number(bedrooms)
 
     setPreview({
       ...preview,
@@ -1309,19 +1271,6 @@ export default function AdminImportPage() {
                 {feeds.map((f) => (
                   <option key={f.id} value={f.id}>{f.name}</option>
                 ))}
-              </Select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Тип сущности</label>
-              <Select
-                value={entity}
-                onChange={(e) => {
-                  const v = e.target.value
-                  if (v === 'property' || v === 'complex') setEntity(v)
-                }}
-              >
-                <option value="property">Лоты (Квартиры)</option>
-                <option value="complex">Жилые Комплексы</option>
               </Select>
             </div>
             <div>
@@ -1588,14 +1537,6 @@ export default function AdminImportPage() {
                         Источник: <span className="font-medium break-all text-slate-700">{previewContext.sourceName}</span>
                       </div>
                     )}
-                    <label className="inline-flex items-center gap-2 text-xs text-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={hideInvalid}
-                        onChange={(e) => setHideInvalid(e.target.checked)}
-                      />
-                      Скрывать записи с ошибками
-                    </label>
                     <div className="flex shrink-0 rounded bg-slate-200 p-1">
                       <button 
                         className={cn("px-3 py-1 text-xs rounded transition-colors", viewMode === 'table' ? "bg-white text-slate-900 shadow" : "text-slate-600 hover:text-slate-900")}
@@ -1725,7 +1666,7 @@ export default function AdminImportPage() {
                   >
                     {preview.mappedItems.map((item, index) => (
                       <div key={index} className="group relative min-w-0">
-                        {entity === 'property' ? <PropertyCard item={item as Property} showStatusBadge /> : <ComplexCard item={item as Complex} showStatusBadge />}
+                        <PropertyCard item={item as Property} showStatusBadge />
                         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                           <Button
                             size="sm"
@@ -1743,18 +1684,14 @@ export default function AdminImportPage() {
 
                 <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
                   <Button variant="secondary" onClick={closePreview} className="w-full sm:w-auto">
-                    Оставить
+                    Отмена
                   </Button>
                   <Button
                     onClick={runImport}
                     disabled={loading || (activeImportSource ? pendingSourceIds.has(activeImportSource.id) : false)}
                     className="w-full sm:w-auto"
                   >
-                    {loading
-                      ? 'Импорт…'
-                      : (previewContext?.entity || entity) === 'complex'
-                        ? 'Опубликовать и открыть настройку ЖК'
-                        : 'Опубликовать'}
+                    {loading ? 'Импорт…' : 'Опубликовать'}
                   </Button>
                 </div>
               </div>

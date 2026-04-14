@@ -310,6 +310,9 @@ export class PostgresStateRepository implements StateRepository {
   async saveState(draft: DbShape, published: DbShape, options?: SaveStateOptions): Promise<PersistedMeta> {
     const persistDraft = options?.persistDraft ?? true
     const persistPublished = options?.persistPublished ?? true
+    console.log(
+      `[storage] saveState: draft.import_runs=${draft.import_runs?.length || 0}, published.import_runs=${published.import_runs?.length || 0}, persistDraft=${persistDraft}, persistPublished=${persistPublished}`,
+    )
     const client = await this.pool.connect()
     try {
       await client.query('BEGIN')

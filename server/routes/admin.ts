@@ -1964,10 +1964,8 @@ router.get('/import/runs', (req: Request, res: Response) => {
 router.post('/import/run', requireAdminPermission('import.write'), upload.single('file'), async (req: Request, res: Response) => {
   const schema = z.object({
     source_id: z.string().min(1),
-    entity: z.enum(['property', 'complex']),
     url: z.string().optional(),
     rows: z.string().optional(),
-    hide_invalid: z.coerce.boolean().optional(),
     restore_archived: z.coerce.boolean().optional(),
     auto_publish: z.coerce.boolean().optional(),
   })
@@ -1976,9 +1974,9 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
     res.status(400).json({ success: false, error: 'Invalid payload' })
     return
   }
-  const lockKey = `${parsed.data.source_id}:${parsed.data.entity}`
+  const lockKey = `${parsed.data.source_id}:property`
   if (hasActiveImportLock(lockKey)) {
-    res.status(409).json({ success: false, error: 'РРјРїРѕСЂС‚ СѓР¶Рµ РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ РґР»СЏ СЌС‚РѕРіРѕ РёСЃС‚РѕС‡РЅРёРєР°' })
+    res.status(409).json({ success: false, error: 'Импорт уже выполняется для этого источника' })
     return
   }
   importLocks.set(lockKey, Date.now())
@@ -1999,7 +1997,7 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
   } = {
     id: runId,
     source_id: parsed.data.source_id,
-    entity: parsed.data.entity,
+    entity: 'property',
     started_at: startedAt,
     status: 'success',
     stats: { inserted: 0, updated: 0, hidden: 0 },
@@ -2044,14 +2042,9 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
       const source = db.feed_sources.find(s => s.id === parsed.data.source_id)
       const mapping = source?.mapping
 
-      if (parsed.data.entity === 'complex') {
-        return upsertComplexes(db, parsed.data.source_id, rows, mapping, { restoreArchived })
-      }
-      
       // Auto-upsert complexes from properties to ensure linking works
       const complexStats = upsertComplexesFromProperties(db, parsed.data.source_id, rows, mapping, { restoreArchived })
       const propertyStats = upsertProperties(db, parsed.data.source_id, rows, mapping, {
-        hideInvalid: parsed.data.hide_invalid,
         restoreArchived,
       })
       return { ...propertyStats, targetComplexId: complexStats.targetComplexId }
@@ -2184,10 +2177,9 @@ router.post('/import/trendagent/complexes', requireAdminPermission('import.write
 router.post('/import/trendagent/run', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
   const schema = z.object({
     source_id: z.string().min(1),
-    entity: z.enum(['property', 'complex']),
+    entity: z.enum(['property']),
     block_ids: z.array(z.string().min(1)).optional(),
     full_city: z.coerce.boolean().optional(),
-    hide_invalid: z.coerce.boolean().optional(),
     restore_archived: z.coerce.boolean().optional(),
     force_refresh: z.coerce.boolean().optional(),
     auto_publish: z.coerce.boolean().optional(),
@@ -2198,7 +2190,7 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
     return
   }
 
-  const lockKey = `${parsed.data.source_id}:${parsed.data.entity}:trendagent`
+  const lockKey = `${parsed.data.source_id}:property:trendagent`
   if (hasActiveImportLock(lockKey)) {
     res.status(409).json({ success: false, error: 'Import already running for this source' })
     return
@@ -2250,7 +2242,7 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
       const dataset = await loadTrendAgentDataset(
         sourceSnapshot.url,
         parsed.data.force_refresh === true,
-        parsed.data.entity === 'complex' ? 'complex' : 'full',
+        'full',
       )
       importLocks.set(lockKey, Date.now())
 
@@ -2271,15 +2263,9 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
         }
       }
 
-      const rows = parsed.data.entity === 'complex'
-        ? buildTrendAgentComplexImportRows(dataset, selectedBlockIds)
-        : buildTrendAgentImportRows(dataset, selectedBlockIds)
+      const rows = buildTrendAgentImportRows(dataset, selectedBlockIds)
       if (rows.length === 0) {
-        throw new Error(
-          parsed.data.entity === 'complex'
-            ? 'No complexes found for selected block_ids'
-            : 'No apartments found for selected complexes',
-        )
+        throw new Error('No apartments found for selected complexes')
       }
       assertFeedRowLimit(rows.length, parsed.data.full_city === true)
       importLocks.set(lockKey, Date.now())
@@ -2290,10 +2276,6 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
         const source = db.feed_sources.find((s) => s.id === parsed.data.source_id)
         const mapping = source?.mapping
 
-        if (parsed.data.entity === 'complex') {
-          return upsertComplexes(db, parsed.data.source_id, rows, mapping, { restoreArchived, skipMissingLifecycle })
-        }
-
         const complexStats = upsertComplexesFromProperties(
           db,
           parsed.data.source_id,
@@ -2302,7 +2284,6 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
           { restoreArchived, skipMissingLifecycle },
         )
         const propertyStats = upsertProperties(db, parsed.data.source_id, rows, mapping, {
-          hideInvalid: parsed.data.hide_invalid,
           restoreArchived,
           skipMissingLifecycle,
         })

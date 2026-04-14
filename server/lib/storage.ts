@@ -212,6 +212,10 @@ function queuePersist(request: PersistRequest): void {
       }
     : request
 
+  console.log(
+    `[storage] Queue persist: draft=${draftDbCache.import_runs?.length || 0} runs, persistDraft=${nextRequest.persistDraft}, persistPublished=${nextRequest.persistPublished}`,
+  )
+
   persistPending = {
     request: nextRequest,
     draft: deepClone(draftDbCache),
@@ -244,6 +248,10 @@ export async function initializeStorage(): Promise<void> {
   publishedDbCache = loaded.published
   draftUpdatedAt = loaded.draftUpdatedAt
   publishedAt = loaded.publishedAt
+
+  console.log(
+    `[storage] Loaded state from ${repo.driver}: draft.import_runs=${draftDbCache?.import_runs?.length || 0}, published.import_runs=${publishedDbCache?.import_runs?.length || 0}`,
+  )
 
   // One-time bootstrap from local JSON into PostgreSQL is opt-in only.
   // This prevents accidental data replacement on deploy.
