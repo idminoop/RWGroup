@@ -6,6 +6,7 @@ const DEFAULT_FEED_FETCH_TIMEOUT_MS = 20_000
 const DEFAULT_FEED_FETCH_MAX_BYTES = 20 * 1024 * 1024
 const DEFAULT_FEED_FETCH_MAX_REDIRECTS = 5
 const DEFAULT_FEED_MAX_ROWS = 50_000
+const DEFAULT_FEED_MAX_ROWS_FULL_CITY = 200_000
 const DEFAULT_FEED_CONNECT_TIMEOUT_MS = 30_000
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 const LOCAL_HOSTNAMES = new Set(['localhost', 'localhost.localdomain'])
@@ -290,8 +291,12 @@ export function getFeedMaxRows(): number {
   return parsePositiveInt(process.env.RW_FEED_MAX_ROWS) ?? DEFAULT_FEED_MAX_ROWS
 }
 
-export function assertFeedRowLimit(rowsCount: number): void {
-  const limit = getFeedMaxRows()
+export function getFeedMaxRowsFullCity(): number {
+  return parsePositiveInt(process.env.RW_FEED_MAX_ROWS_FULL_CITY) ?? DEFAULT_FEED_MAX_ROWS_FULL_CITY
+}
+
+export function assertFeedRowLimit(rowsCount: number, fullCity = false): void {
+  const limit = fullCity ? getFeedMaxRowsFullCity() : getFeedMaxRows()
   if (rowsCount > limit) {
     throw new Error(`Feed has too many rows: ${rowsCount} (limit ${limit})`)
   }

@@ -2281,7 +2281,7 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
             : 'No apartments found for selected complexes',
         )
       }
-      assertFeedRowLimit(rows.length)
+      assertFeedRowLimit(rows.length, parsed.data.full_city === true)
       importLocks.set(lockKey, Date.now())
 
       const restoreArchived = parsed.data.restore_archived !== false
