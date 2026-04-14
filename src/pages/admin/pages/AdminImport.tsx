@@ -339,8 +339,10 @@ export default function AdminImportPage() {
   const [trendagentTotalPages, setTrendagentTotalPages] = useState(1)
   const [localFeedUrl, setLocalFeedUrl] = useState('')
   const [localFeedDownloading, setLocalFeedDownloading] = useState(false)
-  const [localFeedInfo, setLocalFeedInfo] = useState<{ downloadedAt: string; aboutUrl: string; stats: Record<string, number>; totalRows: number } | null>(null)
+  const [localFeedInfo, setLocalFeedInfo] = useState<{ downloadedAt: string; aboutUrl: string; stats: Record<string, number>; totalRows: number; currentFile?: string; progress?: Record<string, number> } | null>(null)
   const [localFeedError, setLocalFeedError] = useState<string | null>(null)
+  const [localFeedDownloadingStatus, setLocalFeedDownloadingStatus] = useState(false)
+  const localFeedPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const trendagentListInFlightRef = useRef(false)
   const trendagentImportInFlightRef = useRef(false)
   const trendagentRunPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -507,6 +509,10 @@ export default function AdminImportPage() {
 
   useEffect(() => () => {
     stopTrendagentRunWatcher()
+    if (localFeedPollRef.current) {
+      clearInterval(localFeedPollRef.current)
+      localFeedPollRef.current = null
+    }
   }, [stopTrendagentRunWatcher])
 
   // Restore watcher from sessionStorage on mount (survives tab switches)
@@ -941,13 +947,41 @@ export default function AdminImportPage() {
       })
       const json = await res.json()
       if (json.success && json.data) {
-        setLocalFeedInfo(json.data)
-        setLocalFeedError(null)
+        if (json.data.downloading) {
+          const progress = json.data.progress as Record<string, number> || {}
+          setLocalFeedInfo({
+            downloadedAt: json.data.startedAt,
+            aboutUrl: json.data.aboutUrl,
+            stats: progress,
+            totalRows: Object.values(progress).reduce((s: number, v) => s + Number(v), 0),
+            currentFile: json.data.currentFile,
+          })
+          setLocalFeedDownloadingStatus(true)
+          setLocalFeedError(null)
+        } else if (json.data.failed) {
+          setLocalFeedInfo(null)
+          setLocalFeedDownloadingStatus(false)
+          setLocalFeedError(json.data.error || 'Ошибка загрузки')
+          if (localFeedPollRef.current) {
+            clearInterval(localFeedPollRef.current)
+            localFeedPollRef.current = null
+          }
+        } else {
+          setLocalFeedInfo(json.data)
+          setLocalFeedDownloadingStatus(false)
+          setLocalFeedError(null)
+          if (localFeedPollRef.current) {
+            clearInterval(localFeedPollRef.current)
+            localFeedPollRef.current = null
+          }
+        }
       } else {
         setLocalFeedInfo(null)
+        setLocalFeedDownloadingStatus(false)
       }
     } catch {
       setLocalFeedInfo(null)
+      setLocalFeedDownloadingStatus(false)
     }
   }, [token])
 
@@ -970,19 +1004,26 @@ export default function AdminImportPage() {
       })
       const json = await res.json()
       if (!res.ok || json.success !== true) {
-        throw new Error(json.details || json.error || 'Ошибка загрузки фида')
+        throw new Error(json.details || json.error || 'Ошибка запуска скачивания')
       }
-      setLocalFeedInfo(json.data)
-      setLocalFeedError(null)
+      // Start polling
+      if (localFeedPollRef.current) clearInterval(localFeedPollRef.current)
+      localFeedPollRef.current = setInterval(() => void loadLocalFeedInfo(), 3000)
+      setLocalFeedDownloadingStatus(true)
     } catch (e) {
       setLocalFeedInfo(null)
-      setLocalFeedError(e instanceof Error ? e.message : 'Ошибка загрузки фида')
+      setLocalFeedError(e instanceof Error ? e.message : 'Ошибка запуска скачивания')
     } finally {
       setLocalFeedDownloading(false)
     }
   }
 
   const deleteLocalFeed = async () => {
+    if (localFeedPollRef.current) {
+      clearInterval(localFeedPollRef.current)
+      localFeedPollRef.current = null
+    }
+    setLocalFeedDownloadingStatus(false)
     try {
       await fetch('/api/admin/import/trendagent/local-feed', {
         method: 'DELETE',
@@ -1515,19 +1556,40 @@ export default function AdminImportPage() {
               <div className="space-y-2">
                 <div className="rounded-lg border border-indigo-200 bg-white px-3 py-2.5">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-700">
-                    <div className="font-medium text-indigo-700">Фид загружен</div>
-                    <div>|</div>
-                    <div>Время: <span className="font-mono">{new Date(localFeedInfo.downloadedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span></div>
-                    <div>|</div>
-                    <div>Всего строк: <span className="font-mono font-semibold">{localFeedInfo.totalRows.toLocaleString('ru-RU')}</span></div>
+                    {localFeedDownloadingStatus ? (
+                      <>
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-indigo-500" />
+                          <span className="font-medium text-indigo-700">Скачивание...</span>
+                        </div>
+                        {localFeedInfo.currentFile && (
+                          <>
+                            <div>|</div>
+                            <div>Файл: <span className="font-mono">{localFeedInfo.currentFile}</span></div>
+                          </>
+                        )}
+                        <div>|</div>
+                        <div>Загружено: <span className="font-mono font-semibold">{localFeedInfo.totalRows.toLocaleString('ru-RU')}</span> строк</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="font-medium text-indigo-700">Фид загружен</div>
+                        <div>|</div>
+                        <div>Время: <span className="font-mono">{new Date(localFeedInfo.downloadedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span></div>
+                        <div>|</div>
+                        <div>Всего строк: <span className="font-mono font-semibold">{localFeedInfo.totalRows.toLocaleString('ru-RU')}</span></div>
+                      </>
+                    )}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {Object.entries(localFeedInfo.stats).filter(([_, v]) => v > 0).map(([key, count]) => (
-                      <span key={key} className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
-                        {key}: {count.toLocaleString('ru-RU')}
-                      </span>
-                    ))}
-                  </div>
+                  {!localFeedDownloadingStatus && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {Object.entries(localFeedInfo.stats).filter(([_, v]) => v > 0).map(([key, count]) => (
+                        <span key={key} className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                          {key}: {count.toLocaleString('ru-RU')}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button

@@ -2119,6 +2119,9 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
 // --- Local TrendAgent Feed (download + preview + import) ---
 
 const LOCAL_FEED_FILE = path.join(UPLOADS_DIR, 'trendagent-local-feed.json')
+const LOCAL_FEED_STATUS_FILE = path.join(UPLOADS_DIR, 'trendagent-local-feed-status.json')
+
+let localDownloadRunning = false
 
 router.post('/import/trendagent/download-local', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
   const schema = z.object({
@@ -2130,93 +2133,145 @@ router.post('/import/trendagent/download-local', requireAdminPermission('import.
     return
   }
 
-  const aboutUrl = parsed.data.about_url.trim()
-  const baseUrl = aboutUrl.replace(/\/[^/]+$/, '/')
-
-  const downloadFile = async (url: string): Promise<unknown[]> => {
-    try {
-      const options = getTrendAgentFetchOptions(url)
-      const buffer = await fetchFeedBuffer(url, options)
-      const json = JSON.parse(buffer.toString('utf-8'))
-      return ensureObjectArray(json)
-    } catch {
-      return []
-    }
+  if (localDownloadRunning) {
+    res.status(409).json({ success: false, error: 'Скачивание уже запущено. Подождите завершения.' })
+    return
   }
 
-  try {
-    const aboutJson = await fetchJsonValue(aboutUrl)
-    const fileMap = extractTrendAgentFileMap(aboutUrl, aboutJson)
+  const aboutUrl = parsed.data.about_url.trim()
 
-    const requiredFiles = ['blocks', 'apartments']
-    for (const key of requiredFiles) {
-      if (!fileMap[key]) {
-        throw new Error(`В фиде отсутствует файл "${key}.json"`)
+  // Write status file immediately
+  await fs.promises.mkdir(UPLOADS_DIR, { recursive: true })
+  await fs.promises.writeFile(LOCAL_FEED_STATUS_FILE, JSON.stringify({
+    status: 'downloading',
+    aboutUrl,
+    startedAt: new Date().toISOString(),
+    currentFile: 'about.json',
+    progress: {},
+  }), 'utf-8')
+
+  localDownloadRunning = true
+
+  // Background download
+  void (async () => {
+    try {
+      const updateStatus = async (currentFile: string, progress: Record<string, number>) => {
+        await fs.promises.writeFile(LOCAL_FEED_STATUS_FILE, JSON.stringify({
+          status: 'downloading',
+          aboutUrl,
+          startedAt: new Date().toISOString(),
+          currentFile,
+          progress,
+        }), 'utf-8')
       }
-    }
 
-    const fileNames = ['apartments', 'blocks', 'buildings', 'builders', 'regions', 'subways', 'rooms', 'finishings', 'buildingtypes']
-    const downloaded = await Promise.all(
-      fileNames.map(async (name) => {
+      const downloadFile = async (url: string): Promise<unknown[]> => {
+        const options = getTrendAgentFetchOptions(url)
+        const buffer = await fetchFeedBuffer(url, options)
+        const json = JSON.parse(buffer.toString('utf-8'))
+        return ensureObjectArray(json)
+      }
+
+      // 1. Download about.json
+      await updateStatus('about.json', {})
+      const aboutJson = await fetchJsonValue(aboutUrl)
+      const fileMap = extractTrendAgentFileMap(aboutUrl, aboutJson)
+
+      const requiredFiles = ['blocks', 'apartments']
+      for (const key of requiredFiles) {
+        if (!fileMap[key]) {
+          throw new Error(`В фиде отсутствует файл "${key}.json"`)
+        }
+      }
+
+      const fileNames = ['apartments', 'blocks', 'buildings', 'builders', 'regions', 'subways', 'rooms', 'finishings', 'buildingtypes']
+      const feedData: Record<string, unknown[]> = {}
+
+      // 2. Download each file sequentially
+      for (const name of fileNames) {
         const fileUrl = fileMap[name]
-        if (!fileUrl) return [name, [] as Record<string, unknown>[]] as const
-        const data = await downloadFile(fileUrl)
-        return [name, data] as const
-      }),
-    )
+        if (!fileUrl) {
+          feedData[name] = []
+          continue
+        }
+        await updateStatus(`${name}.json`, Object.fromEntries(Object.entries(feedData).map(([k, v]) => [k, v.length])))
+        feedData[name] = await downloadFile(fileUrl)
+      }
 
-    const feedData: Record<string, unknown[]> = {}
-    for (const [name, data] of downloaded) {
-      feedData[name] = data
-    }
+      // 3. Save complete feed
+      const payload = {
+        aboutUrl,
+        downloadedAt: new Date().toISOString(),
+        sourceUrl: aboutUrl,
+        fileMap,
+        stats: Object.fromEntries(
+          Object.entries(feedData).map(([key, arr]) => [key, arr.length]),
+        ),
+        data: feedData,
+      }
 
-    const payload = {
-      aboutUrl,
-      downloadedAt: new Date().toISOString(),
-      sourceUrl: aboutUrl,
-      fileMap,
-      stats: Object.fromEntries(
-        Object.entries(feedData).map(([key, arr]) => [key, arr.length]),
-      ),
-      data: feedData,
-    }
-
-    await fs.promises.mkdir(UPLOADS_DIR, { recursive: true })
-    await fs.promises.writeFile(LOCAL_FEED_FILE, JSON.stringify(payload), 'utf-8')
-
-    res.json({
-      success: true,
-      data: {
-        file: 'trendagent-local-feed.json',
+      await fs.promises.writeFile(LOCAL_FEED_FILE, JSON.stringify(payload), 'utf-8')
+      await fs.promises.writeFile(LOCAL_FEED_STATUS_FILE, JSON.stringify({
+        status: 'completed',
+        aboutUrl,
         downloadedAt: payload.downloadedAt,
         stats: payload.stats,
-        totalRows: Object.values(feedData).reduce((sum, arr) => sum + arr.length, 0),
-      },
-    })
-  } catch (error) {
-    const details = error instanceof Error ? error.message : 'Failed to download feed'
-    res.status(500).json({ success: false, error: 'Ошибка загрузки фида', details })
-  }
+        totalRows: Object.values(feedData).reduce((sum: number, arr) => sum + arr.length, 0),
+      }), 'utf-8')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      await fs.promises.writeFile(LOCAL_FEED_STATUS_FILE, JSON.stringify({
+        status: 'failed',
+        aboutUrl,
+        error: message,
+        failedAt: new Date().toISOString(),
+      }), 'utf-8')
+      if (fs.existsSync(LOCAL_FEED_FILE)) {
+        await fs.promises.unlink(LOCAL_FEED_FILE).catch(() => {})
+      }
+    } finally {
+      localDownloadRunning = false
+    }
+  })()
+
+  res.json({
+    success: true,
+    data: {
+      queued: true,
+      message: 'Скачивание фида запущено в фоне. Статус обновится автоматически.',
+    },
+  })
 })
 
 router.get('/import/trendagent/local-feed', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
   try {
-    if (!fs.existsSync(LOCAL_FEED_FILE)) {
-      res.json({ success: true, data: null })
+    // Check download status first
+    if (fs.existsSync(LOCAL_FEED_STATUS_FILE)) {
+      const statusRaw = await fs.promises.readFile(LOCAL_FEED_STATUS_FILE, 'utf-8')
+      const status = JSON.parse(statusRaw)
+      if (status.status === 'downloading') {
+        res.json({ success: true, data: { downloading: true, ...status } })
+        return
+      }
+      if (status.status === 'failed') {
+        res.json({ success: true, data: { downloading: false, failed: true, error: status.error } })
+        return
+      }
+      // Completed
+      res.json({
+        success: true,
+        data: {
+          downloading: false,
+          downloadedAt: status.downloadedAt,
+          aboutUrl: status.aboutUrl,
+          stats: status.stats,
+          totalRows: status.totalRows,
+          file: 'trendagent-local-feed.json',
+        },
+      })
       return
     }
-    const raw = await fs.promises.readFile(LOCAL_FEED_FILE, 'utf-8')
-    const feed = JSON.parse(raw)
-    res.json({
-      success: true,
-      data: {
-        downloadedAt: feed.downloadedAt,
-        aboutUrl: feed.aboutUrl,
-        stats: feed.stats,
-        totalRows: Object.values(feed.data || {}).reduce((sum: number, arr: unknown[]) => sum + arr.length, 0),
-        file: 'trendagent-local-feed.json',
-      },
-    })
+    res.json({ success: true, data: null })
   } catch {
     res.json({ success: true, data: null })
   }
