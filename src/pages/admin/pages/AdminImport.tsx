@@ -106,7 +106,7 @@ type TrendAgentImportRunResponse = {
 
 const TRENDAGENT_RUN_POLL_INTERVAL_MS = 5000
 const TRENDAGENT_RUN_POLL_MAX_ATTEMPTS = 720
-const TRENDAGENT_RUN_POLL_MAX_ATTEMPTS_FULL_CITY = 1440
+const TRENDAGENT_RUN_POLL_MAX_ATTEMPTS_FULL_CITY = 1800 // 2.5 hours
 
 const TRENDAGENT_WATCHER_SESSION_KEY = 'trendagent_run_watcher'
 
@@ -137,6 +137,90 @@ function clearWatcherSession(): void {
   try {
     sessionStorage.removeItem(TRENDAGENT_WATCHER_SESSION_KEY)
   } catch { /* ignore storage errors */ }
+}
+
+function formatElapsed(ms: number): string {
+  const totalSec = Math.floor(ms / 1000)
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  if (h > 0) return `${h}ч ${m}м ${s}с`
+  if (m > 0) return `${m}м ${s}с`
+  return `${s}с`
+}
+
+function FullCityImportProgress({
+  startedAt,
+  sourceId,
+  headers,
+  onCleared,
+}: {
+  startedAt: number
+  sourceId: string | null
+  headers: Record<string, string>
+  onCleared: () => void
+}) {
+  const [elapsed, setElapsed] = useState(0)
+  const [runStats, setRunStats] = useState<{ inserted: number; updated: number; hidden: number } | null>(null)
+
+  useEffect(() => {
+    const tick = () => setElapsed(Date.now() - startedAt)
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [startedAt])
+
+  // Poll for run stats
+  useEffect(() => {
+    if (!sourceId) return
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const allRuns = await apiGet<ImportRun[]>('/api/admin/import/runs', headers)
+        const activeRun = allRuns.find((r) =>
+          r.source_id === sourceId &&
+          !r.finished_at &&
+          r.started_at &&
+          Math.abs(new Date(r.started_at).getTime() - startedAt) < 60_000
+        )
+        if (!cancelled) {
+          if (activeRun?.stats) {
+            setRunStats(activeRun.stats)
+          }
+          if (activeRun?.finished_at) {
+            onCleared()
+          }
+        }
+      } catch { /* ignore poll errors */ }
+    }
+    poll()
+    const id = setInterval(poll, 5000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [sourceId, startedAt, headers, onCleared])
+
+  const startTime = new Date(startedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const totalLoaded = runStats ? runStats.inserted + runStats.updated : null
+
+  return (
+    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
+      <div className="flex items-center gap-3 text-xs text-blue-900">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+          <span className="font-medium">Импорт всего города</span>
+        </div>
+        <div className="text-blue-600">|</div>
+        <div>Начало: <span className="font-mono font-medium">{startTime}</span></div>
+        <div className="text-blue-600">|</div>
+        <div>Время: <span className="font-mono font-medium">{formatElapsed(elapsed)}</span></div>
+        {totalLoaded !== null && (
+          <>
+            <div className="text-blue-600">|</div>
+            <div>Загружено: <span className="font-mono font-semibold text-blue-700">{totalLoaded.toLocaleString('ru-RU')}</span> <span className="text-blue-500">(+{runStats!.inserted.toLocaleString('ru-RU')} / обновл. {runStats!.updated.toLocaleString('ru-RU')} / скрыто {runStats!.hidden.toLocaleString('ru-RU')})</span></div>
+          </>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function normalizeImportErrorMessage(message: string): string {
@@ -244,6 +328,8 @@ export default function AdminImportPage() {
   const [trendagentLoading, setTrendagentLoading] = useState(false)
   const [trendagentError, setTrendagentError] = useState<string | null>(null)
   const [trendagentInfo, setTrendagentInfo] = useState<string | null>(null)
+  const [fullCityImportStartedAt, setFullCityImportStartedAt] = useState<number | null>(null)
+  const [fullCityImportSourceId, setFullCityImportSourceId] = useState<string | null>(null)
   const [trendagentOptions, setTrendagentOptions] = useState<TrendAgentComplexOption[]>([])
   const [trendagentSelectedIds, setTrendagentSelectedIds] = useState<string[]>([])
   const [trendagentQuery, setTrendagentQuery] = useState('')
@@ -371,10 +457,13 @@ export default function AdminImportPage() {
             setTrendagentInfo(null)
             setTrendagentError(completedRun.error_log || 'Импорт завершился с ошибкой.')
           } else {
+            const totalObjects = completedRun.stats.inserted + completedRun.stats.updated
             setTrendagentInfo(
-              `Импорт завершен: ${statusLabel(completedRun.status)} • +${completedRun.stats.inserted}/${completedRun.stats.updated}/${completedRun.stats.hidden}`,
+              `Импорт завершен: ${statusLabel(completedRun.status)} • Загружено объектов: ${totalObjects} (+${completedRun.stats.inserted} / обновл. ${completedRun.stats.updated} / скрыто ${completedRun.stats.hidden})`,
             )
           }
+          setFullCityImportStartedAt(null)
+          setFullCityImportSourceId(null)
           clearWatcherSession()
           await load()
           stopTrendagentRunWatcher()
@@ -499,6 +588,8 @@ export default function AdminImportPage() {
   const selectFeed = useCallback((feed: FeedSource | null) => {
     stopTrendagentRunWatcher()
     clearWatcherSession()
+    setFullCityImportStartedAt(null)
+    setFullCityImportSourceId(null)
     setActiveImportSource(feed)
     setImportInputMode(feed?.mode === 'upload' ? 'file' : 'url')
     setFile(null)
@@ -781,7 +872,14 @@ export default function AdminImportPage() {
         throw new Error(normalizeImportErrorMessage(json.details || json.error || 'Import failed'))
       }
       if (json.data?.queued) {
-        setTrendagentInfo(json.data.message || 'Импорт запущен в фоне. Следите за статусом в журнале импортов.')
+        const now = Date.now()
+        if (scope === 'full_city') {
+          setFullCityImportStartedAt(now)
+          setFullCityImportSourceId(activeImportSource.id)
+          setTrendagentInfo(`Импорт всего города запущен в фоне. Начало: ${new Date(now).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}. Следите за статусом в журнале импортов.`)
+        } else {
+          setTrendagentInfo(json.data.message || 'Импорт запущен в фоне. Следите за статусом в журнале импортов.')
+        }
         const runId = json.data.run_id || json.data.id
         if (runId) {
           console.info('[TrendAgent import] queued', {
@@ -1376,6 +1474,14 @@ export default function AdminImportPage() {
               {trendagentInfo ? (
                 <div className="text-xs text-emerald-700">{trendagentInfo}</div>
               ) : null}
+              {fullCityImportStartedAt && (
+                <FullCityImportProgress
+                  startedAt={fullCityImportStartedAt}
+                  sourceId={fullCityImportSourceId}
+                  headers={headers}
+                  onCleared={() => { setFullCityImportStartedAt(null); setFullCityImportSourceId(null); }}
+                />
+              )}
 
               {trendagentLoadedSourceId === activeImportSource.id && (
                 <div className="space-y-2">
