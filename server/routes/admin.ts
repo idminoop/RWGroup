@@ -59,6 +59,9 @@ import {
   normalizeDealType
 } from '../lib/import-logic.js'
 import { assertFeedRowLimit, fetchFeedBuffer } from '../lib/feed-fetch.js'
+import { UPLOADS_DIR } from '../lib/paths.js'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 import type { AdminRole, AdminUser, Category, Complex, DbShape, LandingFeaturePreset, Lead, LeadStatus, Property } from '../../shared/types.js'
 import { XMLParser } from 'fast-xml-parser'
 import { parse as parseCsv } from 'csv-parse/sync'
@@ -2113,7 +2116,332 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
   res.json({ success: true, data: run })
 })
 
-router.post('/import/trendagent/complexes', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+// --- Local TrendAgent Feed (download + preview + import) ---
+
+const LOCAL_FEED_FILE = path.join(UPLOADS_DIR, 'trendagent-local-feed.json')
+
+router.post('/import/trendagent/download-local', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+  const schema = z.object({
+    about_url: z.string().url().min(1),
+  })
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Некорректный запрос' })
+    return
+  }
+
+  const aboutUrl = parsed.data.about_url.trim()
+  const baseUrl = aboutUrl.replace(/\/[^/]+$/, '/')
+
+  const downloadFile = async (url: string): Promise<unknown[]> => {
+    try {
+      const options = getTrendAgentFetchOptions(url)
+      const buffer = await fetchFeedBuffer(url, options)
+      const json = JSON.parse(buffer.toString('utf-8'))
+      return ensureObjectArray(json)
+    } catch {
+      return []
+    }
+  }
+
+  try {
+    const aboutJson = await fetchJsonValue(aboutUrl)
+    const fileMap = extractTrendAgentFileMap(aboutUrl, aboutJson)
+
+    const requiredFiles = ['blocks', 'apartments']
+    for (const key of requiredFiles) {
+      if (!fileMap[key]) {
+        throw new Error(`В фиде отсутствует файл "${key}.json"`)
+      }
+    }
+
+    const fileNames = ['apartments', 'blocks', 'buildings', 'builders', 'regions', 'subways', 'rooms', 'finishings', 'buildingtypes']
+    const downloaded = await Promise.all(
+      fileNames.map(async (name) => {
+        const fileUrl = fileMap[name]
+        if (!fileUrl) return [name, [] as Record<string, unknown>[]] as const
+        const data = await downloadFile(fileUrl)
+        return [name, data] as const
+      }),
+    )
+
+    const feedData: Record<string, unknown[]> = {}
+    for (const [name, data] of downloaded) {
+      feedData[name] = data
+    }
+
+    const payload = {
+      aboutUrl,
+      downloadedAt: new Date().toISOString(),
+      sourceUrl: aboutUrl,
+      fileMap,
+      stats: Object.fromEntries(
+        Object.entries(feedData).map(([key, arr]) => [key, arr.length]),
+      ),
+      data: feedData,
+    }
+
+    await fs.promises.mkdir(UPLOADS_DIR, { recursive: true })
+    await fs.promises.writeFile(LOCAL_FEED_FILE, JSON.stringify(payload), 'utf-8')
+
+    res.json({
+      success: true,
+      data: {
+        file: 'trendagent-local-feed.json',
+        downloadedAt: payload.downloadedAt,
+        stats: payload.stats,
+        totalRows: Object.values(feedData).reduce((sum, arr) => sum + arr.length, 0),
+      },
+    })
+  } catch (error) {
+    const details = error instanceof Error ? error.message : 'Failed to download feed'
+    res.status(500).json({ success: false, error: 'Ошибка загрузки фида', details })
+  }
+})
+
+router.get('/import/trendagent/local-feed', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+  try {
+    if (!fs.existsSync(LOCAL_FEED_FILE)) {
+      res.json({ success: true, data: null })
+      return
+    }
+    const raw = await fs.promises.readFile(LOCAL_FEED_FILE, 'utf-8')
+    const feed = JSON.parse(raw)
+    res.json({
+      success: true,
+      data: {
+        downloadedAt: feed.downloadedAt,
+        aboutUrl: feed.aboutUrl,
+        stats: feed.stats,
+        totalRows: Object.values(feed.data || {}).reduce((sum: number, arr: unknown[]) => sum + arr.length, 0),
+        file: 'trendagent-local-feed.json',
+      },
+    })
+  } catch {
+    res.json({ success: true, data: null })
+  }
+})
+
+router.delete('/import/trendagent/local-feed', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+  try {
+    if (fs.existsSync(LOCAL_FEED_FILE)) {
+      await fs.promises.unlink(LOCAL_FEED_FILE)
+    }
+    res.json({ success: true })
+  } catch (error) {
+    const details = error instanceof Error ? error.message : 'Failed to delete'
+    res.status(500).json({ success: false, error: 'Ошибка удаления', details })
+  }
+})
+
+router.post('/import/trendagent/run-local', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+  const schema = z.object({
+    source_id: z.string().min(1),
+    block_ids: z.array(z.string().min(1)).optional(),
+    full_city: z.coerce.boolean().optional(),
+    restore_archived: z.coerce.boolean().optional(),
+    auto_publish: z.coerce.boolean().optional(),
+  })
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+
+  if (!fs.existsSync(LOCAL_FEED_FILE)) {
+    res.status(400).json({ success: false, error: 'Локальный фид не найден. Сначала скачайте фид.' })
+    return
+  }
+
+  const lockKey = `${parsed.data.source_id}:property:local-trendagent`
+  if (hasActiveImportLock(lockKey)) {
+    res.status(409).json({ success: false, error: 'Import already running for this source' })
+    return
+  }
+  importLocks.set(lockKey, Date.now())
+
+  const sourceSnapshot = withDbRead((db) => db.feed_sources.find((s) => s.id === parsed.data.source_id))
+  if (!sourceSnapshot) {
+    importLocks.delete(lockKey)
+    res.status(404).json({ success: false, error: 'Source not found' })
+    return
+  }
+  const adminId = req.admin!.id
+  const adminLogin = req.admin!.login
+  const shouldAutoPublish = parsed.data.auto_publish !== false
+
+  const run: {
+    id: string
+    source_id: string
+    entity: 'property' | 'complex'
+    started_at: string
+    status: 'success' | 'failed' | 'partial'
+    stats: { inserted: number; updated: number; hidden: number }
+    feed_name?: string
+    feed_url?: string
+    target_complex_id?: string
+    action?: 'import' | 'preview' | 'delete'
+  } = {
+    id: newId(),
+    source_id: parsed.data.source_id,
+    entity: 'property',
+    started_at: new Date().toISOString(),
+    status: 'success',
+    stats: { inserted: 0, updated: 0, hidden: 0 },
+    feed_name: sourceSnapshot.name,
+    feed_url: sourceSnapshot.url,
+    action: 'import',
+  }
+
+  const executeLocalImport = async (): Promise<string> => {
+    let errorLog = ''
+    try {
+      importLocks.set(lockKey, Date.now())
+
+      // Load local feed
+      const raw = await fs.promises.readFile(LOCAL_FEED_FILE, 'utf-8')
+      const feedData = JSON.parse(raw)
+      const apartments: Record<string, unknown>[] = feedData.data?.apartments || []
+      const blocks: Record<string, unknown>[] = feedData.data?.blocks || []
+
+      if (blocks.length === 0) {
+        throw new Error('No blocks found in local feed')
+      }
+
+      let selectedBlockIds: Set<string>
+      if (parsed.data.full_city === true) {
+        selectedBlockIds = new Set(
+          blocks
+            .map((block) => stringValue(block._id))
+            .filter(Boolean),
+        )
+        if (selectedBlockIds.size === 0) {
+          throw new Error('No blocks found in local feed')
+        }
+      } else {
+        selectedBlockIds = new Set((parsed.data.block_ids || []).map((id) => id.trim()).filter(Boolean))
+        if (selectedBlockIds.size === 0) {
+          throw new Error('At least one block_id is required')
+        }
+      }
+
+      // Build dataset from local feed
+      const dataset: TrendAgentDataset = {
+        sourceUrl: feedData.sourceUrl || '',
+        aboutUrl: feedData.aboutUrl || '',
+        files: feedData.fileMap || {},
+        apartments,
+        blocks,
+        buildings: feedData.data?.buildings || [],
+        builders: feedData.data?.builders || [],
+        regions: feedData.data?.regions || [],
+        subways: feedData.data?.subways || [],
+        rooms: feedData.data?.rooms || [],
+        finishings: feedData.data?.finishings || [],
+        buildingtypes: feedData.data?.buildingtypes || [],
+      }
+
+      const rows = buildTrendAgentImportRows(dataset, selectedBlockIds)
+      if (rows.length === 0) {
+        throw new Error('No apartments found for selected complexes')
+      }
+      assertFeedRowLimit(rows.length, parsed.data.full_city === true)
+      importLocks.set(lockKey, Date.now())
+
+      const restoreArchived = parsed.data.restore_archived !== false
+      const skipMissingLifecycle = parsed.data.full_city !== true
+      const stats = withDb((db) => {
+        const source = db.feed_sources.find((s) => s.id === parsed.data.source_id)
+        const mapping = source?.mapping
+
+        const complexStats = upsertComplexesFromProperties(
+          db,
+          parsed.data.source_id,
+          rows,
+          mapping,
+          { restoreArchived, skipMissingLifecycle },
+        )
+        const propertyStats = upsertProperties(db, parsed.data.source_id, rows, mapping, {
+          restoreArchived,
+          skipMissingLifecycle,
+        })
+        return { ...propertyStats, targetComplexId: complexStats.targetComplexId }
+      })
+
+      run.stats = { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden }
+      const targetComplexId = (stats as { targetComplexId?: string }).targetComplexId
+      if (typeof targetComplexId === 'string' && targetComplexId) {
+        run.target_complex_id = targetComplexId
+      }
+
+      if (stats.errors.length > 0) {
+        run.status = stats.errors.length === rows.length ? 'failed' : 'partial'
+        errorLog =
+          `${stats.errors.length} rows with errors:\n` +
+          stats.errors
+            .slice(0, 50)
+            .map((item) => `Row ${item.rowIndex}${item.externalId ? ` (${item.externalId})` : ''}: ${item.error}`)
+            .join('\n')
+      }
+    } catch (error) {
+      run.status = 'failed'
+      errorLog = error instanceof Error ? error.message : 'Unknown error'
+    } finally {
+      importLocks.delete(lockKey)
+      withDb((db) => {
+        db.import_runs.unshift({
+          ...run,
+          finished_at: new Date().toISOString(),
+          error_log: errorLog || undefined,
+        })
+        appendAuditLog(
+          db,
+          adminId,
+          adminLogin,
+          'import',
+          'property',
+          run.source_id,
+          `Local TrendAgent full-city import (${run.entity}): ${run.status} +${run.stats.inserted}/${run.stats.updated}/${run.stats.hidden}`,
+          run.feed_name || undefined,
+        )
+      })
+
+      if (shouldAutoPublish && run.status !== 'failed') {
+        try {
+          publishDraft()
+        } catch (publishError) {
+          run.status = 'failed'
+          const message = publishError instanceof Error ? publishError.message : 'Unknown publish error'
+          errorLog = errorLog ? `${errorLog}\nPublish failed: ${message}` : `Publish failed: ${message}`
+          withDb((db) => {
+            const storedRun = db.import_runs.find((item) => item.id === run.id)
+            if (storedRun) {
+              storedRun.status = 'failed'
+              storedRun.error_log = errorLog
+            }
+          })
+        }
+      }
+
+      await flushStorage()
+    }
+    return errorLog
+  }
+
+  // Always queue local imports (they're large)
+  void executeLocalImport()
+  res.status(202).json({
+    success: true,
+    data: {
+      queued: true,
+      run_id: run.id,
+      source_id: run.source_id,
+      message: `Импорт из локального фида запущен в фоне. Следите за статусом в журнале импортов.`,
+    },
+  })
+})
+
+router.post('/import/trendagent/run', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
   const schema = z.object({
     source_id: z.string().min(1),
     force_refresh: z.coerce.boolean().optional(),
