@@ -48,6 +48,7 @@ import {
   upsertComplexes, 
   upsertProperties, 
   upsertComplexesFromProperties,
+  type UpsertPropertiesRuntime,
   aggregateComplexesFromRows,
   mapRowToProperty, 
   mapRowToComplex, 
@@ -208,6 +209,13 @@ function hasActiveImportLock(lockKey: string): boolean {
     return false
   }
   return true
+}
+
+function hasAnyActiveImportLock(): boolean {
+  for (const lockKey of importLocks.keys()) {
+    if (hasActiveImportLock(lockKey)) return true
+  }
+  return false
 }
 
 function hasActiveLocalInstallLock(lockKey: string): boolean {
@@ -1337,6 +1345,7 @@ router.delete('/landing-feature-presets/:key', requireAdminPermission('landing_p
 })
 
 router.get('/feeds/diagnostics', (req: Request, res: Response) => {
+  const skipHeavyCounts = hasAnyActiveImportLock()
   const data = withDbSelect((db) => {
     const activeSourceIds = new Set(db.feed_sources.map((feed) => feed.id))
     const lastRunBySource: Record<string, any> = {}
@@ -1351,17 +1360,19 @@ router.get('/feeds/diagnostics', (req: Request, res: Response) => {
     }
 
     const itemsBySource: Record<string, { properties: number; complexes: number; total: number }> = {}
-    for (const p of db.properties) {
-      const entry = itemsBySource[p.source_id] || { properties: 0, complexes: 0, total: 0 }
-      entry.properties += 1
-      entry.total += 1
-      itemsBySource[p.source_id] = entry
-    }
-    for (const c of db.complexes) {
-      const entry = itemsBySource[c.source_id] || { properties: 0, complexes: 0, total: 0 }
-      entry.complexes += 1
-      entry.total += 1
-      itemsBySource[c.source_id] = entry
+    if (!skipHeavyCounts) {
+      for (const p of db.properties) {
+        const entry = itemsBySource[p.source_id] || { properties: 0, complexes: 0, total: 0 }
+        entry.properties += 1
+        entry.total += 1
+        itemsBySource[p.source_id] = entry
+      }
+      for (const c of db.complexes) {
+        const entry = itemsBySource[c.source_id] || { properties: 0, complexes: 0, total: 0 }
+        entry.complexes += 1
+        entry.total += 1
+        itemsBySource[c.source_id] = entry
+      }
     }
 
     const diagnostics: Record<string, {
@@ -3124,7 +3135,7 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
 
       const restoreArchived = parsed.data.restore_archived !== false
       const skipMissingLifecycle = parsed.data.full_city !== true
-      const upsertChunkSize = 2000
+      const upsertChunkSize = 1000
       const stats: {
         inserted: number
         updated: number
@@ -3152,17 +3163,14 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
       }, { persist: false })
       stats.targetComplexId = complexStats.targetComplexId
 
-      const seenPropertyExternalIds = new Set<string>()
+      const propertyUpsertRuntime: UpsertPropertiesRuntime = {}
       for (let offset = 0; offset < rows.length; offset += upsertChunkSize) {
         const chunk = rows.slice(offset, offset + upsertChunkSize)
-        for (const row of chunk) {
-          const externalId = stringValue((row as Record<string, unknown>).external_id)
-          if (externalId) seenPropertyExternalIds.add(externalId)
-        }
 
         const propertyStats = withDb((db) => upsertProperties(db, effectiveSourceId, chunk, mapping, {
           restoreArchived,
           skipMissingLifecycle: true,
+          runtime: propertyUpsertRuntime,
         }), { persist: false })
 
         stats.inserted += propertyStats.inserted
@@ -3189,7 +3197,11 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
       }
 
       if (!skipMissingLifecycle) {
-        const lifecycleHidden = withDb((db) => applyMissingPropertyLifecycleForSource(db, effectiveSourceId, seenPropertyExternalIds), { persist: false })
+        const lifecycleHidden = withDb((db) => applyMissingPropertyLifecycleForSource(
+          db,
+          effectiveSourceId,
+          propertyUpsertRuntime.seen || new Set<string>(),
+        ), { persist: false })
         stats.hidden += lifecycleHidden
       }
 

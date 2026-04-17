@@ -582,6 +582,13 @@ type UpsertBehaviorOptions = {
   skipMissingLifecycle?: boolean
 }
 
+export type UpsertPropertiesRuntime = {
+  index?: Map<string, Property[]>
+  complexByExternal?: Map<string, Complex>
+  seen?: Set<string>
+  now?: string
+}
+
 export function upsertComplexes(
   db: DbShape,
   sourceId: string,
@@ -680,20 +687,43 @@ export function upsertProperties(
   sourceId: string,
   rows: Record<string, unknown>[],
   mapping?: Record<string, string>,
-  options?: { hideInvalid?: boolean; restoreArchived?: boolean; skipMissingLifecycle?: boolean },
+  options?: {
+    hideInvalid?: boolean
+    restoreArchived?: boolean
+    skipMissingLifecycle?: boolean
+    runtime?: UpsertPropertiesRuntime
+  },
 ) {
-  const now = new Date().toISOString()
+  const runtime = options?.runtime
+  const now = runtime?.now || new Date().toISOString()
+  if (runtime && !runtime.now) runtime.now = now
   const allowRestoreArchived = options?.restoreArchived === true
   const skipMissingLifecycle = options?.skipMissingLifecycle === true
-  const seen = new Set<string>()
+  if (runtime && !runtime.seen) runtime.seen = new Set<string>()
+  const seen = runtime?.seen || new Set<string>()
   // Global index by external_id with collision buckets.
-  const index = new Map<string, Property[]>()
-  for (const property of db.properties) {
-    const bucket = index.get(property.external_id)
-    if (bucket) bucket.push(property)
-    else index.set(property.external_id, [property])
+  if (runtime && !runtime.index) {
+    const nextIndex = new Map<string, Property[]>()
+    for (const property of db.properties) {
+      const bucket = nextIndex.get(property.external_id)
+      if (bucket) bucket.push(property)
+      else nextIndex.set(property.external_id, [property])
+    }
+    runtime.index = nextIndex
   }
-  const complexByExternal = new Map(db.complexes.map((c) => [c.external_id, c]))
+  const index = runtime?.index || (() => {
+    const nextIndex = new Map<string, Property[]>()
+    for (const property of db.properties) {
+      const bucket = nextIndex.get(property.external_id)
+      if (bucket) bucket.push(property)
+      else nextIndex.set(property.external_id, [property])
+    }
+    return nextIndex
+  })()
+  if (runtime && !runtime.complexByExternal) {
+    runtime.complexByExternal = new Map(db.complexes.map((c) => [c.external_id, c]))
+  }
+  const complexByExternal = runtime?.complexByExternal || new Map(db.complexes.map((c) => [c.external_id, c]))
   let inserted = 0
   let updated = 0
   let hidden = 0

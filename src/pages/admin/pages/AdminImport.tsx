@@ -568,6 +568,12 @@ export default function AdminImportPage() {
     saveWatcherSession({ runId, sourceId, scope, startedAt })
     console.info('[TrendAgent import] watcher started', { runId, sourceId, scope })
 
+    // For full-city we rely on dedicated run-progress polling UI.
+    // This avoids duplicate polling (/import/runs + /run-progress) during heavy imports.
+    if (scope === 'full_city') {
+      return
+    }
+
     const poll = async () => {
       attempt += 1
       const currentWatchId = trendagentRunPollIdRef.current
@@ -2013,7 +2019,14 @@ export default function AdminImportPage() {
                   startedAt={fullCityImportStartedAt}
                   sourceId={fullCityImportSourceId}
                   headers={headers}
-                  onCleared={() => { setFullCityImportStartedAt(null); setFullCityImportSourceId(null); setFullCityImportRunId(null) }}
+                  onCleared={() => {
+                    clearWatcherSession()
+                    stopTrendagentRunWatcher()
+                    setFullCityImportStartedAt(null)
+                    setFullCityImportSourceId(null)
+                    setFullCityImportRunId(null)
+                    void load()
+                  }}
                 />
               )}
 
