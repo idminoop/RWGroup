@@ -132,6 +132,7 @@ type LocalFeedViewData = {
 }
 
 const TRENDAGENT_PAGE_SIZE = 50
+const TRENDAGENT_DEFAULT_FULL_CITY_LIMIT = 500
 
 type ApiEnvelope<T> = {
   success?: boolean
@@ -341,6 +342,18 @@ function FullCityImportProgress({
   const isPaused = progress?.phase === 'paused'
   const canControl = Boolean(runId && progress && !['completed', 'failed', 'stopped'].includes(progress.phase))
   const updatedAgoSec = progress?.updated_at ? Math.max(0, Math.round((Date.now() - Date.parse(progress.updated_at)) / 1000)) : null
+  const apartmentsCounter = typeof progress?.processed_apartments === 'number' && typeof progress?.total_apartments === 'number'
+    ? `${progress.processed_apartments.toLocaleString('ru-RU')} / ${progress.total_apartments.toLocaleString('ru-RU')}`
+    : '—'
+  const blocksCounter = typeof processedBlocks === 'number' && typeof totalBlocks === 'number' && totalBlocks > 0
+    ? `${processedBlocks.toLocaleString('ru-RU')} / ${totalBlocks.toLocaleString('ru-RU')}`
+    : '—'
+  const rowsCounter = typeof progress?.processed_rows === 'number' && typeof progress?.prepared_rows === 'number'
+    ? `${progress.processed_rows.toLocaleString('ru-RU')} / ${progress.prepared_rows.toLocaleString('ru-RU')}`
+    : '—'
+  const changedCounter = runStats
+    ? `+${runStats.inserted.toLocaleString('ru-RU')} / ${runStats.updated.toLocaleString('ru-RU')} / ${runStats.hidden.toLocaleString('ru-RU')}`
+    : '—'
   const phaseLabel = progress?.phase
     ? ({
       queued: 'В очереди',
@@ -436,6 +449,24 @@ function FullCityImportProgress({
           Сервер временно не отвечает ({pollErrorCount}): {pollErrorMessage || 'ошибка сети'}
         </div>
       ) : null}
+      <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+        <div className="rounded border border-blue-200 bg-white/75 px-2 py-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-blue-600">ЖК</div>
+          <div className="text-sm font-semibold text-blue-900">{blocksCounter}</div>
+        </div>
+        <div className="rounded border border-blue-200 bg-white/75 px-2 py-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-blue-600">Квартиры</div>
+          <div className="text-sm font-semibold text-blue-900">{apartmentsCounter}</div>
+        </div>
+        <div className="rounded border border-blue-200 bg-white/75 px-2 py-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-blue-600">Строки</div>
+          <div className="text-sm font-semibold text-blue-900">{rowsCounter}</div>
+        </div>
+        <div className="rounded border border-blue-200 bg-white/75 px-2 py-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-blue-600">Вставл./обновл./скрыто</div>
+          <div className="text-sm font-semibold text-blue-900">{changedCounter}</div>
+        </div>
+      </div>
       {canControl ? (
         <div className="mt-2 flex flex-wrap gap-2">
           <Button
@@ -583,6 +614,7 @@ export default function AdminImportPage() {
   const [trendagentPage, setTrendagentPage] = useState(1)
   const [trendagentTotal, setTrendagentTotal] = useState(0)
   const [trendagentTotalPages, setTrendagentTotalPages] = useState(1)
+  const [trendagentFullCityLimit, setTrendagentFullCityLimit] = useState<string>(String(TRENDAGENT_DEFAULT_FULL_CITY_LIMIT))
   const [localFeedUrl, setLocalFeedUrl] = useState('')
   const [useLocalTrendagentFeed, setUseLocalTrendagentFeed] = useState(false)
   const [localFeedStatus, setLocalFeedStatus] = useState<LocalFeedStatus | null>(null)
@@ -1336,9 +1368,17 @@ export default function AdminImportPage() {
       setTrendagentError('Выберите хотя бы один ЖК')
       return
     }
+    const parsedFullCityLimit = Number.parseInt(trendagentFullCityLimit, 10)
+    const fullCityLimit = Number.isFinite(parsedFullCityLimit) && parsedFullCityLimit > 0
+      ? Math.max(1, parsedFullCityLimit)
+      : 0
     if (scope === 'full_city') {
       const confirmed = window.confirm(
-        `Запустить импорт всего города из ${trendagentImportSourceLabel}? Это может занять несколько минут и обновит все объекты этого источника.`,
+        `Запустить импорт всего города из ${trendagentImportSourceLabel}? ${
+          fullCityLimit > 0
+            ? `Будет загружено до ${fullCityLimit.toLocaleString('ru-RU')} ЖК.`
+            : 'Будут загружены все доступные ЖК.'
+        }`,
       )
       if (!confirmed) return
     }
@@ -1353,6 +1393,7 @@ export default function AdminImportPage() {
         scope,
         useLocal: useLocalTrendagentFeed,
         selectedCount: trendagentSelectedIds.length,
+        limitBlocks: scope === 'full_city' ? fullCityLimit : undefined,
       })
       const res = await fetch('/api/admin/import/trendagent/run', {
         method: 'POST',
@@ -1366,6 +1407,7 @@ export default function AdminImportPage() {
           use_local: useLocalTrendagentFeed,
           full_city: scope === 'full_city',
           block_ids: scope === 'selected' ? trendagentSelectedIds : undefined,
+          limit_blocks: scope === 'full_city' ? fullCityLimit : undefined,
         }),
       })
       const json = await parseApiEnvelope<TrendAgentImportRunResponse>(res)
@@ -1377,7 +1419,7 @@ export default function AdminImportPage() {
         if (scope === 'full_city') {
           setFullCityImportStartedAt(now)
           setFullCityImportSourceId(activeImportSource.id)
-          setTrendagentInfo(`Импорт всего города из ${trendagentImportSourceLabel} запущен в фоне. Начало: ${new Date(now).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}. Следите за статусом в журнале импортов.`)
+          setTrendagentInfo(`Импорт всего города из ${trendagentImportSourceLabel} запущен в фоне (${fullCityLimit > 0 ? `лимит: ${fullCityLimit.toLocaleString('ru-RU')} ЖК` : 'без лимита'}). Начало: ${new Date(now).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}. Следите за статусом в журнале импортов.`)
         } else {
           setTrendagentInfo(json.data.message || 'Импорт запущен в фоне. Следите за статусом в журнале импортов.')
         }
@@ -1388,6 +1430,7 @@ export default function AdminImportPage() {
             sourceId: activeImportSource.id,
             scope,
             useLocal: useLocalTrendagentFeed,
+            limitBlocks: scope === 'full_city' ? fullCityLimit : undefined,
           })
           startTrendagentRunWatcher(runId, activeImportSource.id, scope)
         } else {
@@ -2275,6 +2318,30 @@ export default function AdminImportPage() {
                   <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
                     Источник импорта сейчас: <span className="font-semibold">{trendagentImportSourceLabel}</span>.
                     {useLocalTrendagentFeed && !hasInstalledLocalFeed ? ' Локальная копия не найдена, переключитесь на URL-источник.' : ''}
+                  </div>
+
+                  <div className="flex flex-wrap items-end justify-between gap-3 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-slate-700">Лимит ЖК для импорта всего города</div>
+                      <div className="text-[11px] text-slate-500">`0` — без лимита. Например, `500` для быстрой загрузки первых 500 ЖК.</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        className="h-9 w-28"
+                        value={trendagentFullCityLimit}
+                        onChange={(e) => setTrendagentFullCityLimit(e.target.value)}
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setTrendagentFullCityLimit(String(TRENDAGENT_DEFAULT_FULL_CITY_LIMIT))}
+                      >
+                        500
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap justify-end gap-2">

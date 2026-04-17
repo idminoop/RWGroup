@@ -374,11 +374,12 @@ function buildDatasetFromLocalSnapshot(snapshot: TrendAgentLocalSnapshot, mode: 
   const getRows = (section: string) => getSnapshotDataRows(snapshot, section)
   const isFullMode = mode === 'full'
   const isComplexMode = mode === 'complex'
+  const includeApartments = isFullMode || isComplexMode
   return {
     sourceUrl: snapshot.source_url || snapshot.about_url,
     aboutUrl: snapshot.about_url,
     files: snapshot.files || {},
-    apartments: isFullMode ? getRows('apartments') : [],
+    apartments: includeApartments ? getRows('apartments') : [],
     blocks: getRows('blocks'),
     buildings: isFullMode || isComplexMode ? getRows('buildings') : [],
     builders: getRows('builders'),
@@ -3151,6 +3152,7 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
     entity: z.enum(['property']).optional(),
     use_local: z.coerce.boolean().optional(),
     block_ids: z.array(z.string().min(1)).optional(),
+    limit_blocks: z.coerce.number().int().min(0).max(20000).optional(),
     full_city: z.coerce.boolean().optional(),
     restore_archived: z.coerce.boolean().optional(),
     force_refresh: z.coerce.boolean().optional(),
@@ -3217,7 +3219,9 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
     phase: 'queued',
     started_at: run.started_at,
     updated_at: run.started_at,
-    selected_blocks: runScope === 'selected' ? (parsed.data.block_ids || []).length : undefined,
+    selected_blocks: runScope === 'selected'
+      ? (parsed.data.block_ids || []).length
+      : (typeof parsed.data.limit_blocks === 'number' && parsed.data.limit_blocks > 0 ? parsed.data.limit_blocks : undefined),
     message: 'Импорт поставлен в очередь',
   })
   getTrendAgentRunControlState(run.id)
@@ -3267,12 +3271,21 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
       })
 
       let selectedBlockIds: Set<string>
+      let totalAvailableBlocks = 0
       if (parsed.data.full_city === true) {
-        selectedBlockIds = new Set(
-          dataset.blocks
-            .map((block) => stringValue(block._id))
-            .filter(Boolean),
-        )
+        const allBlockIds = dataset.blocks
+          .map((block) => stringValue(block._id))
+          .filter(Boolean)
+        const uniqueAllBlockIds = [...new Set(allBlockIds)]
+        totalAvailableBlocks = uniqueAllBlockIds.length
+        const limitBlocks =
+          typeof parsed.data.limit_blocks === 'number' && parsed.data.limit_blocks > 0
+            ? parsed.data.limit_blocks
+            : undefined
+        const effectiveBlockIds = limitBlocks
+          ? uniqueAllBlockIds.slice(0, Math.min(uniqueAllBlockIds.length, limitBlocks))
+          : uniqueAllBlockIds
+        selectedBlockIds = new Set(effectiveBlockIds)
         if (selectedBlockIds.size === 0) {
           throw new Error('No blocks found in TrendAgent feed')
         }
@@ -3282,6 +3295,10 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
           throw new Error('At least one block_id is required')
         }
       }
+      const isLimitedFullCityImport =
+        parsed.data.full_city === true
+        && totalAvailableBlocks > 0
+        && selectedBlockIds.size < totalAvailableBlocks
 
       patchTrendAgentRunProgress(run.id, {
         phase: 'building_rows',
@@ -3320,7 +3337,7 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
       })
 
       const restoreArchived = parsed.data.restore_archived !== false
-      const skipMissingLifecycle = parsed.data.full_city !== true
+      const skipMissingLifecycle = parsed.data.full_city !== true || isLimitedFullCityImport
       const upsertChunkSize = parsed.data.full_city === true ? 250 : 1000
       const stats: {
         inserted: number
@@ -3967,6 +3984,13 @@ function normalizeTrendAgentImageUrl(value: unknown, baseUrl: string): string | 
   if (/^https?:\/\//i.test(raw)) return raw
   if (raw.startsWith('//')) return `https:${raw}`
 
+  const lowerRaw = raw.toLowerCase()
+  const looksLikeMediaPath =
+    /[\\/]/.test(raw)
+    || /\.(png|jpe?g|webp|avif|gif|bmp|svg)([?#].*)?$/i.test(raw)
+    || /(^|\/)(img|image|images|media|uploads|renderer|render|plan|plans|preset)(\/|$)/i.test(lowerRaw)
+  if (!looksLikeMediaPath) return null
+
   let cleaned = raw
   while (cleaned.startsWith('../')) cleaned = cleaned.slice(3)
   while (cleaned.startsWith('./')) cleaned = cleaned.slice(2)
@@ -3990,9 +4014,16 @@ function collectTrendAgentImageUrls(value: unknown, baseUrl: string, out: Set<st
   }
   const record = asRecord(value)
   if (record) {
-    if (record.url) collectTrendAgentImageUrls(record.url, baseUrl, out)
-    if (record.src) collectTrendAgentImageUrls(record.src, baseUrl, out)
-    if (record.path) collectTrendAgentImageUrls(record.path, baseUrl, out)
+    const likelyMediaKey = (key: string) => /(url|src|path|image|img|photo|preview|render|plan|thumb|file)/i.test(key)
+    for (const [key, nested] of Object.entries(record)) {
+      if (nested && typeof nested === 'object') {
+        collectTrendAgentImageUrls(nested, baseUrl, out)
+        continue
+      }
+      if (likelyMediaKey(key)) {
+        collectTrendAgentImageUrls(nested, baseUrl, out)
+      }
+    }
     return
   }
   const normalized = normalizeTrendAgentImageUrl(value, baseUrl)
@@ -4126,6 +4157,7 @@ async function loadTrendAgentDataset(sourceUrl: string, forceRefresh = false, mo
 
   const isFullMode = mode === 'full'
   const isComplexMode = mode === 'complex'
+  const includeApartments = isFullMode || isComplexMode
   const required = isFullMode ? ['apartments', 'blocks'] : ['blocks']
   for (const key of required) {
     if (!files[key]) {
@@ -4136,7 +4168,7 @@ async function loadTrendAgentDataset(sourceUrl: string, forceRefresh = false, mo
   const names = isFullMode
     ? (['apartments', 'blocks', 'buildings', 'builders', 'regions', 'subways', 'rooms', 'finishings', 'buildingtypes'] as const)
     : isComplexMode
-      ? (['blocks', 'buildings', 'builders', 'regions', 'subways', 'buildingtypes'] as const)
+      ? (['apartments', 'blocks', 'buildings', 'builders', 'regions', 'subways', 'buildingtypes'] as const)
       : (['blocks', 'regions', 'builders'] as const)
   const loaded = await Promise.all(
     names.map(async (name) => {
@@ -4152,7 +4184,7 @@ async function loadTrendAgentDataset(sourceUrl: string, forceRefresh = false, mo
     sourceUrl,
     aboutUrl,
     files,
-    apartments: isFullMode ? (entries.apartments || []) : [],
+    apartments: includeApartments ? (entries.apartments || []) : [],
     blocks: entries.blocks || [],
     buildings: isFullMode || isComplexMode ? (entries.buildings || []) : [],
     builders: entries.builders || [],
@@ -4350,6 +4382,22 @@ function buildTrendAgentComplexImportRows(dataset: TrendAgentDataset, selectedBl
     else buildingsByBlockId.set(blockId, [row])
   }
 
+  const apartmentStatsByBlockId = new Map<string, { minPrice?: number; minArea?: number }>()
+  for (const apartment of dataset.apartments) {
+    const blockId = stringValue(apartment.block_id)
+    if (!blockId || !selectedBlockIds.has(blockId)) continue
+    const bucket = apartmentStatsByBlockId.get(blockId) || {}
+    const price = numberValue(apartment.price)
+    if (typeof price === 'number' && price > 0 && (typeof bucket.minPrice !== 'number' || price < bucket.minPrice)) {
+      bucket.minPrice = price
+    }
+    const area = numberValue(apartment.area_total) ?? numberValue(apartment.area)
+    if (typeof area === 'number' && area > 0 && (typeof bucket.minArea !== 'number' || area < bucket.minArea)) {
+      bucket.minArea = area
+    }
+    apartmentStatsByBlockId.set(blockId, bucket)
+  }
+
   const hasNonEmptyValue = (value: unknown): boolean => {
     if (Array.isArray(value)) return value.length > 0
     const record = asRecord(value)
@@ -4436,11 +4484,16 @@ function buildTrendAgentComplexImportRows(dataset: TrendAgentDataset, selectedBl
     collectTrendAgentImageUrls(block.plan, dataset.sourceUrl, imagesSet)
     collectTrendAgentImageUrls(block.progress, dataset.sourceUrl, imagesSet)
     const images = [...imagesSet]
+    const apartmentStats = apartmentStatsByBlockId.get(blockId)
 
     rows.push({
       ...block,
       external_id: blockId,
       title: stringValue(block.name) || blockId,
+      price_from: apartmentStats?.minPrice,
+      area_from: apartmentStats?.minArea,
+      price: apartmentStats?.minPrice,
+      area_total: apartmentStats?.minArea,
       developer,
       block_builder_name: developer,
       district,

@@ -167,8 +167,11 @@ function inferFeatureTitles(description?: string): string[] {
 
 function collectPlanPreviewImages(images?: string[]): string[] {
   if (!Array.isArray(images) || !images.length) return []
-  const matched = images.filter((url) => isLayoutImage(url))
-  return uniq(matched).slice(0, 12)
+  const normalized = uniq(images.map((url) => String(url || '').trim()).filter(Boolean))
+  const matched = normalized.filter((url) => isLayoutImage(url))
+  if (matched.length > 0) return matched.slice(0, 12)
+  // Fallback: if explicit plan markers are absent in URLs, still show available images for selected format.
+  return normalized.slice(0, 12)
 }
 
 function normalizeNearbyCollectionKey(value?: string): string {
