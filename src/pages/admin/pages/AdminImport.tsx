@@ -169,7 +169,7 @@ type TrendAgentRunProgress = {
   run_id: string
   source_id: string
   scope: 'selected' | 'full_city'
-  phase: 'queued' | 'loading_feed' | 'building_rows' | 'upserting' | 'publishing' | 'completed' | 'failed'
+  phase: 'queued' | 'loading_feed' | 'building_rows' | 'upserting' | 'paused' | 'stopped' | 'publishing' | 'completed' | 'failed'
   started_at: string
   updated_at: string
   selected_blocks?: number
@@ -250,6 +250,10 @@ function FullCityImportProgress({
   const [elapsed, setElapsed] = useState(0)
   const [progress, setProgress] = useState<TrendAgentRunProgress | null>(null)
   const [runStats, setRunStats] = useState<{ inserted: number; updated: number; hidden: number } | null>(null)
+  const [pollErrorCount, setPollErrorCount] = useState(0)
+  const [pollErrorMessage, setPollErrorMessage] = useState<string | null>(null)
+  const [controlBusy, setControlBusy] = useState(false)
+  const [controlError, setControlError] = useState<string | null>(null)
 
   useEffect(() => {
     const tick = () => setElapsed(Date.now() - startedAt)
@@ -267,29 +271,79 @@ function FullCityImportProgress({
         const encoded = encodeURIComponent(runId)
         const activeRun = await apiGet<TrendAgentRunProgress | null>(`/api/admin/import/trendagent/run-progress?run_id=${encoded}`, headers)
         if (!cancelled) {
+          setPollErrorCount(0)
+          setPollErrorMessage(null)
           setProgress(activeRun || null)
           if (activeRun?.stats) {
             setRunStats(activeRun.stats)
           }
-          if (activeRun?.phase === 'completed' || activeRun?.phase === 'failed') {
+          if (activeRun?.phase === 'completed' || activeRun?.phase === 'failed' || activeRun?.phase === 'stopped') {
             onCleared()
           }
         }
-      } catch { /* ignore poll errors */ }
+      } catch (e) {
+        if (!cancelled) {
+          const message = e instanceof Error ? e.message : 'Ошибка запроса статуса'
+          setPollErrorCount((prev) => prev + 1)
+          setPollErrorMessage(message)
+        }
+      }
     }
     poll()
     const id = setInterval(poll, 5000)
     return () => { cancelled = true; clearInterval(id) }
   }, [runId, headers, onCleared])
 
+  const controlRun = useCallback(async (action: 'pause' | 'resume' | 'stop') => {
+    if (!runId) return
+    setControlBusy(true)
+    setControlError(null)
+    try {
+      await apiPost('/api/admin/import/trendagent/run-control', { run_id: runId, action }, headers)
+      const encoded = encodeURIComponent(runId)
+      const activeRun = await apiGet<TrendAgentRunProgress | null>(`/api/admin/import/trendagent/run-progress?run_id=${encoded}`, headers)
+      setProgress(activeRun || null)
+    } catch (e) {
+      setControlError(e instanceof Error ? e.message : 'Не удалось отправить команду')
+    } finally {
+      setControlBusy(false)
+    }
+  }, [headers, runId])
+
   const startTime = new Date(startedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   const totalLoaded = runStats ? runStats.inserted + runStats.updated : null
+  const processed = typeof progress?.processed_rows === 'number'
+    ? progress.processed_rows
+    : progress?.processed_apartments
+  const total = typeof progress?.prepared_rows === 'number'
+    ? progress.prepared_rows
+    : progress?.total_apartments
+  const progressPercent = typeof processed === 'number' && typeof total === 'number' && total > 0
+    ? Math.min(100, Math.max(0, Math.round((processed / total) * 100)))
+    : null
+  const rowsPerSecond = typeof progress?.processed_rows === 'number' && elapsed > 0
+    ? Math.round(progress.processed_rows / (elapsed / 1000))
+    : null
+  const etaSeconds = (
+    rowsPerSecond
+    && rowsPerSecond > 0
+    && typeof progress?.processed_rows === 'number'
+    && typeof progress?.prepared_rows === 'number'
+    && progress.prepared_rows >= progress.processed_rows
+  )
+    ? Math.round((progress.prepared_rows - progress.processed_rows) / rowsPerSecond)
+    : null
+  const isPaused = progress?.phase === 'paused'
+  const canControl = Boolean(runId && progress && !['completed', 'failed', 'stopped'].includes(progress.phase))
+  const updatedAgoSec = progress?.updated_at ? Math.max(0, Math.round((Date.now() - Date.parse(progress.updated_at)) / 1000)) : null
   const phaseLabel = progress?.phase
     ? ({
       queued: 'В очереди',
       loading_feed: 'Загрузка фида',
       building_rows: 'Подготовка строк',
       upserting: 'Запись в базу',
+      paused: 'На паузе',
+      stopped: 'Остановлено',
       publishing: 'Публикация',
       completed: 'Завершено',
       failed: 'Ошибка',
@@ -309,6 +363,30 @@ function FullCityImportProgress({
         <div>Начало: <span className="font-mono font-medium">{startTime}</span></div>
         <div className="text-blue-600">|</div>
         <div>Время: <span className="font-mono font-medium">{formatElapsed(elapsed)}</span></div>
+        {progressPercent !== null && (
+          <>
+            <div className="text-blue-600">|</div>
+            <div>Прогресс: <span className="font-mono font-semibold">{progressPercent}%</span></div>
+          </>
+        )}
+        {rowsPerSecond !== null && (
+          <>
+            <div className="text-blue-600">|</div>
+            <div>Скорость: <span className="font-mono font-semibold">{rowsPerSecond.toLocaleString('ru-RU')}</span>/с</div>
+          </>
+        )}
+        {etaSeconds !== null && (
+          <>
+            <div className="text-blue-600">|</div>
+            <div>ETA: <span className="font-mono font-semibold">{formatElapsed(etaSeconds * 1000)}</span></div>
+          </>
+        )}
+        {updatedAgoSec !== null && (
+          <>
+            <div className="text-blue-600">|</div>
+            <div>Обновлено: <span className="font-mono">{updatedAgoSec}с назад</span></div>
+          </>
+        )}
         {typeof progress?.processed_apartments === 'number' && typeof progress?.total_apartments === 'number' && (
           <>
             <div className="text-blue-600">|</div>
@@ -337,6 +415,39 @@ function FullCityImportProgress({
       ) : null}
       {progress?.error ? (
         <div className="mt-1 text-[11px] text-rose-700">{progress.error}</div>
+      ) : null}
+      {pollErrorCount > 0 ? (
+        <div className="mt-1 text-[11px] text-amber-700">
+          Сервер временно не отвечает ({pollErrorCount}): {pollErrorMessage || 'ошибка сети'}
+        </div>
+      ) : null}
+      {canControl ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void controlRun(isPaused ? 'resume' : 'pause')}
+            disabled={controlBusy}
+          >
+            {controlBusy ? 'Отправка…' : (isPaused ? 'Продолжить' : 'Пауза')}
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="text-rose-700 bg-rose-50 hover:bg-rose-100"
+            onClick={() => {
+              const confirmed = window.confirm('Остановить импорт? Уже загруженные данные останутся в черновике.')
+              if (!confirmed) return
+              void controlRun('stop')
+            }}
+            disabled={controlBusy}
+          >
+            Остановить
+          </Button>
+        </div>
+      ) : null}
+      {controlError ? (
+        <div className="mt-1 text-[11px] text-rose-700">{controlError}</div>
       ) : null}
     </div>
   )

@@ -147,6 +147,8 @@ type TrendAgentRunProgressPhase =
   | 'loading_feed'
   | 'building_rows'
   | 'upserting'
+  | 'paused'
+  | 'stopped'
   | 'publishing'
   | 'completed'
   | 'failed'
@@ -170,6 +172,7 @@ type TrendAgentRunProgress = {
 }
 
 const trendAgentRunProgressMap = new Map<string, TrendAgentRunProgress>()
+const trendAgentRunControlMap = new Map<string, { paused: boolean; stop_requested: boolean }>()
 const TRENDAGENT_RUN_PROGRESS_TTL_MS = 6 * 60 * 60 * 1000
 
 function setTrendAgentRunProgress(progress: TrendAgentRunProgress): void {
@@ -193,10 +196,11 @@ function finalizeTrendAgentRunProgress(runId: string): void {
   setTimeout(() => {
     const latest = trendAgentRunProgressMap.get(runId)
     if (!latest) return
-    const finished = latest.phase === 'completed' || latest.phase === 'failed'
+    const finished = latest.phase === 'completed' || latest.phase === 'failed' || latest.phase === 'stopped'
     const tooOld = Date.now() - Date.parse(latest.updated_at || latest.started_at) > TRENDAGENT_RUN_PROGRESS_TTL_MS
     if (finished || tooOld) {
       trendAgentRunProgressMap.delete(runId)
+      trendAgentRunControlMap.delete(runId)
     }
   }, TRENDAGENT_RUN_PROGRESS_TTL_MS)
 }
@@ -216,6 +220,40 @@ function hasAnyActiveImportLock(): boolean {
     if (hasActiveImportLock(lockKey)) return true
   }
   return false
+}
+
+function getTrendAgentRunControlState(runId: string): { paused: boolean; stop_requested: boolean } {
+  const existing = trendAgentRunControlMap.get(runId)
+  if (existing) return existing
+  const created = { paused: false, stop_requested: false }
+  trendAgentRunControlMap.set(runId, created)
+  return created
+}
+
+async function waitForTrendAgentRunControl(
+  runId: string,
+  lockKey: string,
+  resumePatch: Partial<TrendAgentRunProgress>,
+): Promise<'continue' | 'stop'> {
+  let wasPaused = false
+  while (true) {
+    const control = trendAgentRunControlMap.get(runId)
+    if (!control) return 'continue'
+    if (control.stop_requested) return 'stop'
+    if (!control.paused) {
+      if (wasPaused) {
+        patchTrendAgentRunProgress(runId, resumePatch)
+      }
+      return 'continue'
+    }
+    wasPaused = true
+    importLocks.set(lockKey, Date.now())
+    patchTrendAgentRunProgress(runId, {
+      phase: 'paused',
+      message: 'Импорт на паузе. Можно продолжить в любой момент.',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
 }
 
 function hasActiveLocalInstallLock(lockKey: string): boolean {
@@ -279,6 +317,54 @@ async function readTrendAgentLocalSnapshot(sourceId: string): Promise<TrendAgent
   return readJsonIfExists<TrendAgentLocalSnapshot>(getTrendAgentLocalSnapshotPath(sourceId))
 }
 
+async function resolveTrendAgentLocalSnapshotOwnerId(sourceId: string): Promise<string | null> {
+  const directSnapshot = await readTrendAgentLocalSnapshot(sourceId)
+  if (directSnapshot) return sourceId
+
+  const source = resolveTrendAgentSource(sourceId, true)
+  const normalizedSourceAbout = normalizeMaybeTrendAgentAboutUrl(source?.url)
+  if (!normalizedSourceAbout) return null
+
+  await ensureTrendAgentLocalDir()
+  const fileNames = await fs.promises.readdir(TRENDAGENT_LOCAL_DIR).catch(() => [] as string[])
+  for (const fileName of fileNames) {
+    if (!fileName.endsWith('.status.json')) continue
+    const statusPath = path.join(TRENDAGENT_LOCAL_DIR, fileName)
+    const status = await readJsonIfExists<TrendAgentLocalStatus>(statusPath)
+    if (!status) continue
+    const candidateOwnerId = stringValue(status.source_id)
+    if (!candidateOwnerId || candidateOwnerId === sourceId) continue
+    const normalizedCandidateAbout = normalizeMaybeTrendAgentAboutUrl(status.about_url || status.source_url)
+    if (!normalizedCandidateAbout || normalizedCandidateAbout !== normalizedSourceAbout) continue
+    const candidateSnapshot = await readTrendAgentLocalSnapshot(candidateOwnerId)
+    if (candidateSnapshot) {
+      return candidateOwnerId
+    }
+  }
+
+  return null
+}
+
+async function readResolvedTrendAgentLocalSnapshot(
+  sourceId: string,
+): Promise<{ owner_source_id: string; snapshot: TrendAgentLocalSnapshot } | null> {
+  const ownerSourceId = await resolveTrendAgentLocalSnapshotOwnerId(sourceId)
+  if (!ownerSourceId) return null
+  const snapshot = await readTrendAgentLocalSnapshot(ownerSourceId)
+  if (!snapshot) return null
+  return { owner_source_id: ownerSourceId, snapshot }
+}
+
+async function readResolvedTrendAgentLocalStatus(
+  sourceId: string,
+): Promise<{ owner_source_id: string; status: TrendAgentLocalStatus } | null> {
+  const ownerSourceId = await resolveTrendAgentLocalSnapshotOwnerId(sourceId)
+  if (!ownerSourceId) return null
+  const status = await readTrendAgentLocalStatus(ownerSourceId)
+  if (!status) return null
+  return { owner_source_id: ownerSourceId, status }
+}
+
 function getSnapshotDataRows(snapshot: TrendAgentLocalSnapshot, section: string): Record<string, unknown>[] {
   return ensureObjectArray(snapshot.data[section])
 }
@@ -313,17 +399,16 @@ async function loadTrendAgentDatasetFromLocalSnapshot(
   mode: TrendAgentDatasetMode = 'full',
   forceRefresh = false,
 ): Promise<TrendAgentDataset> {
-  const cacheKey = `local:${sourceId}:${mode}`
+  const resolved = await readResolvedTrendAgentLocalSnapshot(sourceId)
+  if (!resolved) {
+    throw new Error('Локальная копия фида не установлена. Сначала установите копию.')
+  }
+  const cacheKey = `local:${resolved.owner_source_id}:${mode}`
   if (!forceRefresh) {
     const cached = getFreshLocalTrendAgentDataset(cacheKey)
     if (cached) return cached
   }
-
-  const snapshot = await readTrendAgentLocalSnapshot(sourceId)
-  if (!snapshot) {
-    throw new Error('Локальная копия фида не установлена. Сначала установите копию.')
-  }
-  const dataset = buildDatasetFromLocalSnapshot(snapshot, mode)
+  const dataset = buildDatasetFromLocalSnapshot(resolved.snapshot, mode)
   trendAgentDatasetCache.set(cacheKey, { loadedAt: Date.now(), dataset })
   return dataset
 }
@@ -2388,6 +2473,58 @@ router.get('/import/trendagent/run-progress', requireAdminAnyPermission('import.
   res.json({ success: true, data: progress })
 })
 
+router.post('/import/trendagent/run-control', requireAdminPermission('import.write'), (req: Request, res: Response) => {
+  const schema = z.object({
+    run_id: z.string().min(1),
+    action: z.enum(['pause', 'resume', 'stop']),
+  })
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid payload' })
+    return
+  }
+
+  const progress = trendAgentRunProgressMap.get(parsed.data.run_id)
+  if (!progress) {
+    res.status(404).json({ success: false, error: 'Run not found' })
+    return
+  }
+
+  if (progress.phase === 'completed' || progress.phase === 'failed' || progress.phase === 'stopped') {
+    res.status(409).json({ success: false, error: 'Run is already finished' })
+    return
+  }
+
+  const control = getTrendAgentRunControlState(parsed.data.run_id)
+  if (parsed.data.action === 'pause') {
+    control.paused = true
+    patchTrendAgentRunProgress(parsed.data.run_id, {
+      phase: 'paused',
+      message: 'Пауза запрошена. Текущий батч завершится и импорт остановится.',
+    })
+  } else if (parsed.data.action === 'resume') {
+    control.paused = false
+    patchTrendAgentRunProgress(parsed.data.run_id, {
+      message: 'Возобновление импорта...',
+    })
+  } else {
+    control.stop_requested = true
+    control.paused = false
+    patchTrendAgentRunProgress(parsed.data.run_id, {
+      message: 'Запрошена остановка импорта. Дождитесь завершения текущего батча.',
+    })
+  }
+
+  res.json({
+    success: true,
+    data: {
+      run_id: parsed.data.run_id,
+      action: parsed.data.action,
+      state: { ...control },
+    },
+  })
+})
+
 router.post('/import/run', requireAdminPermission('import.write'), upload.single('file'), async (req: Request, res: Response) => {
   const schema = z.object({
     source_id: z.string().min(1),
@@ -2644,8 +2781,12 @@ router.get('/import/trendagent/local/status', requireAdminAnyPermission('import.
   }
 
   const sourceId = parsed.data.source_id
-  let status = await readTrendAgentLocalStatus(sourceId)
-  if (status?.state === 'running' && !hasActiveLocalInstallLock(`local-install:${sourceId}`)) {
+  const resolvedStatus = await readResolvedTrendAgentLocalStatus(sourceId)
+  const resolvedSnapshot = await readResolvedTrendAgentLocalSnapshot(sourceId)
+  const ownerSourceId = resolvedSnapshot?.owner_source_id || resolvedStatus?.owner_source_id || sourceId
+
+  let status = resolvedStatus?.status || await readTrendAgentLocalStatus(sourceId)
+  if (status?.state === 'running' && !hasActiveLocalInstallLock(`local-install:${ownerSourceId}`)) {
     status = {
       ...status,
       state: 'failed',
@@ -2653,9 +2794,9 @@ router.get('/import/trendagent/local/status', requireAdminAnyPermission('import.
       error: status.error || 'Установка была прервана (сервер перезапущен или процесс завершён).',
       message: 'Требуется запустить установку повторно.',
     }
-    await writeTrendAgentLocalStatus(sourceId, status)
+    await writeTrendAgentLocalStatus(ownerSourceId, status)
   }
-  const snapshot = await readTrendAgentLocalSnapshot(sourceId)
+  const snapshot = resolvedSnapshot?.snapshot
 
   if (!status && !snapshot) {
     res.json({ success: true, data: { state: 'idle', source_id: sourceId, installed: null } })
@@ -2665,7 +2806,8 @@ router.get('/import/trendagent/local/status', requireAdminAnyPermission('import.
   const sections = snapshot ? trendAgentLocalSections(snapshot) : []
   const installed = snapshot
     ? {
-        source_id: snapshot.source_id,
+        source_id: sourceId,
+        owner_source_id: ownerSourceId,
         source_name: snapshot.source_name,
         source_url: snapshot.source_url,
         about_url: snapshot.about_url,
@@ -2704,8 +2846,12 @@ router.get('/import/trendagent/local-feed', requireAdminPermission('import.write
     return
   }
 
-  let status = await readTrendAgentLocalStatus(source.id)
-  if (status?.state === 'running' && !hasActiveLocalInstallLock(`local-install:${source.id}`)) {
+  const resolvedStatus = await readResolvedTrendAgentLocalStatus(source.id)
+  const resolvedSnapshot = await readResolvedTrendAgentLocalSnapshot(source.id)
+  const ownerSourceId = resolvedSnapshot?.owner_source_id || resolvedStatus?.owner_source_id || source.id
+
+  let status = resolvedStatus?.status || await readTrendAgentLocalStatus(source.id)
+  if (status?.state === 'running' && !hasActiveLocalInstallLock(`local-install:${ownerSourceId}`)) {
     status = {
       ...status,
       state: 'failed',
@@ -2713,10 +2859,10 @@ router.get('/import/trendagent/local-feed', requireAdminPermission('import.write
       error: status.error || 'Установка была прервана.',
       message: 'Требуется запустить установку повторно.',
     }
-    await writeTrendAgentLocalStatus(source.id, status)
+    await writeTrendAgentLocalStatus(ownerSourceId, status)
   }
 
-  const snapshot = await readTrendAgentLocalSnapshot(source.id)
+  const snapshot = resolvedSnapshot?.snapshot
   if (!status && !snapshot) {
     res.json({ success: true, data: null })
     return
@@ -2777,22 +2923,27 @@ router.delete('/import/trendagent/local', requireAdminPermission('import.write')
   }
 
   const sourceId = parsed.data.source_id
-  const lockKey = `local-install:${sourceId}`
-  if (hasActiveLocalInstallLock(lockKey)) {
+  const ownerSourceId = (await resolveTrendAgentLocalSnapshotOwnerId(sourceId)) || sourceId
+  const lockKey = `local-install:${ownerSourceId}`
+  if (hasActiveLocalInstallLock(lockKey) || (ownerSourceId !== sourceId && hasActiveLocalInstallLock(`local-install:${sourceId}`))) {
     res.status(409).json({ success: false, error: 'Нельзя удалить копию во время установки' })
     return
   }
 
   try {
     await ensureTrendAgentLocalDir()
-    await fs.promises.unlink(getTrendAgentLocalSnapshotPath(sourceId)).catch(() => {})
-    await fs.promises.unlink(getTrendAgentLocalStatusPath(sourceId)).catch(() => {})
+    await fs.promises.unlink(getTrendAgentLocalSnapshotPath(ownerSourceId)).catch(() => {})
+    await fs.promises.unlink(getTrendAgentLocalStatusPath(ownerSourceId)).catch(() => {})
+    if (ownerSourceId !== sourceId) {
+      await fs.promises.unlink(getTrendAgentLocalSnapshotPath(sourceId)).catch(() => {})
+      await fs.promises.unlink(getTrendAgentLocalStatusPath(sourceId)).catch(() => {})
+    }
     for (const key of [...trendAgentDatasetCache.keys()]) {
-      if (key.startsWith(`local:${sourceId}:`)) {
+      if (key.startsWith(`local:${ownerSourceId}:`) || key.startsWith(`local:${sourceId}:`)) {
         trendAgentDatasetCache.delete(key)
       }
     }
-    res.json({ success: true, data: { source_id: sourceId, deleted: true } })
+    res.json({ success: true, data: { source_id: sourceId, owner_source_id: ownerSourceId, deleted: true } })
   } catch (error) {
     const details = error instanceof Error ? error.message : 'Delete failed'
     res.status(500).json({ success: false, error: 'Не удалось удалить локальную копию', details })
@@ -2822,18 +2973,23 @@ router.delete('/import/trendagent/local-feed', requireAdminPermission('import.wr
     return
   }
 
-  const lockKey = `local-install:${source.id}`
-  if (hasActiveLocalInstallLock(lockKey)) {
+  const ownerSourceId = (await resolveTrendAgentLocalSnapshotOwnerId(source.id)) || source.id
+  const lockKey = `local-install:${ownerSourceId}`
+  if (hasActiveLocalInstallLock(lockKey) || (ownerSourceId !== source.id && hasActiveLocalInstallLock(`local-install:${source.id}`))) {
     res.status(409).json({ success: false, error: 'Нельзя удалить копию во время установки' })
     return
   }
 
   try {
     await ensureTrendAgentLocalDir()
-    await fs.promises.unlink(getTrendAgentLocalSnapshotPath(source.id)).catch(() => {})
-    await fs.promises.unlink(getTrendAgentLocalStatusPath(source.id)).catch(() => {})
+    await fs.promises.unlink(getTrendAgentLocalSnapshotPath(ownerSourceId)).catch(() => {})
+    await fs.promises.unlink(getTrendAgentLocalStatusPath(ownerSourceId)).catch(() => {})
+    if (ownerSourceId !== source.id) {
+      await fs.promises.unlink(getTrendAgentLocalSnapshotPath(source.id)).catch(() => {})
+      await fs.promises.unlink(getTrendAgentLocalStatusPath(source.id)).catch(() => {})
+    }
     for (const key of [...trendAgentDatasetCache.keys()]) {
-      if (key.startsWith(`local:${source.id}:`)) {
+      if (key.startsWith(`local:${ownerSourceId}:`) || key.startsWith(`local:${source.id}:`)) {
         trendAgentDatasetCache.delete(key)
       }
     }
@@ -2858,11 +3014,12 @@ router.get('/import/trendagent/local/view', requireAdminAnyPermission('import.re
     return
   }
 
-  const snapshot = await readTrendAgentLocalSnapshot(parsed.data.source_id)
-  if (!snapshot) {
+  const resolvedSnapshot = await readResolvedTrendAgentLocalSnapshot(parsed.data.source_id)
+  if (!resolvedSnapshot?.snapshot) {
     res.status(404).json({ success: false, error: 'Локальная копия фида не установлена' })
     return
   }
+  const snapshot = resolvedSnapshot.snapshot
 
   const sections = trendAgentLocalSections(snapshot)
   if (sections.length === 0) {
@@ -3062,15 +3219,34 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
     selected_blocks: runScope === 'selected' ? (parsed.data.block_ids || []).length : undefined,
     message: 'Импорт поставлен в очередь',
   })
+  getTrendAgentRunControlState(run.id)
 
   const executeTrendAgentImport = async (): Promise<string> => {
     let errorLog = ''
+    let stoppedByUser = false
     try {
+      const ensureRunCanContinue = async (
+        resumePatch: Partial<TrendAgentRunProgress>,
+      ): Promise<boolean> => {
+        const controlResult = await waitForTrendAgentRunControl(run.id, lockKey, resumePatch)
+        if (controlResult === 'stop') {
+          stoppedByUser = true
+          return false
+        }
+        return true
+      }
+
       importLocks.set(lockKey, Date.now())
       patchTrendAgentRunProgress(run.id, {
         phase: 'loading_feed',
         message: 'Загрузка данных фида',
       })
+      if (!(await ensureRunCanContinue({
+        phase: 'loading_feed',
+        message: 'Загрузка данных фида',
+      }))) {
+        throw new Error('IMPORT_STOPPED_BY_USER')
+      }
       const dataset = useLocal
         ? await loadTrendAgentDatasetFromLocalSnapshot(
             effectiveSourceId,
@@ -3113,6 +3289,12 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
       })
 
       const rows = await buildTrendAgentImportRows(dataset, selectedBlockIds, async (processed, total) => {
+        if (!(await ensureRunCanContinue({
+          phase: 'building_rows',
+          message: 'Подготовка строк для импорта',
+        }))) {
+          throw new Error('IMPORT_STOPPED_BY_USER')
+        }
         importLocks.set(lockKey, Date.now())
         patchTrendAgentRunProgress(run.id, {
           phase: 'building_rows',
@@ -3153,10 +3335,11 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
       const complexStats = withDb((db) => {
         const source = db.feed_sources.find((s) => s.id === effectiveSourceId)
         mapping = source?.mapping
-        return upsertComplexesFromProperties(
+        const complexRows = buildTrendAgentComplexImportRows(dataset, selectedBlockIds)
+        return upsertComplexes(
           db,
           effectiveSourceId,
-          rows,
+          complexRows,
           mapping,
           { restoreArchived, skipMissingLifecycle },
         )
@@ -3165,6 +3348,12 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
 
       const propertyUpsertRuntime: UpsertPropertiesRuntime = {}
       for (let offset = 0; offset < rows.length; offset += upsertChunkSize) {
+        if (!(await ensureRunCanContinue({
+          phase: 'upserting',
+          message: `Сохранение ${rows.length.toLocaleString('ru-RU')} строк в базу`,
+        }))) {
+          break
+        }
         const chunk = rows.slice(offset, offset + upsertChunkSize)
 
         const propertyStats = withDb((db) => upsertProperties(db, effectiveSourceId, chunk, mapping, {
@@ -3196,7 +3385,19 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         await waitForNextTick()
       }
 
-      if (!skipMissingLifecycle) {
+      if (stoppedByUser) {
+        run.status = stats.inserted + stats.updated > 0 ? 'partial' : 'failed'
+        errorLog = 'Импорт остановлен вручную'
+        patchTrendAgentRunProgress(run.id, {
+          phase: 'stopped',
+          processed_rows: stats.inserted + stats.updated,
+          stats: { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden },
+          message: 'Импорт остановлен вручную. Можно продолжить новым запуском.',
+          error: errorLog,
+        })
+      }
+
+      if (!skipMissingLifecycle && !stoppedByUser) {
         const lifecycleHidden = withDb((db) => applyMissingPropertyLifecycleForSource(
           db,
           effectiveSourceId,
@@ -3207,12 +3408,14 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
 
       // Persist a single consolidated state snapshot after chunked upsert.
       withDb(() => undefined)
-      patchTrendAgentRunProgress(run.id, {
-        phase: 'upserting',
-        processed_rows: rows.length,
-        stats: { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden },
-        message: `Сохранено: +${stats.inserted.toLocaleString('ru-RU')} / обновлено ${stats.updated.toLocaleString('ru-RU')} / скрыто ${stats.hidden.toLocaleString('ru-RU')}`,
-      })
+      if (!stoppedByUser) {
+        patchTrendAgentRunProgress(run.id, {
+          phase: 'upserting',
+          processed_rows: rows.length,
+          stats: { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden },
+          message: `Сохранено: +${stats.inserted.toLocaleString('ru-RU')} / обновлено ${stats.updated.toLocaleString('ru-RU')} / скрыто ${stats.hidden.toLocaleString('ru-RU')}`,
+        })
+      }
 
       run.stats = { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden }
       const targetComplexId = (stats as { targetComplexId?: string }).targetComplexId
@@ -3220,7 +3423,7 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         run.target_complex_id = targetComplexId
       }
 
-      if (stats.errors.length > 0) {
+      if (!stoppedByUser && stats.errors.length > 0) {
         run.status = stats.errors.length === rows.length ? 'failed' : 'partial'
         errorLog =
           `${stats.errors.length} rows with errors:\n` +
@@ -3230,13 +3433,24 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
             .join('\n')
       }
     } catch (error) {
-      run.status = 'failed'
-      errorLog = error instanceof Error ? error.message : 'Unknown error'
-      patchTrendAgentRunProgress(run.id, {
-        phase: 'failed',
-        error: errorLog,
-        message: 'Импорт завершился с ошибкой',
-      })
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      if (message === 'IMPORT_STOPPED_BY_USER') {
+        run.status = run.stats.inserted + run.stats.updated > 0 ? 'partial' : 'failed'
+        errorLog = 'Импорт остановлен вручную'
+        patchTrendAgentRunProgress(run.id, {
+          phase: 'stopped',
+          error: errorLog,
+          message: 'Импорт остановлен вручную',
+        })
+      } else {
+        run.status = 'failed'
+        errorLog = message
+        patchTrendAgentRunProgress(run.id, {
+          phase: 'failed',
+          error: errorLog,
+          message: 'Импорт завершился с ошибкой',
+        })
+      }
     } finally {
       importLocks.delete(lockKey)
       withDb((db) => {
@@ -3257,7 +3471,7 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         )
       })
 
-      if (shouldAutoPublish && run.status !== 'failed') {
+      if (shouldAutoPublish && run.status !== 'failed' && !stoppedByUser) {
         try {
           patchTrendAgentRunProgress(run.id, {
             phase: 'publishing',
@@ -3284,7 +3498,7 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
       }
 
       await flushStorage()
-      if (run.status !== 'failed') {
+      if (run.status !== 'failed' && !stoppedByUser) {
         patchTrendAgentRunProgress(run.id, {
           phase: 'completed',
           stats: { ...run.stats },
@@ -3293,6 +3507,7 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         })
       }
       finalizeTrendAgentRunProgress(run.id)
+      trendAgentRunControlMap.delete(run.id)
     }
     return errorLog
   }
@@ -4437,16 +4652,22 @@ async function buildTrendAgentImportRows(
     }
     const images = [...imagesSet]
 
+    const areaTotal = numberValue(apt.area_total) ?? numberValue(apt.area)
     rows.push({
-      ...apt,
       external_id: stringValue(apt._id),
       complex_external_id: blockId,
+      block_id: blockId,
       title,
       bedrooms: parsedBedrooms.bedrooms,
+      rooms: parsedBedrooms.bedrooms,
       is_euroflat: parsedBedrooms.isEuroflat,
       lot_number: stringValue(apt.number),
+      price: numberValue(apt.price),
+      area_total: areaTotal,
+      area: areaTotal,
       area_living: numberValue(apt.area_rooms_total),
-      area_given: numberValue(apt.area_given),
+      area_kitchen: numberValue(apt.area_kitchen),
+      floor: numberValue(apt.floor),
       floors_total: numberValue(apt.floors),
       old_price: numberValue(apt.price_base),
       renovation: finishingNameById.get(finishingId) || finishingId || undefined,
@@ -4460,12 +4681,12 @@ async function buildTrendAgentImportRows(
       block_district_name: blockDistrictName || undefined,
       district: blockDistrictName || undefined,
       block_subway_name: subwayNames.length > 0 ? subwayNames : undefined,
-      block_geometry: block?.geometry,
       block_description: block ? stringValue(block.description) : undefined,
       block_address: block ? compactAddress(block.address) : compactAddress(apt.block_address),
       images,
       deal_type: 'sale',
       category: 'newbuild',
+      status: normalizeStatus(apt.status),
     })
 
   }
