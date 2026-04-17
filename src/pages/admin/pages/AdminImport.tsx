@@ -84,6 +84,53 @@ type TrendAgentComplexOption = {
   price_to?: number
 }
 
+type LocalFeedSection = {
+  key: string
+  rows: number
+}
+
+type LocalFeedInstalled = {
+  source_id: string
+  source_name?: string
+  source_url?: string
+  about_url?: string
+  installed_at?: string
+  total_rows?: number
+  sections?: LocalFeedSection[]
+}
+
+type LocalFeedStatus = {
+  state: 'idle' | 'running' | 'success' | 'failed'
+  source_id: string
+  source_name?: string
+  source_url?: string
+  about_url?: string
+  started_at?: string
+  finished_at?: string
+  current_file?: string
+  progress?: Record<string, number>
+  total_rows?: number
+  error?: string
+  message?: string
+  installed?: LocalFeedInstalled | null
+}
+
+type LocalFeedViewData = {
+  source_id: string
+  about_url?: string
+  installed_at?: string
+  total_rows?: number
+  sections: LocalFeedSection[]
+  section: string
+  section_source_url?: string
+  query?: string
+  total: number
+  page: number
+  limit: number
+  total_pages: number
+  items: Record<string, unknown>[]
+}
+
 const TRENDAGENT_PAGE_SIZE = 50
 
 type ApiEnvelope<T> = {
@@ -337,10 +384,24 @@ export default function AdminImportPage() {
   const [trendagentPage, setTrendagentPage] = useState(1)
   const [trendagentTotal, setTrendagentTotal] = useState(0)
   const [trendagentTotalPages, setTrendagentTotalPages] = useState(1)
+  const [localFeedUrl, setLocalFeedUrl] = useState('')
+  const [useLocalTrendagentFeed, setUseLocalTrendagentFeed] = useState(false)
+  const [localFeedStatus, setLocalFeedStatus] = useState<LocalFeedStatus | null>(null)
+  const [localFeedStatusError, setLocalFeedStatusError] = useState<string | null>(null)
+  const [localFeedInstalling, setLocalFeedInstalling] = useState(false)
+  const [localFeedViewerOpen, setLocalFeedViewerOpen] = useState(false)
+  const [localFeedViewerLoading, setLocalFeedViewerLoading] = useState(false)
+  const [localFeedViewerError, setLocalFeedViewerError] = useState<string | null>(null)
+  const [localFeedViewerData, setLocalFeedViewerData] = useState<LocalFeedViewData | null>(null)
+  const [localFeedViewerQuery, setLocalFeedViewerQuery] = useState('')
+  const [localFeedViewerSection, setLocalFeedViewerSection] = useState('')
+  const [localFeedViewerPage, setLocalFeedViewerPage] = useState(1)
   const trendagentListInFlightRef = useRef(false)
   const trendagentImportInFlightRef = useRef(false)
   const trendagentRunPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const trendagentRunPollIdRef = useRef<string | null>(null)
+  const localFeedStatusPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const localFeedPreferenceTouchedRef = useRef(false)
 
   // Edit Preview State
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -503,6 +564,10 @@ export default function AdminImportPage() {
 
   useEffect(() => () => {
     stopTrendagentRunWatcher()
+    if (localFeedStatusPollRef.current) {
+      clearTimeout(localFeedStatusPollRef.current)
+      localFeedStatusPollRef.current = null
+    }
   }, [stopTrendagentRunWatcher])
 
   // Restore watcher from sessionStorage on mount (survives tab switches)
@@ -656,6 +721,8 @@ export default function AdminImportPage() {
     return url.includes('about.json')
   }, [activeImportSource?.url])
 
+  const canUseTrendagentTools = importInputMode === 'url' && (isTrendAgentAboutSource || useLocalTrendagentFeed)
+
 
   // --- Feed Management Functions ---
 
@@ -775,14 +842,200 @@ export default function AdminImportPage() {
 
   // --- Import Functions ---
 
+  const stopLocalFeedStatusPolling = useCallback(() => {
+    if (localFeedStatusPollRef.current) {
+      clearTimeout(localFeedStatusPollRef.current)
+      localFeedStatusPollRef.current = null
+    }
+  }, [])
+
+  const fetchLocalFeedStatus = useCallback(async (sourceId: string, silent = false) => {
+    if (!sourceId) return
+    try {
+      const params = new URLSearchParams({ source_id: sourceId })
+      const res = await fetch(`/api/admin/import/trendagent/local/status?${params.toString()}`, {
+        headers: { 'x-admin-token': token || '' },
+      })
+      const json = await parseApiEnvelope<LocalFeedStatus>(res)
+      if (!res.ok || json.success !== true || !json.data) {
+        throw new Error(normalizeImportErrorMessage(json.details || json.error || 'Не удалось получить статус локального фида'))
+      }
+
+      setLocalFeedStatus(json.data)
+      setLocalFeedStatusError(null)
+      if (!localFeedPreferenceTouchedRef.current) {
+        setUseLocalTrendagentFeed(Boolean(json.data.installed))
+      }
+
+      const totalRows = typeof json.data.total_rows === 'number'
+        ? json.data.total_rows
+        : Object.values(json.data.progress || {}).reduce((sum, value) => sum + Number(value || 0), 0)
+
+      console.info('[Local feed] status', {
+        sourceId,
+        state: json.data.state,
+        file: json.data.current_file,
+        totalRows,
+        progress: json.data.progress,
+        error: json.data.error,
+      })
+
+      stopLocalFeedStatusPolling()
+      if (json.data.state === 'running') {
+        localFeedStatusPollRef.current = setTimeout(() => {
+          void fetchLocalFeedStatus(sourceId, true)
+        }, 2500)
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Ошибка загрузки статуса локального фида'
+      console.error('[Local feed] status error', { sourceId, message })
+      setLocalFeedStatusError(message)
+      if (!silent) setLocalFeedStatus(null)
+      stopLocalFeedStatusPolling()
+    }
+  }, [token, stopLocalFeedStatusPolling])
+
+  const startLocalFeedInstall = async (aboutUrlOverride?: string) => {
+    if (!activeImportSource?.id) {
+      setLocalFeedStatusError('Выберите источник импорта')
+      return
+    }
+    const aboutUrl = (aboutUrlOverride ?? localFeedUrl).trim()
+    if (!aboutUrl) {
+      setLocalFeedStatusError('Вставьте ссылку на about.json')
+      return
+    }
+
+    setLocalFeedInstalling(true)
+    setLocalFeedStatusError(null)
+    console.info('[Local feed] install start', { sourceId: activeImportSource.id, aboutUrl })
+
+    try {
+      const res = await fetch('/api/admin/import/trendagent/local/install', {
+        method: 'POST',
+        headers: {
+          'x-admin-token': token || '',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          source_id: activeImportSource.id,
+          about_url: aboutUrl,
+        }),
+      })
+      const json = await parseApiEnvelope<{ message?: string }>(res)
+      if (!res.ok || json.success !== true) {
+        throw new Error(normalizeImportErrorMessage(json.details || json.error || 'Не удалось запустить установку локальной копии'))
+      }
+
+      console.info('[Local feed] install queued', {
+        sourceId: activeImportSource.id,
+        message: json.data?.message,
+      })
+      await fetchLocalFeedStatus(activeImportSource.id)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Ошибка запуска установки локальной копии'
+      console.error('[Local feed] install error', { sourceId: activeImportSource.id, message })
+      setLocalFeedStatusError(message)
+    } finally {
+      setLocalFeedInstalling(false)
+    }
+  }
+
+  const deleteLocalFeedCopy = async () => {
+    if (!activeImportSource?.id) return
+    if (!window.confirm('Удалить локальную копию фида для этого источника?')) return
+
+    try {
+      const params = new URLSearchParams({ source_id: activeImportSource.id })
+      const res = await fetch(`/api/admin/import/trendagent/local?${params.toString()}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-token': token || '' },
+      })
+      const json = await parseApiEnvelope<{ deleted?: boolean }>(res)
+      if (!res.ok || json.success !== true) {
+        throw new Error(normalizeImportErrorMessage(json.details || json.error || 'Не удалось удалить локальную копию'))
+      }
+      console.info('[Local feed] delete success', { sourceId: activeImportSource.id })
+      stopLocalFeedStatusPolling()
+      setLocalFeedStatus(null)
+      setLocalFeedStatusError(null)
+      setLocalFeedViewerData(null)
+      setUseLocalTrendagentFeed(false)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Ошибка удаления локальной копии'
+      console.error('[Local feed] delete error', { sourceId: activeImportSource.id, message })
+      setLocalFeedStatusError(message)
+    }
+  }
+
+  const loadLocalFeedViewer = async (options?: { section?: string; page?: number; query?: string }) => {
+    if (!activeImportSource?.id) return
+    const section = options?.section ?? localFeedViewerSection
+    const page = Math.max(1, options?.page ?? localFeedViewerPage ?? 1)
+    const query = options?.query ?? localFeedViewerQuery
+
+    setLocalFeedViewerLoading(true)
+    setLocalFeedViewerError(null)
+    try {
+      const params = new URLSearchParams({
+        source_id: activeImportSource.id,
+        page: String(page),
+        limit: '50',
+      })
+      if (section) params.set('section', section)
+      if (query.trim()) params.set('query', query.trim())
+
+      const res = await fetch(`/api/admin/import/trendagent/local/view?${params.toString()}`, {
+        headers: { 'x-admin-token': token || '' },
+      })
+      const json = await parseApiEnvelope<LocalFeedViewData>(res)
+      if (!res.ok || json.success !== true || !json.data) {
+        throw new Error(normalizeImportErrorMessage(json.details || json.error || 'Не удалось загрузить локальный JSON'))
+      }
+      setLocalFeedViewerData(json.data)
+      setLocalFeedViewerSection(json.data.section || '')
+      setLocalFeedViewerPage(json.data.page || 1)
+      console.info('[Local feed] viewer data', {
+        sourceId: activeImportSource.id,
+        section: json.data.section,
+        page: json.data.page,
+        total: json.data.total,
+      })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Ошибка просмотра локального JSON'
+      console.error('[Local feed] viewer error', { sourceId: activeImportSource.id, message })
+      setLocalFeedViewerError(message)
+    } finally {
+      setLocalFeedViewerLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    localFeedPreferenceTouchedRef.current = false
+    stopLocalFeedStatusPolling()
+    setLocalFeedStatus(null)
+    setLocalFeedStatusError(null)
+    setLocalFeedViewerData(null)
+    setLocalFeedViewerError(null)
+    setLocalFeedViewerOpen(false)
+    setLocalFeedViewerQuery('')
+    setLocalFeedViewerSection('')
+    setLocalFeedViewerPage(1)
+    setUseLocalTrendagentFeed(false)
+    setLocalFeedUrl(activeImportSource?.url || '')
+
+    if (!activeImportSource?.id) return
+    void fetchLocalFeedStatus(activeImportSource.id, true)
+  }, [activeImportSource?.id, activeImportSource?.url, fetchLocalFeedStatus, stopLocalFeedStatusPolling])
+
   const loadTrendagentComplexes = async (forceRefresh = false, pageOverride?: number, queryOverride?: string) => {
     if (trendagentListInFlightRef.current) return
     if (!activeImportSource?.id) {
       setTrendagentError('Выберите источник.')
       return
     }
-    if (!activeImportSource.url || !isTrendAgentAboutSource) {
-      setTrendagentError('Для выбора ЖК нужен источник TrendAgent с URL на about.json.')
+    if (!isTrendAgentAboutSource && !useLocalTrendagentFeed) {
+      setTrendagentError('Для выбора ЖК нужен TrendAgent about.json или включенная локальная копия.')
       return
     }
     const page = Math.max(1, pageOverride || trendagentPage || 1)
@@ -792,6 +1045,13 @@ export default function AdminImportPage() {
     setTrendagentLoading(true)
     setTrendagentError(null)
     try {
+      console.info('[TrendAgent list] request', {
+        sourceId: activeImportSource.id,
+        useLocal: useLocalTrendagentFeed,
+        forceRefresh,
+        page,
+        query,
+      })
       const res = await fetch('/api/admin/import/trendagent/complexes', {
         method: 'POST',
         headers: {
@@ -800,6 +1060,7 @@ export default function AdminImportPage() {
         },
         body: JSON.stringify({
           source_id: activeImportSource.id,
+          use_local: useLocalTrendagentFeed,
           force_refresh: forceRefresh,
           page,
           limit: TRENDAGENT_PAGE_SIZE,
@@ -816,8 +1077,19 @@ export default function AdminImportPage() {
       setTrendagentPage(Number(json.data?.page || page))
       setTrendagentTotalPages(Math.max(1, Number(json.data?.total_pages || 1)))
       setTrendagentLoadedSourceId(activeImportSource.id)
+      console.info('[TrendAgent list] success', {
+        sourceId: activeImportSource.id,
+        useLocal: useLocalTrendagentFeed,
+        total: Number(json.data?.total || 0),
+        page: Number(json.data?.page || page),
+      })
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Ошибка загрузки ЖК'
+      console.error('[TrendAgent list] error', {
+        sourceId: activeImportSource.id,
+        useLocal: useLocalTrendagentFeed,
+        message,
+      })
       setTrendagentError(normalizeImportErrorMessage(message))
     } finally {
       trendagentListInFlightRef.current = false
@@ -834,8 +1106,8 @@ export default function AdminImportPage() {
       setError('Выберите источник')
       return
     }
-    if (!activeImportSource.url || !isTrendAgentAboutSource) {
-      setTrendagentError('Для TrendAgent-импорта нужен источник с URL на about.json.')
+    if (!isTrendAgentAboutSource && !useLocalTrendagentFeed) {
+      setTrendagentError('Для TrendAgent-импорта нужен about.json или включенная локальная копия.')
       return
     }
     if (scope === 'selected' && trendagentSelectedIds.length === 0) {
@@ -854,6 +1126,12 @@ export default function AdminImportPage() {
     setTrendagentInfo(null)
     setError(null)
     try {
+      console.info('[TrendAgent import] request', {
+        sourceId: activeImportSource.id,
+        scope,
+        useLocal: useLocalTrendagentFeed,
+        selectedCount: trendagentSelectedIds.length,
+      })
       const res = await fetch('/api/admin/import/trendagent/run', {
         method: 'POST',
         headers: {
@@ -863,6 +1141,7 @@ export default function AdminImportPage() {
         body: JSON.stringify({
           source_id: activeImportSource.id,
           entity: 'property',
+          use_local: useLocalTrendagentFeed,
           full_city: scope === 'full_city',
           block_ids: scope === 'selected' ? trendagentSelectedIds : undefined,
         }),
@@ -886,6 +1165,7 @@ export default function AdminImportPage() {
             runId,
             sourceId: activeImportSource.id,
             scope,
+            useLocal: useLocalTrendagentFeed,
           })
           startTrendagentRunWatcher(runId, activeImportSource.id, scope)
         } else {
@@ -901,6 +1181,7 @@ export default function AdminImportPage() {
         runId: json.data?.id,
         sourceId: activeImportSource.id,
         scope,
+        useLocal: useLocalTrendagentFeed,
         status: json.data?.status,
         stats: json.data?.stats,
       })
@@ -917,6 +1198,7 @@ export default function AdminImportPage() {
       console.error('[TrendAgent import] request failed', {
         sourceId: activeImportSource.id,
         scope,
+        useLocal: useLocalTrendagentFeed,
         message,
       })
       setTrendagentInfo(null)
@@ -932,12 +1214,18 @@ export default function AdminImportPage() {
 
   useEffect(() => {
     if (!activeImportSource?.id) return
-    if (!activeImportSource.url) return
     if (importInputMode !== 'url') return
-    if (!isTrendAgentAboutSource) return
+    if (!isTrendAgentAboutSource && !useLocalTrendagentFeed) return
     if (trendagentLoadedSourceId === activeImportSource.id) return
     void loadTrendagentComplexes(false, 1, trendagentQuery)
-  }, [activeImportSource?.id, activeImportSource?.url, importInputMode, isTrendAgentAboutSource, trendagentLoadedSourceId, trendagentQuery])
+  }, [
+    activeImportSource?.id,
+    importInputMode,
+    isTrendAgentAboutSource,
+    trendagentLoadedSourceId,
+    trendagentQuery,
+    useLocalTrendagentFeed,
+  ])
 
   const runPreviewForFeed = useCallback(async (feed: FeedSource, fileOverride?: File | null, inputModeOverride?: 'url' | 'file') => {
     const inputMode = inputModeOverride || (feed.mode === 'upload' ? 'file' : 'url')
@@ -1017,7 +1305,7 @@ export default function AdminImportPage() {
       setError('Выберите источник')
       return
     }
-    if (importInputMode === 'url' && isTrendAgentAboutSource) {
+    if (importInputMode === 'url' && (isTrendAgentAboutSource || useLocalTrendagentFeed)) {
       setError(null)
       await loadTrendagentComplexes(false, 1, trendagentQuery)
       return
@@ -1399,6 +1687,10 @@ export default function AdminImportPage() {
               <div className="text-xs text-slate-500">
                 {activeImportSource?.url ? (
                   <div className="rounded border border-slate-200 bg-slate-50 px-2 py-2 break-all">{activeImportSource.url}</div>
+                ) : useLocalTrendagentFeed ? (
+                  <div className="rounded border border-indigo-200 bg-indigo-50 px-2 py-2 text-indigo-700">
+                    URL источника не задан, но включена локальная копия.
+                  </div>
                 ) : (
                   <div className="rounded border border-amber-200 bg-amber-50 px-2 py-2 text-amber-700">
                     URL не указан в настройках источника.
@@ -1413,12 +1705,12 @@ export default function AdminImportPage() {
                   loading
                   || !activeImportSource
                   || (importInputMode === 'file' && !file)
-                  || (importInputMode === 'url' && !activeImportSource?.url)
+                  || (importInputMode === 'url' && !activeImportSource?.url && !useLocalTrendagentFeed)
                 }
               >
-                {loading ? 'Загрузка…' : (importInputMode === 'url' && isTrendAgentAboutSource ? 'Загрузить список ЖК' : 'Предпросмотр')}
+                {loading ? 'Загрузка…' : (canUseTrendagentTools ? 'Загрузить список ЖК' : 'Предпросмотр')}
               </Button>
-              {activeImportSource?.url && isTrendAgentAboutSource && (
+              {canUseTrendagentTools && (
                 <Button
                   variant="secondary"
                   onClick={() => {
@@ -1433,18 +1725,18 @@ export default function AdminImportPage() {
             </div>
           </div>
 
-          {activeImportSource?.url && importInputMode === 'url' && isTrendAgentAboutSource && (
+          {canUseTrendagentTools && (
             <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Выбор ЖК из большого TrendAgent-фида</div>
                   <div className="text-xs text-slate-500">Поддерживается точечный импорт по ЖК и импорт всего города одним запуском.</div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => void loadTrendagentComplexes(false, 1, trendagentQuery)}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void loadTrendagentComplexes(false, 1, trendagentQuery)}
                     disabled={trendagentLoading}
                   >
                     {trendagentLoading ? 'Загрузка…' : 'Загрузить список ЖК'}
@@ -1455,14 +1747,137 @@ export default function AdminImportPage() {
                     onClick={() => void loadTrendagentComplexes(true, trendagentPage, trendagentQuery)}
                     disabled={trendagentLoading}
                   >
-                    Обновить
-                  </Button>
-                </div>
+                  Обновить
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50/50 p-3">
+              <div className="text-sm font-semibold text-indigo-900">Локальная копия TrendAgent (один JSON на сервере)</div>
+              <div className="text-xs text-indigo-700">
+                Вставьте ссылку на <span className="font-mono">about.json</span>. Установка запускается сразу после вставки ссылки.
               </div>
 
-              {trendagentError ? (
-                <div className="space-y-1">
-                  <div className="text-xs text-rose-600">{trendagentError}</div>
+              <div className="flex flex-col gap-2 md:flex-row">
+                <Input
+                  value={localFeedUrl}
+                  onChange={(e) => setLocalFeedUrl(e.target.value)}
+                  onPaste={(e) => {
+                    const pasted = e.clipboardData?.getData('text')?.trim()
+                    if (!pasted) return
+                    setLocalFeedUrl(pasted)
+                    console.info('[Local feed] pasted URL', { sourceId: activeImportSource?.id, aboutUrl: pasted })
+                    void startLocalFeedInstall(pasted)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void startLocalFeedInstall()
+                    }
+                  }}
+                  placeholder="https://.../about.json"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => void startLocalFeedInstall()}
+                  disabled={localFeedInstalling || !localFeedUrl.trim()}
+                >
+                  {localFeedInstalling ? 'Запуск…' : 'Установить локальную копию'}
+                </Button>
+              </div>
+
+              <label className="inline-flex items-center gap-2 text-xs text-indigo-800">
+                <input
+                  type="checkbox"
+                  checked={useLocalTrendagentFeed}
+                  disabled={!localFeedStatus?.installed}
+                  onChange={(e) => {
+                    localFeedPreferenceTouchedRef.current = true
+                    setUseLocalTrendagentFeed(e.target.checked)
+                    console.info('[Local feed] use_local changed', {
+                      sourceId: activeImportSource?.id,
+                      value: e.target.checked,
+                    })
+                  }}
+                />
+                Использовать локальную копию в импорте и при загрузке списка ЖК
+              </label>
+
+              {localFeedStatus ? (
+                <div className="rounded border border-indigo-200 bg-white px-3 py-2 text-xs text-slate-700">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-indigo-900">Статус: {localFeedStatus.state}</span>
+                    {localFeedStatus.current_file ? (
+                      <span>Файл: <span className="font-mono">{localFeedStatus.current_file}</span></span>
+                    ) : null}
+                    {typeof localFeedStatus.total_rows === 'number' ? (
+                      <span>Строк: <span className="font-semibold">{localFeedStatus.total_rows.toLocaleString('ru-RU')}</span></span>
+                    ) : null}
+                  </div>
+                  {localFeedStatus.progress && Object.keys(localFeedStatus.progress).length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {Object.entries(localFeedStatus.progress).map(([key, value]) => (
+                        <span key={key} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px]">
+                          {key}: {Number(value).toLocaleString('ru-RU')}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {localFeedStatus.error ? (
+                    <div className="mt-2 text-rose-600">{localFeedStatus.error}</div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {localFeedStatus?.installed ? (
+                <div className="space-y-2 rounded border border-indigo-200 bg-white px-3 py-2 text-xs text-slate-700">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <div className="font-medium text-indigo-900">Копия установлена</div>
+                    <div>
+                      Время: {localFeedStatus.installed.installed_at ? new Date(localFeedStatus.installed.installed_at).toLocaleString('ru-RU') : '—'}
+                    </div>
+                    <div>
+                      Всего строк: {Number(localFeedStatus.installed.total_rows || 0).toLocaleString('ru-RU')}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(localFeedStatus.installed.sections || []).map((section) => (
+                      <span key={section.key} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px]">
+                        {section.key}: {section.rows.toLocaleString('ru-RU')}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setLocalFeedViewerOpen(true)
+                        void loadLocalFeedViewer({ page: 1 })
+                      }}
+                    >
+                      Посмотреть фид JSON
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="text-rose-600 bg-rose-50 hover:bg-rose-100"
+                      onClick={deleteLocalFeedCopy}
+                    >
+                      Удалить копию
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {localFeedStatusError ? (
+                <div className="text-xs text-rose-600">{localFeedStatusError}</div>
+              ) : null}
+            </div>
+
+            {trendagentError ? (
+              <div className="space-y-1">
+                <div className="text-xs text-rose-600">{trendagentError}</div>
                   {trendagentError.toLowerCase().includes('fetch failed') && (
                     <div className="text-[11px] text-amber-700">
                       Сервер не может скачать фид по URL. Проверьте сетевой доступ backend-контейнера к этому хосту и лимиты
@@ -1804,6 +2219,147 @@ export default function AdminImportPage() {
               )}
             </Modal>
           )}
+
+          <Modal
+            open={localFeedViewerOpen}
+            onClose={() => setLocalFeedViewerOpen(false)}
+            title="Локальный TrendAgent JSON"
+            className="max-w-6xl"
+          >
+            <div className="space-y-3 text-xs">
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-[220px]">
+                  <label className="mb-1 block text-xs font-medium text-slate-700">Раздел</label>
+                  <Select
+                    value={localFeedViewerSection}
+                    onChange={(e) => {
+                      const nextSection = e.target.value
+                      setLocalFeedViewerSection(nextSection)
+                      setLocalFeedViewerPage(1)
+                      void loadLocalFeedViewer({ section: nextSection, page: 1, query: localFeedViewerQuery })
+                    }}
+                  >
+                    {(localFeedViewerData?.sections || localFeedStatus?.installed?.sections || []).map((section) => (
+                      <option key={section.key} value={section.key}>
+                        {section.key} ({section.rows.toLocaleString('ru-RU')})
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="min-w-[260px] flex-1">
+                  <label className="mb-1 block text-xs font-medium text-slate-700">Поиск</label>
+                  <Input
+                    value={localFeedViewerQuery}
+                    onChange={(e) => setLocalFeedViewerQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        setLocalFeedViewerPage(1)
+                        void loadLocalFeedViewer({ page: 1, query: localFeedViewerQuery, section: localFeedViewerSection })
+                      }
+                    }}
+                    placeholder="Поиск по полям JSON"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setLocalFeedViewerPage(1)
+                    void loadLocalFeedViewer({ page: 1, query: localFeedViewerQuery, section: localFeedViewerSection })
+                  }}
+                  disabled={localFeedViewerLoading}
+                >
+                  Найти
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setLocalFeedViewerQuery('')
+                    setLocalFeedViewerPage(1)
+                    void loadLocalFeedViewer({ page: 1, query: '', section: localFeedViewerSection })
+                  }}
+                  disabled={localFeedViewerLoading || localFeedViewerQuery.trim().length === 0}
+                >
+                  Сбросить
+                </Button>
+              </div>
+
+              {localFeedViewerData ? (
+                <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    <span>Раздел: <span className="font-medium">{localFeedViewerData.section}</span></span>
+                    <span>Всего в разделе: <span className="font-medium">{localFeedViewerData.total.toLocaleString('ru-RU')}</span></span>
+                    <span>Страница: <span className="font-medium">{localFeedViewerData.page} / {localFeedViewerData.total_pages}</span></span>
+                    <span>Всего в копии: <span className="font-medium">{Number(localFeedViewerData.total_rows || 0).toLocaleString('ru-RU')}</span></span>
+                  </div>
+                  {localFeedViewerData.section_source_url ? (
+                    <div className="mt-1 break-all text-[11px] text-slate-500">Источник файла: {localFeedViewerData.section_source_url}</div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {localFeedViewerError ? (
+                <div className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-rose-600">{localFeedViewerError}</div>
+              ) : null}
+
+              <div className="max-h-[58vh] overflow-auto rounded border border-slate-200 bg-white p-2">
+                {localFeedViewerLoading ? (
+                  <div className="py-8 text-center text-slate-500">Загрузка JSON...</div>
+                ) : localFeedViewerData?.items?.length ? (
+                  <div className="space-y-2">
+                    {localFeedViewerData.items.map((item, index) => (
+                      <details key={`${localFeedViewerData.page}-${index}`} className="rounded border border-slate-200 bg-slate-50 p-2">
+                        <summary className="cursor-pointer font-medium text-slate-700">
+                          Запись #{(localFeedViewerData.page - 1) * localFeedViewerData.limit + index + 1}
+                        </summary>
+                        <pre className="mt-2 overflow-x-auto rounded bg-white p-2 text-[11px] leading-4 text-slate-700">
+                          {JSON.stringify(item, null, 2)}
+                        </pre>
+                      </details>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-8 text-center text-slate-500">Нет данных для отображения</div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-slate-600">
+                  Страница {localFeedViewerData?.page || localFeedViewerPage} из {localFeedViewerData?.total_pages || 1}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      const nextPage = Math.max(1, (localFeedViewerData?.page || localFeedViewerPage) - 1)
+                      setLocalFeedViewerPage(nextPage)
+                      void loadLocalFeedViewer({ page: nextPage, query: localFeedViewerQuery, section: localFeedViewerSection })
+                    }}
+                    disabled={localFeedViewerLoading || (localFeedViewerData?.page || localFeedViewerPage) <= 1}
+                  >
+                    Назад
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      const currentPage = localFeedViewerData?.page || localFeedViewerPage
+                      const maxPage = localFeedViewerData?.total_pages || 1
+                      const nextPage = Math.min(maxPage, currentPage + 1)
+                      setLocalFeedViewerPage(nextPage)
+                      void loadLocalFeedViewer({ page: nextPage, query: localFeedViewerQuery, section: localFeedViewerSection })
+                    }}
+                    disabled={localFeedViewerLoading || (localFeedViewerData?.page || localFeedViewerPage) >= (localFeedViewerData?.total_pages || 1)}
+                  >
+                    Вперёд
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Modal>
       </div>
 
       <div className="space-y-3 border-t border-slate-200 pt-6">
@@ -2116,7 +2672,3 @@ export default function AdminImportPage() {
     </div>
   )
 }
-
-
-
-
