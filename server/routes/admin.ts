@@ -60,7 +60,7 @@ import {
   normalizeDealType
 } from '../lib/import-logic.js'
 import { assertFeedRowLimit, fetchFeedBuffer } from '../lib/feed-fetch.js'
-import type { AdminRole, AdminUser, Category, Complex, DbShape, LandingFeaturePreset, Lead, LeadStatus, Property } from '../../shared/types.js'
+import type { AdminRole, AdminUser, Category, Complex, DbShape, FeedSource, LandingFeaturePreset, Lead, LeadStatus, Property } from '../../shared/types.js'
 import { XMLParser } from 'fast-xml-parser'
 import { parse as parseCsv } from 'csv-parse/sync'
 import * as XLSX from 'xlsx'
@@ -258,6 +258,206 @@ async function loadTrendAgentDatasetFromLocalSnapshot(
   const dataset = buildDatasetFromLocalSnapshot(snapshot, mode)
   trendAgentDatasetCache.set(cacheKey, { loadedAt: Date.now(), dataset })
   return dataset
+}
+
+function listFeedSourcesSnapshot(): FeedSource[] {
+  return withDbRead((db) => [...db.feed_sources])
+}
+
+function normalizeMaybeTrendAgentAboutUrl(value: string | undefined): string | null {
+  const raw = stringValue(value)
+  if (!raw) return null
+  try {
+    return normalizeTrendAgentAboutUrl(raw)
+  } catch {
+    return null
+  }
+}
+
+function pickFallbackTrendAgentSource(preferLocal = false): FeedSource | undefined {
+  const sources = listFeedSourcesSnapshot()
+  if (sources.length === 0) return undefined
+
+  const urlSources = sources.filter((source) => source.mode === 'url')
+  const trendAgentSources = urlSources.filter((source) => stringValue(source.url).toLowerCase().includes('about.json'))
+
+  if (preferLocal) {
+    const withLocalSnapshot = trendAgentSources.filter((source) => fs.existsSync(getTrendAgentLocalSnapshotPath(source.id)))
+    if (withLocalSnapshot.length > 0) return withLocalSnapshot[0]
+  }
+
+  if (trendAgentSources.length > 0) return trendAgentSources[0]
+  if (urlSources.length > 0) return urlSources[0]
+  return sources[0]
+}
+
+function resolveTrendAgentSource(sourceId: string, preferLocal = false): FeedSource | undefined {
+  const normalizedId = stringValue(sourceId)
+  const sources = listFeedSourcesSnapshot()
+  const direct = sources.find((source) => source.id === normalizedId)
+  if (direct) return direct
+
+  const fallback = pickFallbackTrendAgentSource(preferLocal)
+  return fallback
+}
+
+function resolveTrendAgentSourceByAboutUrl(aboutUrl: string): FeedSource | undefined {
+  const normalizedAbout = normalizeMaybeTrendAgentAboutUrl(aboutUrl)
+  if (!normalizedAbout) return undefined
+
+  const sources = listFeedSourcesSnapshot()
+  for (const source of sources) {
+    const normalizedSourceUrl = normalizeMaybeTrendAgentAboutUrl(source.url)
+    if (normalizedSourceUrl && normalizedSourceUrl === normalizedAbout) {
+      return source
+    }
+  }
+  return undefined
+}
+
+async function queueTrendAgentLocalInstall(source: FeedSource, aboutUrlRaw: string): Promise<{
+  ok: true
+  source_id: string
+  about_url: string
+  queued: true
+  message: string
+} | {
+  ok: false
+  status: number
+  error: string
+  details?: string
+}> {
+  const sourceUrl = stringValue(aboutUrlRaw) || stringValue(source.url)
+  if (!sourceUrl) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'URL is required. Вставьте ссылку на about.json',
+    }
+  }
+
+  let aboutUrl: string
+  try {
+    aboutUrl = normalizeTrendAgentAboutUrl(sourceUrl)
+  } catch (error) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Некорректный URL TrendAgent',
+      details: error instanceof Error ? error.message : 'Invalid URL',
+    }
+  }
+
+  const lockKey = `local-install:${source.id}`
+  if (hasActiveLocalInstallLock(lockKey)) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'Установка локальной копии уже выполняется',
+    }
+  }
+
+  const startedAt = new Date().toISOString()
+  trendAgentLocalInstallLocks.set(lockKey, Date.now())
+  await ensureTrendAgentLocalDir()
+
+  const progress: Record<string, number> = {}
+  const writeRunningStatus = async (currentFile?: string, message?: string) => {
+    await writeTrendAgentLocalStatus(source.id, {
+      state: 'running',
+      source_id: source.id,
+      source_name: source.name,
+      source_url: source.url,
+      about_url: aboutUrl,
+      started_at: startedAt,
+      current_file: currentFile,
+      progress: { ...progress },
+      total_rows: Object.values(progress).reduce((sum, value) => sum + value, 0),
+      message,
+    })
+  }
+
+  await writeRunningStatus('about.json', 'Старт установки локальной копии')
+
+  void (async () => {
+    try {
+      const aboutPayload = await fetchJsonValue(aboutUrl)
+      const fileMap = extractTrendAgentFileMap(aboutUrl, aboutPayload)
+      const fileEntries = Object.entries(fileMap).sort((a, b) => a[0].localeCompare(b[0]))
+      if (fileEntries.length === 0) {
+        throw new Error('В about.json не найдено ни одного JSON-файла для загрузки')
+      }
+
+      const data: Record<string, unknown> = { about: aboutPayload }
+      for (const [name, fileUrl] of fileEntries) {
+        await writeRunningStatus(`${name}.json`, `Загрузка ${name}.json`)
+        const payload = await fetchJsonValue(fileUrl)
+        data[name] = payload
+        progress[name] = ensureObjectArray(payload).length
+      }
+
+      const installedAt = new Date().toISOString()
+      const totalRows = Object.values(progress).reduce((sum, value) => sum + value, 0)
+      const snapshot: TrendAgentLocalSnapshot = {
+        version: 1,
+        source_id: source.id,
+        source_name: source.name,
+        source_url: source.url,
+        about_url: aboutUrl,
+        installed_at: installedAt,
+        files: fileMap,
+        stats: { ...progress },
+        total_rows: totalRows,
+        data,
+      }
+
+      await writeJsonAtomic(getTrendAgentLocalSnapshotPath(source.id), snapshot)
+      await writeTrendAgentLocalStatus(source.id, {
+        state: 'success',
+        source_id: source.id,
+        source_name: source.name,
+        source_url: source.url,
+        about_url: aboutUrl,
+        started_at: startedAt,
+        finished_at: installedAt,
+        progress: { ...progress },
+        total_rows: totalRows,
+        message: 'Локальная копия фида установлена',
+      })
+
+      for (const key of [...trendAgentDatasetCache.keys()]) {
+        if (key.startsWith(`local:${source.id}:`)) {
+          trendAgentDatasetCache.delete(key)
+        }
+      }
+    } catch (error) {
+      const details = error instanceof Error ? error.message : 'Unknown error'
+      await writeTrendAgentLocalStatus(source.id, {
+        state: 'failed',
+        source_id: source.id,
+        source_name: source.name,
+        source_url: source.url,
+        about_url: aboutUrl,
+        started_at: startedAt,
+        finished_at: new Date().toISOString(),
+        current_file: undefined,
+        progress: { ...progress },
+        total_rows: Object.values(progress).reduce((sum, value) => sum + value, 0),
+        error: details,
+        message: 'Установка локальной копии завершилась с ошибкой',
+      })
+    } finally {
+      trendAgentLocalInstallLocks.delete(lockKey)
+    }
+  })()
+
+  return {
+    ok: true,
+    source_id: source.id,
+    about_url: aboutUrl,
+    queued: true,
+    message: 'Установка локальной копии запущена в фоне. Отслеживайте статус ниже.',
+  }
 }
 
 function toNumber(v: unknown): number | undefined {
@@ -2268,134 +2468,83 @@ router.post('/import/trendagent/local/install', requireAdminPermission('import.w
     return
   }
 
-  const source = withDbRead((db) => db.feed_sources.find((s) => s.id === parsed.data.source_id))
+  const source = resolveTrendAgentSource(parsed.data.source_id, true)
   if (!source) {
     res.status(404).json({ success: false, error: 'Source not found' })
     return
   }
 
-  const sourceUrl = stringValue(parsed.data.about_url) || stringValue(source.url)
-  if (!sourceUrl) {
-    res.status(400).json({ success: false, error: 'URL is required. Вставьте ссылку на about.json' })
-    return
-  }
-
-  let aboutUrl: string
-  try {
-    aboutUrl = normalizeTrendAgentAboutUrl(sourceUrl)
-  } catch (error) {
-    const details = error instanceof Error ? error.message : 'Invalid URL'
-    res.status(400).json({ success: false, error: 'Некорректный URL TrendAgent', details })
-    return
-  }
-
-  const lockKey = `local-install:${source.id}`
-  if (hasActiveLocalInstallLock(lockKey)) {
-    res.status(409).json({ success: false, error: 'Установка локальной копии уже выполняется' })
-    return
-  }
-
-  const startedAt = new Date().toISOString()
-  trendAgentLocalInstallLocks.set(lockKey, Date.now())
-  await ensureTrendAgentLocalDir()
-
-  const progress: Record<string, number> = {}
-  const writeRunningStatus = async (currentFile?: string, message?: string) => {
-    await writeTrendAgentLocalStatus(source.id, {
-      state: 'running',
-      source_id: source.id,
-      source_name: source.name,
-      source_url: source.url,
-      about_url: aboutUrl,
-      started_at: startedAt,
-      current_file: currentFile,
-      progress: { ...progress },
-      total_rows: Object.values(progress).reduce((sum, value) => sum + value, 0),
-      message,
+  const result = await queueTrendAgentLocalInstall(source, parsed.data.about_url || source.url || '')
+  if ('status' in result) {
+    res.status(result.status).json({
+      success: false,
+      error: result.error,
+      details: result.details,
     })
+    return
   }
-
-  await writeRunningStatus('about.json', 'Старт установки локальной копии')
-
-  void (async () => {
-    try {
-      const aboutPayload = await fetchJsonValue(aboutUrl)
-      const fileMap = extractTrendAgentFileMap(aboutUrl, aboutPayload)
-      const fileEntries = Object.entries(fileMap).sort((a, b) => a[0].localeCompare(b[0]))
-      if (fileEntries.length === 0) {
-        throw new Error('В about.json не найдено ни одного JSON-файла для загрузки')
-      }
-
-      const data: Record<string, unknown> = { about: aboutPayload }
-      for (const [name, fileUrl] of fileEntries) {
-        await writeRunningStatus(`${name}.json`, `Загрузка ${name}.json`)
-        const payload = await fetchJsonValue(fileUrl)
-        data[name] = payload
-        progress[name] = ensureObjectArray(payload).length
-      }
-
-      const installedAt = new Date().toISOString()
-      const totalRows = Object.values(progress).reduce((sum, value) => sum + value, 0)
-      const snapshot: TrendAgentLocalSnapshot = {
-        version: 1,
-        source_id: source.id,
-        source_name: source.name,
-        source_url: source.url,
-        about_url: aboutUrl,
-        installed_at: installedAt,
-        files: fileMap,
-        stats: { ...progress },
-        total_rows: totalRows,
-        data,
-      }
-
-      await writeJsonAtomic(getTrendAgentLocalSnapshotPath(source.id), snapshot)
-      await writeTrendAgentLocalStatus(source.id, {
-        state: 'success',
-        source_id: source.id,
-        source_name: source.name,
-        source_url: source.url,
-        about_url: aboutUrl,
-        started_at: startedAt,
-        finished_at: installedAt,
-        progress: { ...progress },
-        total_rows: totalRows,
-        message: 'Локальная копия фида установлена',
-      })
-
-      for (const key of [...trendAgentDatasetCache.keys()]) {
-        if (key.startsWith(`local:${source.id}:`)) {
-          trendAgentDatasetCache.delete(key)
-        }
-      }
-    } catch (error) {
-      const details = error instanceof Error ? error.message : 'Unknown error'
-      await writeTrendAgentLocalStatus(source.id, {
-        state: 'failed',
-        source_id: source.id,
-        source_name: source.name,
-        source_url: source.url,
-        about_url: aboutUrl,
-        started_at: startedAt,
-        finished_at: new Date().toISOString(),
-        current_file: undefined,
-        progress: { ...progress },
-        total_rows: Object.values(progress).reduce((sum, value) => sum + value, 0),
-        error: details,
-        message: 'Установка локальной копии завершилась с ошибкой',
-      })
-    } finally {
-      trendAgentLocalInstallLocks.delete(lockKey)
-    }
-  })()
 
   res.status(202).json({
     success: true,
     data: {
+      queued: result.queued,
+      source_id: result.source_id,
+      about_url: result.about_url,
+      message: result.message,
+    },
+  })
+})
+
+// Compatibility endpoint for older admin builds.
+router.post('/import/trendagent/download-local', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+  const schema = z.object({
+    source_id: z.string().optional(),
+    about_url: z.string().optional(),
+  })
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Некорректный запрос' })
+    return
+  }
+
+  const requestedSourceId = stringValue(parsed.data.source_id)
+  const requestedAboutUrl = stringValue(parsed.data.about_url)
+  const source =
+    (requestedSourceId ? resolveTrendAgentSource(requestedSourceId, true) : undefined)
+    || (requestedAboutUrl ? resolveTrendAgentSourceByAboutUrl(requestedAboutUrl) : undefined)
+    || pickFallbackTrendAgentSource(true)
+
+  if (!source) {
+    res.status(404).json({ success: false, error: 'Source not found' })
+    return
+  }
+
+  const result = await queueTrendAgentLocalInstall(source, requestedAboutUrl || source.url || '')
+  if ('status' in result) {
+    // Legacy UI expects non-error response while download is already running.
+    if (result.status === 409) {
+      res.json({
+        success: true,
+        data: {
+          queued: true,
+          source_id: source.id,
+          about_url: requestedAboutUrl || source.url || '',
+          message: 'Скачивание уже выполняется. Дождитесь завершения.',
+        },
+      })
+      return
+    }
+    res.status(result.status).json({ success: false, error: result.error, details: result.details })
+    return
+  }
+
+  res.json({
+    success: true,
+    data: {
       queued: true,
-      source_id: source.id,
-      about_url: aboutUrl,
-      message: 'Установка локальной копии запущена в фоне. Отслеживайте статус ниже.',
+      source_id: result.source_id,
+      about_url: result.about_url,
+      message: 'Скачивание фида запущено в фоне. Статус обновится автоматически.',
     },
   })
 })
@@ -2451,6 +2600,88 @@ router.get('/import/trendagent/local/status', requireAdminAnyPermission('import.
   })
 })
 
+// Compatibility endpoint for older admin builds.
+router.get('/import/trendagent/local-feed', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+  const schema = z.object({
+    source_id: z.string().optional(),
+  })
+  const parsed = schema.safeParse(req.query)
+  if (!parsed.success) {
+    res.json({ success: true, data: null })
+    return
+  }
+
+  const source = parsed.data.source_id
+    ? resolveTrendAgentSource(parsed.data.source_id, true)
+    : pickFallbackTrendAgentSource(true)
+
+  if (!source) {
+    res.json({ success: true, data: null })
+    return
+  }
+
+  let status = await readTrendAgentLocalStatus(source.id)
+  if (status?.state === 'running' && !hasActiveLocalInstallLock(`local-install:${source.id}`)) {
+    status = {
+      ...status,
+      state: 'failed',
+      finished_at: new Date().toISOString(),
+      error: status.error || 'Установка была прервана.',
+      message: 'Требуется запустить установку повторно.',
+    }
+    await writeTrendAgentLocalStatus(source.id, status)
+  }
+
+  const snapshot = await readTrendAgentLocalSnapshot(source.id)
+  if (!status && !snapshot) {
+    res.json({ success: true, data: null })
+    return
+  }
+
+  if (status?.state === 'running') {
+    res.json({
+      success: true,
+      data: {
+        downloading: true,
+        aboutUrl: status.about_url || snapshot?.about_url || source.url,
+        startedAt: status.started_at,
+        currentFile: status.current_file,
+        progress: status.progress || {},
+      },
+    })
+    return
+  }
+
+  if (status?.state === 'failed') {
+    res.json({
+      success: true,
+      data: {
+        downloading: false,
+        failed: true,
+        error: status.error || 'Ошибка установки локальной копии',
+      },
+    })
+    return
+  }
+
+  if (!snapshot) {
+    res.json({ success: true, data: null })
+    return
+  }
+
+  res.json({
+    success: true,
+    data: {
+      downloading: false,
+      downloadedAt: snapshot.installed_at,
+      aboutUrl: snapshot.about_url,
+      stats: snapshot.stats || {},
+      totalRows: snapshot.total_rows || 0,
+      file: 'trendagent-local-feed.json',
+    },
+  })
+})
+
 router.delete('/import/trendagent/local', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
   const schema = z.object({
     source_id: z.string().min(1),
@@ -2481,6 +2712,51 @@ router.delete('/import/trendagent/local', requireAdminPermission('import.write')
   } catch (error) {
     const details = error instanceof Error ? error.message : 'Delete failed'
     res.status(500).json({ success: false, error: 'Не удалось удалить локальную копию', details })
+  }
+})
+
+// Compatibility endpoint for older admin builds.
+router.delete('/import/trendagent/local-feed', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+  const querySchema = z.object({
+    source_id: z.string().optional(),
+  })
+  const queryParsed = querySchema.safeParse(req.query)
+  const bodyParsed = z
+    .object({ source_id: z.string().optional() })
+    .safeParse(isPlainObject(req.body) ? req.body : {})
+
+  const sourceId =
+    stringValue(queryParsed.success ? queryParsed.data.source_id : '')
+    || stringValue(bodyParsed.success ? bodyParsed.data.source_id : '')
+
+  const source = sourceId
+    ? resolveTrendAgentSource(sourceId, true)
+    : pickFallbackTrendAgentSource(true)
+
+  if (!source) {
+    res.json({ success: true })
+    return
+  }
+
+  const lockKey = `local-install:${source.id}`
+  if (hasActiveLocalInstallLock(lockKey)) {
+    res.status(409).json({ success: false, error: 'Нельзя удалить копию во время установки' })
+    return
+  }
+
+  try {
+    await ensureTrendAgentLocalDir()
+    await fs.promises.unlink(getTrendAgentLocalSnapshotPath(source.id)).catch(() => {})
+    await fs.promises.unlink(getTrendAgentLocalStatusPath(source.id)).catch(() => {})
+    for (const key of [...trendAgentDatasetCache.keys()]) {
+      if (key.startsWith(`local:${source.id}:`)) {
+        trendAgentDatasetCache.delete(key)
+      }
+    }
+    res.json({ success: true })
+  } catch (error) {
+    const details = error instanceof Error ? error.message : 'Delete failed'
+    res.status(500).json({ success: false, error: 'Ошибка удаления', details })
   }
 })
 
@@ -2577,7 +2853,7 @@ router.post('/import/trendagent/complexes', requireAdminPermission('import.write
     return
   }
 
-  const source = withDbRead((db) => db.feed_sources.find((s) => s.id === parsed.data.source_id))
+  const source = resolveTrendAgentSource(parsed.data.source_id, parsed.data.use_local === true)
   if (!source) {
     res.status(404).json({ success: false, error: 'Source not found' })
     return
@@ -2627,10 +2903,10 @@ router.post('/import/trendagent/complexes', requireAdminPermission('import.write
   }
 })
 
-router.post('/import/trendagent/run', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseLocal = false): Promise<void> {
   const schema = z.object({
     source_id: z.string().min(1),
-    entity: z.enum(['property']),
+    entity: z.enum(['property']).optional(),
     use_local: z.coerce.boolean().optional(),
     block_ids: z.array(z.string().min(1)).optional(),
     full_city: z.coerce.boolean().optional(),
@@ -2644,20 +2920,23 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
     return
   }
 
-  const lockKey = `${parsed.data.source_id}:property:trendagent`
+  const useLocal = forceUseLocal || parsed.data.use_local === true
+  const entity: 'property' = parsed.data.entity || 'property'
+  const sourceSnapshot = resolveTrendAgentSource(parsed.data.source_id, useLocal)
+  if (!sourceSnapshot) {
+    res.status(404).json({ success: false, error: 'Source not found' })
+    return
+  }
+  const effectiveSourceId = sourceSnapshot.id
+
+  const lockKey = `${effectiveSourceId}:property:trendagent`
   if (hasActiveImportLock(lockKey)) {
     res.status(409).json({ success: false, error: 'Import already running for this source' })
     return
   }
   importLocks.set(lockKey, Date.now())
 
-  const sourceSnapshot = withDbRead((db) => db.feed_sources.find((s) => s.id === parsed.data.source_id))
-  if (!sourceSnapshot) {
-    importLocks.delete(lockKey)
-    res.status(404).json({ success: false, error: 'Source not found' })
-    return
-  }
-  if (!sourceSnapshot.url && parsed.data.use_local !== true) {
+  if (!sourceSnapshot.url && !useLocal) {
     importLocks.delete(lockKey)
     res.status(400).json({ success: false, error: 'Source URL is required for TrendAgent import' })
     return
@@ -2679,8 +2958,8 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
     action?: 'import' | 'preview' | 'delete'
   } = {
     id: newId(),
-    source_id: parsed.data.source_id,
-    entity: parsed.data.entity,
+    source_id: effectiveSourceId,
+    entity,
     started_at: new Date().toISOString(),
     status: 'success',
     stats: { inserted: 0, updated: 0, hidden: 0 },
@@ -2693,9 +2972,9 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
     let errorLog = ''
     try {
       importLocks.set(lockKey, Date.now())
-      const dataset = parsed.data.use_local === true
+      const dataset = useLocal
         ? await loadTrendAgentDatasetFromLocalSnapshot(
-            parsed.data.source_id,
+            effectiveSourceId,
             'full',
             parsed.data.force_refresh === true,
           )
@@ -2733,17 +3012,17 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
       const restoreArchived = parsed.data.restore_archived !== false
       const skipMissingLifecycle = parsed.data.full_city !== true
       const stats = withDb((db) => {
-        const source = db.feed_sources.find((s) => s.id === parsed.data.source_id)
+        const source = db.feed_sources.find((s) => s.id === effectiveSourceId)
         const mapping = source?.mapping
 
         const complexStats = upsertComplexesFromProperties(
           db,
-          parsed.data.source_id,
+          effectiveSourceId,
           rows,
           mapping,
           { restoreArchived, skipMissingLifecycle },
         )
-        const propertyStats = upsertProperties(db, parsed.data.source_id, rows, mapping, {
+        const propertyStats = upsertProperties(db, effectiveSourceId, rows, mapping, {
           restoreArchived,
           skipMissingLifecycle,
         })
@@ -2783,7 +3062,7 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
           'import',
           'property',
           run.source_id,
-          `TrendAgent ${parsed.data.use_local === true ? 'local' : 'remote'} ${parsed.data.full_city === true ? 'full-city' : 'selected'} import (${run.entity}): ${run.status} +${run.stats.inserted}/${run.stats.updated}/${run.stats.hidden}`,
+          `TrendAgent ${useLocal ? 'local' : 'remote'} ${parsed.data.full_city === true ? 'full-city' : 'selected'} import (${run.entity}): ${run.status} +${run.stats.inserted}/${run.stats.updated}/${run.stats.hidden}`,
           run.feed_name || undefined,
         )
       })
@@ -2810,7 +3089,7 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
     return errorLog
   }
 
-  const shouldQueueTrendAgentImport = parsed.data.full_city === true || parsed.data.entity === 'property'
+  const shouldQueueTrendAgentImport = parsed.data.full_city === true || entity === 'property'
   if (shouldQueueTrendAgentImport) {
     const scopeLabel = parsed.data.full_city === true ? 'всего города' : 'выбранных ЖК'
     void executeTrendAgentImport()
@@ -2833,6 +3112,15 @@ router.post('/import/trendagent/run', requireAdminPermission('import.write'), as
     return
   }
   res.json({ success: true, data: run })
+}
+
+router.post('/import/trendagent/run', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+  await handleTrendAgentRunRequest(req, res, false)
+})
+
+// Compatibility endpoint for older admin builds.
+router.post('/import/trendagent/run-local', requireAdminPermission('import.write'), async (req: Request, res: Response) => {
+  await handleTrendAgentRunRequest(req, res, true)
 })
 
 // Preview interfaces
