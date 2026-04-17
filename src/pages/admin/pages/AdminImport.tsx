@@ -174,6 +174,7 @@ type TrendAgentRunProgress = {
   updated_at: string
   selected_blocks?: number
   total_blocks?: number
+  processed_blocks?: number
   total_apartments?: number
   processed_apartments?: number
   prepared_rows?: number
@@ -318,6 +319,10 @@ function FullCityImportProgress({
   const total = typeof progress?.prepared_rows === 'number'
     ? progress.prepared_rows
     : progress?.total_apartments
+  const totalBlocks = typeof progress?.selected_blocks === 'number' && progress.selected_blocks > 0
+    ? progress.selected_blocks
+    : progress?.total_blocks
+  const processedBlocks = progress?.processed_blocks
   const progressPercent = typeof processed === 'number' && typeof total === 'number' && total > 0
     ? Math.min(100, Math.max(0, Math.round((processed / total) * 100)))
     : null
@@ -394,6 +399,16 @@ function FullCityImportProgress({
               Квартиры: <span className="font-mono font-semibold">{progress.processed_apartments.toLocaleString('ru-RU')}</span>
               {' / '}
               <span className="font-mono">{progress.total_apartments.toLocaleString('ru-RU')}</span>
+            </div>
+          </>
+        )}
+        {typeof processedBlocks === 'number' && typeof totalBlocks === 'number' && totalBlocks > 0 && (
+          <>
+            <div className="text-blue-600">|</div>
+            <div>
+              ЖК: <span className="font-mono font-semibold">{processedBlocks.toLocaleString('ru-RU')}</span>
+              {' / '}
+              <span className="font-mono">{totalBlocks.toLocaleString('ru-RU')}</span>
             </div>
           </>
         )}
@@ -666,11 +681,13 @@ export default function AdminImportPage() {
   ) => {
     stopTrendagentRunWatcher()
     trendagentRunPollIdRef.current = runId
+    const startedAt = startedAtOverride || Date.now()
     if (scope === 'full_city') {
+      setFullCityImportStartedAt(startedAt)
+      setFullCityImportSourceId(sourceId)
       setFullCityImportRunId(runId)
     }
 
-    const startedAt = startedAtOverride || Date.now()
     let attempt = 0
     const maxAttempts = scope === 'full_city'
       ? TRENDAGENT_RUN_POLL_MAX_ATTEMPTS_FULL_CITY
@@ -847,12 +864,7 @@ export default function AdminImportPage() {
   }, [urlGroups, runsBySource])
 
   const selectFeed = useCallback((feed: FeedSource | null) => {
-    stopTrendagentRunWatcher()
-    clearWatcherSession()
     saveActiveFeedSession(feed?.id || null)
-    setFullCityImportStartedAt(null)
-    setFullCityImportSourceId(null)
-    setFullCityImportRunId(null)
     setActiveImportSource(feed)
     setImportInputMode(feed?.mode === 'upload' ? 'file' : 'url')
     setFile(null)
@@ -871,7 +883,7 @@ export default function AdminImportPage() {
     setTrendagentTotal(0)
     setTrendagentTotalPages(1)
     setError(null)
-  }, [stopTrendagentRunWatcher])
+  }, [])
 
   useEffect(() => {
     if (feeds.length === 0) return

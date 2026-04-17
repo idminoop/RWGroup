@@ -162,6 +162,7 @@ type TrendAgentRunProgress = {
   updated_at: string
   selected_blocks?: number
   total_blocks?: number
+  processed_blocks?: number
   total_apartments?: number
   processed_apartments?: number
   prepared_rows?: number
@@ -3224,6 +3225,7 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
   const executeTrendAgentImport = async (): Promise<string> => {
     let errorLog = ''
     let stoppedByUser = false
+    const processedBlockIds = new Set<string>()
     try {
       const ensureRunCanContinue = async (
         resumePatch: Partial<TrendAgentRunProgress>,
@@ -3284,6 +3286,7 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
       patchTrendAgentRunProgress(run.id, {
         phase: 'building_rows',
         selected_blocks: selectedBlockIds.size,
+        processed_blocks: 0,
         processed_apartments: 0,
         message: 'Подготовка строк для импорта',
       })
@@ -3312,12 +3315,13 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         phase: 'upserting',
         prepared_rows: rows.length,
         processed_rows: 0,
+        processed_blocks: 0,
         message: `Сохранение ${rows.length.toLocaleString('ru-RU')} строк в базу`,
       })
 
       const restoreArchived = parsed.data.restore_archived !== false
       const skipMissingLifecycle = parsed.data.full_city !== true
-      const upsertChunkSize = 1000
+      const upsertChunkSize = parsed.data.full_city === true ? 250 : 1000
       const stats: {
         inserted: number
         updated: number
@@ -3355,11 +3359,16 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
           break
         }
         const chunk = rows.slice(offset, offset + upsertChunkSize)
+        for (const row of chunk) {
+          const blockId = stringValue(row.block_id) || stringValue(row.complex_external_id)
+          if (blockId) processedBlockIds.add(blockId)
+        }
 
         const propertyStats = withDb((db) => upsertProperties(db, effectiveSourceId, chunk, mapping, {
           restoreArchived,
           skipMissingLifecycle: true,
           runtime: propertyUpsertRuntime,
+          appendNew: parsed.data.full_city === true,
         }), { persist: false })
 
         stats.inserted += propertyStats.inserted
@@ -3379,8 +3388,9 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         patchTrendAgentRunProgress(run.id, {
           phase: 'upserting',
           processed_rows: processedRows,
+          processed_blocks: processedBlockIds.size,
           stats: { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden },
-          message: `Сохранено строк: ${processedRows.toLocaleString('ru-RU')} из ${rows.length.toLocaleString('ru-RU')}`,
+          message: `Сохранено строк: ${processedRows.toLocaleString('ru-RU')} из ${rows.length.toLocaleString('ru-RU')}; ЖК: ${processedBlockIds.size.toLocaleString('ru-RU')} из ${selectedBlockIds.size.toLocaleString('ru-RU')}`,
         })
         await waitForNextTick()
       }
@@ -3391,6 +3401,7 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         patchTrendAgentRunProgress(run.id, {
           phase: 'stopped',
           processed_rows: stats.inserted + stats.updated,
+          processed_blocks: processedBlockIds.size,
           stats: { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden },
           message: 'Импорт остановлен вручную. Можно продолжить новым запуском.',
           error: errorLog,
@@ -3412,6 +3423,7 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         patchTrendAgentRunProgress(run.id, {
           phase: 'upserting',
           processed_rows: rows.length,
+          processed_blocks: processedBlockIds.size,
           stats: { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden },
           message: `Сохранено: +${stats.inserted.toLocaleString('ru-RU')} / обновлено ${stats.updated.toLocaleString('ru-RU')} / скрыто ${stats.hidden.toLocaleString('ru-RU')}`,
         })
@@ -3439,6 +3451,7 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         errorLog = 'Импорт остановлен вручную'
         patchTrendAgentRunProgress(run.id, {
           phase: 'stopped',
+          processed_blocks: processedBlockIds.size,
           error: errorLog,
           message: 'Импорт остановлен вручную',
         })

@@ -692,6 +692,7 @@ export function upsertProperties(
     restoreArchived?: boolean
     skipMissingLifecycle?: boolean
     runtime?: UpsertPropertiesRuntime
+    appendNew?: boolean
   },
 ) {
   const runtime = options?.runtime
@@ -699,6 +700,7 @@ export function upsertProperties(
   if (runtime && !runtime.now) runtime.now = now
   const allowRestoreArchived = options?.restoreArchived === true
   const skipMissingLifecycle = options?.skipMissingLifecycle === true
+  const appendNew = options?.appendNew === true
   if (runtime && !runtime.seen) runtime.seen = new Set<string>()
   const seen = runtime?.seen || new Set<string>()
   // Global index by external_id with collision buckets.
@@ -817,7 +819,8 @@ export function upsertProperties(
             updated += 1
           } else {
             const created = { id: newId(), ...invalidNext }
-            db.properties.unshift(created)
+            if (appendNew) db.properties.push(created)
+            else db.properties.unshift(created)
             const bucket = index.get(externalId)
             if (bucket) bucket.push(created)
             else index.set(externalId, [created])
@@ -875,7 +878,8 @@ export function upsertProperties(
         updated += 1
       } else {
         const created = { id: newId(), ...next }
-        db.properties.unshift(created)
+        if (appendNew) db.properties.push(created)
+        else db.properties.unshift(created)
         const bucket = index.get(externalId)
         if (bucket) bucket.push(created)
         else index.set(externalId, [created])
