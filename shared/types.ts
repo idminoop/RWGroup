@@ -3,196 +3,10 @@ export type Category = 'newbuild' | 'secondary' | 'rent'
 export type RecordStatus = 'active' | 'hidden' | 'archived'
 
 export type FormType = 'consultation' | 'buy_sell' | 'view_details' | 'partner'
-export type LeadStatus = 'new' | 'in_progress' | 'done' | 'spam'
 
 export type CatalogTab = 'newbuild' | 'secondary' | 'rent'
-export type CollectionMode = 'manual' | 'auto'
 
 export type Id = string
-
-export type AdminRole = 'owner' | 'content' | 'import' | 'sales'
-
-export type AdminPermission =
-  | 'admin.access'
-  | 'publish.read'
-  | 'publish.apply'
-  | 'admin_users.read'
-  | 'admin_users.write'
-  | 'upload.write'
-  | 'home.read'
-  | 'home.write'
-  | 'leads.read'
-  | 'leads.write'
-  | 'feeds.read'
-  | 'feeds.write'
-  | 'import.read'
-  | 'import.write'
-  | 'catalog.read'
-  | 'catalog.write'
-  | 'collections.read'
-  | 'collections.write'
-  | 'landing_presets.read'
-  | 'landing_presets.write'
-  | 'logs.read'
-
-export interface AdminIdentity {
-  id: Id
-  login: string
-  roles: AdminRole[]
-  permissions: AdminPermission[]
-}
-
-export interface AdminUser {
-  id: Id
-  login: string
-  password_hash: string
-  roles: AdminRole[]
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface AdminUserPublic {
-  id: Id
-  login: string
-  roles: AdminRole[]
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface ComplexLandingTag {
-  id: string
-  label: string
-}
-
-export interface ComplexLandingFact {
-  id: string
-  title: string
-  value: string
-  subtitle?: string
-  image?: string
-  card_col_span?: 1 | 2 | 3
-  card_row_span?: 1 | 2
-}
-
-export interface ComplexLandingFeature {
-  id: string
-  title: string
-  image?: string
-  preset_key?: string
-}
-
-export interface ComplexLandingPlanItem {
-  id: string
-  name: string
-  price: string
-  area: string
-  variants: number
-  bedrooms?: number
-  note?: string
-  preview_image?: string
-  preview_images?: string[]
-}
-
-export interface ComplexLandingAccordionItem {
-  id: string
-  title: string
-  text: string
-  image?: string
-  open_by_default?: boolean
-}
-
-export interface ComplexLandingAccordion {
-  enabled?: boolean
-  title?: string
-  subtitle?: string
-  items: ComplexLandingAccordionItem[]
-}
-
-export interface ComplexLandingInfoCard {
-  id: string
-  title: string
-  description?: string
-  cover_image?: string
-  modal_title?: string
-  modal_text?: string
-  gallery_images?: string[]
-  card_col_span?: 1 | 2 | 3
-  card_row_span?: 1 | 2
-}
-
-export interface ComplexLandingInfoSection {
-  enabled?: boolean
-  title?: string
-  subtitle?: string
-  items: ComplexLandingInfoCard[]
-}
-
-export type NearbyGroup = 'life' | 'leisure' | 'family'
-
-export interface ComplexNearbyCollection {
-  key: string
-  label: string
-  group?: NearbyGroup
-}
-
-export interface ComplexNearbyPlace {
-  id: string
-  name: string
-  description?: string
-  category?: string
-  category_key?: string
-  group?: NearbyGroup
-  emoji?: string
-  lat: number
-  lon: number
-  walk_minutes: number
-  drive_minutes: number
-  rating?: number
-  reviews_count?: number
-  image_url?: string
-  image_variants?: string[]
-  image_fallback?: boolean
-  image_custom?: boolean
-}
-
-export interface ComplexLandingNearby {
-  enabled?: boolean
-  title?: string
-  subtitle?: string
-  refreshed_at?: string
-  collections?: ComplexNearbyCollection[]
-  selected_ids: string[]
-  candidates: ComplexNearbyPlace[]
-}
-
-export interface ComplexLandingConfig {
-  enabled?: boolean
-  accent_color?: string
-  surface_color?: string
-  hero_image?: string
-  preview_photo_label?: string
-  cta_label?: string
-  tags: ComplexLandingTag[]
-  facts: ComplexLandingFact[]
-  feature_ticker: ComplexLandingFeature[]
-  plans: {
-    title?: string
-    description?: string
-    cta_label?: string
-    items: ComplexLandingPlanItem[]
-  }
-  accordion?: ComplexLandingAccordion
-  info_cards?: ComplexLandingInfoSection
-  nearby?: ComplexLandingNearby
-}
-
-export interface LandingFeaturePreset {
-  key: string
-  title: string
-  image: string
-}
 
 export interface Complex {
   id: Id
@@ -211,17 +25,8 @@ export interface Complex {
   class?: string
   finish_type?: string
   handover_date?: string
-  description?: string
-  address?: string
-  mortgage_available?: boolean
-  installment_available?: boolean
-  subsidy_available?: boolean
-  military_mortgage_available?: boolean
-  queue_min?: number
-  building_type?: string
   geo_lat?: number
   geo_lon?: number
-  landing?: ComplexLandingConfig
   last_seen_at?: string
   updated_at: string
 }
@@ -240,44 +45,13 @@ export interface Property {
   bedrooms: number
   price: number
   price_period?: 'month'
-  old_price?: number
   area_total: number
-  area_living?: number
-  area_kitchen?: number
   district: string
   metro: string[]
   images: string[]
   status: RecordStatus
-  floor?: number
-  floors_total?: number
-  renovation?: string
-  is_euroflat?: boolean
-  building_section?: string
-  building_state?: string
-  ready_quarter?: number
-  built_year?: number
-  description?: string
-  mortgage_available?: boolean
-  installment_available?: boolean
-  subsidy_available?: boolean
-  military_mortgage_available?: boolean
-  building_queue?: number
-  building_type?: string
   last_seen_at?: string
   updated_at: string
-}
-
-export interface CollectionAutoRules {
-  type: 'property' | 'complex'
-  category?: Category
-  bedrooms?: number
-  priceMin?: number
-  priceMax?: number
-  areaMin?: number
-  areaMax?: number
-  district?: string
-  metro?: string[]
-  q?: string
 }
 
 export interface Collection {
@@ -287,10 +61,7 @@ export interface Collection {
   description?: string
   cover_image?: string
   priority: number
-  status: 'visible' | 'hidden'
-  mode: CollectionMode
   items: { type: 'property' | 'complex'; ref_id: Id }[]
-  auto_rules?: CollectionAutoRules
   updated_at: string
 }
 
@@ -302,11 +73,7 @@ export interface Lead {
   phone: string
   comment?: string
   source: { page: string; block?: string; object_id?: string; object_type?: 'property' | 'complex' | 'collection' }
-  lead_status?: LeadStatus
-  assignee?: string
-  admin_note?: string
   created_at: string
-  updated_at?: string
   ip?: string
   user_agent?: string
 }
@@ -318,10 +85,6 @@ export interface FeedSource {
   url?: string
   format: 'xlsx' | 'csv' | 'xml' | 'json'
   is_active: boolean
-  auto_refresh?: boolean
-  refresh_interval_hours?: number
-  last_auto_refresh?: string
-  mapping?: Record<string, string>
   created_at: string
 }
 
@@ -334,11 +97,6 @@ export interface ImportRun {
   status: 'success' | 'failed' | 'partial'
   stats: { inserted: number; updated: number; hidden: number }
   error_log?: string
-  feed_name?: string
-  feed_url?: string
-  feed_file?: string
-  target_complex_id?: string
-  action?: 'import' | 'preview' | 'delete'
 }
 
 export interface ImportPreviewRow {
@@ -352,7 +110,6 @@ export interface ImportPreviewRow {
 export interface ImportPreview {
   totalRows: number
   sampleRows: ImportPreviewRow[]
-  mappedItems: (Property | Complex)[]
   fieldMappings: Record<string, string[]>
   validRows: number
   invalidRows: number
@@ -379,25 +136,7 @@ export interface HomeContent {
     properties: Id[]
     collections: Id[]
   }
-  maps?: {
-    yandex_maps_api_key?: string
-  }
   updated_at: string
-}
-
-export type AuditAction = 'create' | 'update' | 'delete' | 'login' | 'publish' | 'import'
-export type AuditEntity = 'property' | 'complex' | 'collection' | 'feed' | 'lead' | 'user' | 'home' | 'settings'
-
-export interface AuditLog {
-  id: Id
-  admin_id: string
-  admin_login: string
-  action: AuditAction
-  entity: AuditEntity
-  entity_id?: string
-  description: string
-  timestamp: string
-  details?: string
 }
 
 export interface DbShape {
@@ -406,10 +145,7 @@ export interface DbShape {
   complexes: Complex[]
   properties: Property[]
   collections: Collection[]
-  admin_users: AdminUser[]
   leads: Lead[]
   import_runs: ImportRun[]
-  landing_feature_presets: LandingFeaturePreset[]
-  hidden_landing_feature_preset_keys: string[]
-  audit_logs: AuditLog[]
 }
+

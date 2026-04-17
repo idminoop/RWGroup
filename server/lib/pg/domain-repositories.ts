@@ -437,6 +437,9 @@ export class CatalogRepository {
           complex.price_from ?? null, complex.area_from ?? null, complex.images || [],
           complex.status, complex.developer || null, complex.class || null,
           complex.finish_type || null, complex.handover_date || null, complex.description || null,
+          complex.geo_lat ?? null, complex.geo_lon ?? null,
+          complex.landing ? JSON.stringify(complex.landing) : null,
+          complex.last_seen_at || null, complex.updated_at,
           complex.address || null,
           complex.mortgage_available ?? null,
           complex.installment_available ?? null,
@@ -444,16 +447,13 @@ export class CatalogRepository {
           complex.military_mortgage_available ?? null,
           complex.queue_min ?? null,
           complex.building_type || null,
-          complex.geo_lat ?? null, complex.geo_lon ?? null,
-          complex.landing ? JSON.stringify(complex.landing) : null,
-          complex.last_seen_at || null, complex.updated_at,
         )
         rows.push(
-          `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9}::text[],$${o+10},$${o+11},$${o+12}::text[],$${o+13},$${o+14},$${o+15},$${o+16},$${o+17},$${o+18},$${o+19},$${o+20},$${o+21},$${o+22},$${o+23},$${o+24},$${o+25},$${o+26},$${o+27},$${o+28},$${o+29}::jsonb,$${o+30},$${o+31})`
+          `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9}::text[],$${o+10},$${o+11},$${o+12}::text[],$${o+13},$${o+14},$${o+15},$${o+16},$${o+17},$${o+18},$${o+19},$${o+20},$${o+21}::jsonb,$${o+22},$${o+23},$${o+24},$${o+25},$${o+26},$${o+27},$${o+28},$${o+29},$${o+30})`
         )
       }
       await client.query(
-        `INSERT INTO rw_complexes (scope,id,source_id,external_id,slug,title,category,district,metro,price_from,area_from,images,status,developer,class,finish_type,handover_date,description,address,mortgage_available,installment_available,subsidy_available,military_mortgage_available,queue_min,building_type,geo_lat,geo_lon,landing,last_seen_at,updated_at) VALUES ${rows.join(',')}`,
+        `INSERT INTO rw_complexes (scope,id,source_id,external_id,slug,title,category,district,metro,price_from,area_from,images,status,developer,class,finish_type,handover_date,description,geo_lat,geo_lon,landing,last_seen_at,updated_at,address,mortgage_available,installment_available,subsidy_available,military_mortgage_available,queue_min,building_type) VALUES ${rows.join(',')}`,
         params
       )
     }
@@ -474,16 +474,16 @@ export class CatalogRepository {
           property.floor ?? null, property.floors_total ?? null, property.renovation || null,
           property.is_euroflat ?? null, property.building_section || null, property.building_state || null,
           property.ready_quarter ?? null, property.built_year ?? null, property.description || null,
+          property.last_seen_at || null, property.updated_at,
           property.mortgage_available ?? null, property.installment_available ?? null, property.subsidy_available ?? null,
           property.military_mortgage_available ?? null, property.building_queue ?? null, property.building_type || null,
-          property.last_seen_at || null, property.updated_at,
         )
         rows.push(
           `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9},$${o+10},$${o+11},$${o+12},$${o+13},$${o+14},$${o+15},$${o+16},$${o+17},$${o+18},$${o+19},$${o+20}::text[],$${o+21}::text[],$${o+22},$${o+23},$${o+24},$${o+25},$${o+26},$${o+27},$${o+28},$${o+29},$${o+30},$${o+31},$${o+32},$${o+33},$${o+34},$${o+35},$${o+36},$${o+37},$${o+38},$${o+39})`
         )
       }
       await client.query(
-        `INSERT INTO rw_properties (scope,id,source_id,external_id,slug,lot_number,complex_id,complex_external_id,deal_type,category,title,bedrooms,price,price_period,old_price,area_total,area_living,area_kitchen,district,metro,images,status,floor,floors_total,renovation,is_euroflat,building_section,building_state,ready_quarter,built_year,description,mortgage_available,installment_available,subsidy_available,military_mortgage_available,building_queue,building_type,last_seen_at,updated_at) VALUES ${rows.join(',')}`,
+        `INSERT INTO rw_properties (scope,id,source_id,external_id,slug,lot_number,complex_id,complex_external_id,deal_type,category,title,bedrooms,price,price_period,old_price,area_total,area_living,area_kitchen,district,metro,images,status,floor,floors_total,renovation,is_euroflat,building_section,building_state,ready_quarter,built_year,description,last_seen_at,updated_at,mortgage_available,installment_available,subsidy_available,military_mortgage_available,building_queue,building_type) VALUES ${rows.join(',')}`,
         params
       )
     }

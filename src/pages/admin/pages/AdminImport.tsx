@@ -1619,7 +1619,6 @@ export default function AdminImportPage() {
                           if (!res.ok || json.success !== true) {
                             throw new Error(json.details || json.error || 'Ошибка импорта')
                           }
-                          setLocalFeedInfo(null)
                           setTrendagentInfo(json.data.message || 'Импорт запущен в фоне.')
                           setFullCityImportStartedAt(Date.now())
                           setFullCityImportSourceId(activeImportSource.id)
