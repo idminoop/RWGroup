@@ -3278,13 +3278,32 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
           .filter(Boolean)
         const uniqueAllBlockIds = [...new Set(allBlockIds)]
         totalAvailableBlocks = uniqueAllBlockIds.length
-        const limitBlocks =
-          typeof parsed.data.limit_blocks === 'number' && parsed.data.limit_blocks > 0
-            ? parsed.data.limit_blocks
-            : undefined
-        const effectiveBlockIds = limitBlocks
-          ? uniqueAllBlockIds.slice(0, Math.min(uniqueAllBlockIds.length, limitBlocks))
-          : uniqueAllBlockIds
+        const explicitBlockIds = [...new Set((parsed.data.block_ids || []).map((id) => id.trim()).filter(Boolean))]
+        const hasExplicitSelection = explicitBlockIds.length > 0
+        const limitBlocks = typeof parsed.data.limit_blocks === 'number' && parsed.data.limit_blocks > 0
+          ? parsed.data.limit_blocks
+          : undefined
+        let effectiveBlockIds: string[]
+        if (hasExplicitSelection) {
+          const allowed = new Set(uniqueAllBlockIds)
+          effectiveBlockIds = explicitBlockIds.filter((id) => allowed.has(id))
+        } else if (limitBlocks) {
+          const apartmentCountByBlockId = new Map<string, number>()
+          for (const apartment of dataset.apartments) {
+            const blockId = stringValue(apartment.block_id)
+            if (!blockId) continue
+            apartmentCountByBlockId.set(blockId, (apartmentCountByBlockId.get(blockId) || 0) + 1)
+          }
+          const ranked = uniqueAllBlockIds
+            .map((id) => ({ id, count: apartmentCountByBlockId.get(id) || 0 }))
+            .sort((a, b) => (b.count - a.count) || a.id.localeCompare(b.id))
+            .filter((item) => item.count > 0)
+            .map((item) => item.id)
+          const base = ranked.length > 0 ? ranked : uniqueAllBlockIds
+          effectiveBlockIds = base.slice(0, Math.min(base.length, limitBlocks))
+        } else {
+          effectiveBlockIds = uniqueAllBlockIds
+        }
         selectedBlockIds = new Set(effectiveBlockIds)
         if (selectedBlockIds.size === 0) {
           throw new Error('No blocks found in TrendAgent feed')
@@ -4661,9 +4680,13 @@ async function buildTrendAgentImportRows(
   }
 
   const rows: Record<string, unknown>[] = []
-  const totalApartments = dataset.apartments.length
+  const candidateApartments = dataset.apartments.filter((apt) => {
+    const blockId = stringValue(apt.block_id)
+    return Boolean(blockId) && selectedBlockIds.has(blockId)
+  })
+  const totalApartments = candidateApartments.length
   let processedApartments = 0
-  for (const apt of dataset.apartments) {
+  for (const apt of candidateApartments) {
     processedApartments += 1
     if (onProgress && (processedApartments % 1000 === 0 || processedApartments === totalApartments)) {
       await onProgress(processedApartments, totalApartments)

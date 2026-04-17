@@ -596,6 +596,31 @@ router.get('/catalog', (req: Request, res: Response) => {
             .filter((c) => (districtLc ? c.district.toLowerCase() === districtLc : true))
             .filter((c) => (metroLc ? c.metro.some((m) => m.toLowerCase() === metroLc) : true))
             .filter((c) => (qlc ? c.title.toLowerCase().includes(qlc) || c.district.toLowerCase().includes(qlc) || c.metro.some((m) => m.toLowerCase().includes(qlc)) : true))
+            .map((complex) => {
+              if (typeof complex.price_from === 'number' && typeof complex.area_from === 'number') {
+                return complex
+              }
+              const linked = db.properties.filter((p) =>
+                p.status === 'active'
+                && (p.complex_id === complex.id || p.complex_external_id === complex.external_id)
+              )
+              if (linked.length === 0) return complex
+              const minPrice = linked.reduce<number | undefined>((min, p) => {
+                if (!Number.isFinite(p.price) || p.price <= 0) return min
+                if (typeof min !== 'number' || p.price < min) return p.price
+                return min
+              }, undefined)
+              const minArea = linked.reduce<number | undefined>((min, p) => {
+                if (!Number.isFinite(p.area_total) || p.area_total <= 0) return min
+                if (typeof min !== 'number' || p.area_total < min) return p.area_total
+                return min
+              }, undefined)
+              return {
+                ...complex,
+                price_from: typeof complex.price_from === 'number' ? complex.price_from : minPrice,
+                area_from: typeof complex.area_from === 'number' ? complex.area_from : minArea,
+              }
+            })
             .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
         : []
 

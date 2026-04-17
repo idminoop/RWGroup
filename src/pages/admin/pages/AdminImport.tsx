@@ -2232,7 +2232,10 @@ export default function AdminImportPage() {
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={() => setTrendagentSelectedIds(trendagentOptions.map((item) => item.block_id))}
+                      onClick={() => {
+                        const pageIds = trendagentOptions.map((item) => item.block_id)
+                        setTrendagentSelectedIds((prev) => [...new Set([...prev, ...pageIds])])
+                      }}
                     >
                       Выбрать все (на странице)
                     </Button>
