@@ -3124,23 +3124,77 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
 
       const restoreArchived = parsed.data.restore_archived !== false
       const skipMissingLifecycle = parsed.data.full_city !== true
-      const stats = withDb((db) => {
-        const source = db.feed_sources.find((s) => s.id === effectiveSourceId)
-        const mapping = source?.mapping
+      const upsertChunkSize = 2000
+      const stats: {
+        inserted: number
+        updated: number
+        hidden: number
+        errors: Array<{ rowIndex: number; externalId?: string; error: string }>
+        targetComplexId?: string
+      } = {
+        inserted: 0,
+        updated: 0,
+        hidden: 0,
+        errors: [],
+      }
+      let mapping: Record<string, string> | undefined
 
-        const complexStats = upsertComplexesFromProperties(
+      const complexStats = withDb((db) => {
+        const source = db.feed_sources.find((s) => s.id === effectiveSourceId)
+        mapping = source?.mapping
+        return upsertComplexesFromProperties(
           db,
           effectiveSourceId,
           rows,
           mapping,
           { restoreArchived, skipMissingLifecycle },
         )
-        const propertyStats = upsertProperties(db, effectiveSourceId, rows, mapping, {
+      }, { persist: false })
+      stats.targetComplexId = complexStats.targetComplexId
+
+      const seenPropertyExternalIds = new Set<string>()
+      for (let offset = 0; offset < rows.length; offset += upsertChunkSize) {
+        const chunk = rows.slice(offset, offset + upsertChunkSize)
+        for (const row of chunk) {
+          const externalId = stringValue((row as Record<string, unknown>).external_id)
+          if (externalId) seenPropertyExternalIds.add(externalId)
+        }
+
+        const propertyStats = withDb((db) => upsertProperties(db, effectiveSourceId, chunk, mapping, {
           restoreArchived,
-          skipMissingLifecycle,
+          skipMissingLifecycle: true,
+        }), { persist: false })
+
+        stats.inserted += propertyStats.inserted
+        stats.updated += propertyStats.updated
+        stats.hidden += propertyStats.hidden
+        if (propertyStats.errors.length > 0) {
+          stats.errors.push(
+            ...propertyStats.errors.map((item) => ({
+              ...item,
+              rowIndex: item.rowIndex + offset,
+            })),
+          )
+        }
+
+        const processedRows = Math.min(rows.length, offset + chunk.length)
+        importLocks.set(lockKey, Date.now())
+        patchTrendAgentRunProgress(run.id, {
+          phase: 'upserting',
+          processed_rows: processedRows,
+          stats: { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden },
+          message: `Сохранено строк: ${processedRows.toLocaleString('ru-RU')} из ${rows.length.toLocaleString('ru-RU')}`,
         })
-        return { ...propertyStats, targetComplexId: complexStats.targetComplexId }
-      })
+        await waitForNextTick()
+      }
+
+      if (!skipMissingLifecycle) {
+        const lifecycleHidden = withDb((db) => applyMissingPropertyLifecycleForSource(db, effectiveSourceId, seenPropertyExternalIds), { persist: false })
+        stats.hidden += lifecycleHidden
+      }
+
+      // Persist a single consolidated state snapshot after chunked upsert.
+      withDb(() => undefined)
       patchTrendAgentRunProgress(run.id, {
         phase: 'upserting',
         processed_rows: rows.length,
@@ -4177,6 +4231,34 @@ function buildTrendAgentComplexImportRows(dataset: TrendAgentDataset, selectedBl
 
 function waitForNextTick(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve))
+}
+
+function applyMissingPropertyLifecycleForSource(
+  db: DbShape,
+  sourceId: string,
+  seenExternalIds: Set<string>,
+): number {
+  const now = new Date().toISOString()
+  let hidden = 0
+
+  for (const property of db.properties) {
+    if (property.source_id !== sourceId) continue
+    if (seenExternalIds.has(property.external_id)) continue
+
+    if (property.status === 'active') {
+      property.status = 'hidden'
+      property.updated_at = now
+      hidden += 1
+      continue
+    }
+
+    if (property.status === 'hidden') {
+      property.status = 'archived'
+      property.updated_at = now
+    }
+  }
+
+  return hidden
 }
 
 async function buildTrendAgentImportRows(

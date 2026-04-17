@@ -811,6 +811,10 @@ export default function AdminImportPage() {
   }, [activeImportSource?.url])
 
   const canUseTrendagentTools = importInputMode === 'url' && (isTrendAgentAboutSource || useLocalTrendagentFeed)
+  const hasInstalledLocalFeed = Boolean(localFeedStatus?.installed)
+  const trendagentImportSourceLabel = useLocalTrendagentFeed && hasInstalledLocalFeed
+    ? 'локальной копии'
+    : 'URL-источника'
 
 
   // --- Feed Management Functions ---
@@ -1205,7 +1209,7 @@ export default function AdminImportPage() {
     }
     if (scope === 'full_city') {
       const confirmed = window.confirm(
-        'Запустить импорт всего города? Это может занять несколько минут и обновит все объекты этого источника.',
+        `Запустить импорт всего города из ${trendagentImportSourceLabel}? Это может занять несколько минут и обновит все объекты этого источника.`,
       )
       if (!confirmed) return
     }
@@ -1244,7 +1248,7 @@ export default function AdminImportPage() {
         if (scope === 'full_city') {
           setFullCityImportStartedAt(now)
           setFullCityImportSourceId(activeImportSource.id)
-          setTrendagentInfo(`Импорт всего города запущен в фоне. Начало: ${new Date(now).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}. Следите за статусом в журнале импортов.`)
+          setTrendagentInfo(`Импорт всего города из ${trendagentImportSourceLabel} запущен в фоне. Начало: ${new Date(now).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}. Следите за статусом в журнале импортов.`)
         } else {
           setTrendagentInfo(json.data.message || 'Импорт запущен в фоне. Следите за статусом в журнале импортов.')
         }
@@ -1846,6 +1850,20 @@ export default function AdminImportPage() {
               <div className="text-xs text-indigo-700">
                 Вставьте ссылку на <span className="font-mono">about.json</span>. Установка запускается сразу после вставки ссылки.
               </div>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                <div className="rounded border border-indigo-200 bg-white px-2 py-1.5 text-[11px] text-slate-700">
+                  <div className="font-semibold text-indigo-900">Шаг 1</div>
+                  <div>Установите локальную копию по ссылке.</div>
+                </div>
+                <div className="rounded border border-indigo-200 bg-white px-2 py-1.5 text-[11px] text-slate-700">
+                  <div className="font-semibold text-indigo-900">Шаг 2</div>
+                  <div>Включите чекбокс «Использовать локальную копию».</div>
+                </div>
+                <div className="rounded border border-indigo-200 bg-white px-2 py-1.5 text-[11px] text-slate-700">
+                  <div className="font-semibold text-indigo-900">Шаг 3</div>
+                  <div>Нажмите «Импортировать весь город (локально)» ниже.</div>
+                </div>
+              </div>
 
               <div className="flex flex-col gap-2 md:flex-row">
                 <Input
@@ -1946,6 +1964,17 @@ export default function AdminImportPage() {
                       }}
                     >
                       Посмотреть фид JSON
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={useLocalTrendagentFeed ? 'default' : 'secondary'}
+                      onClick={() => {
+                        localFeedPreferenceTouchedRef.current = true
+                        setUseLocalTrendagentFeed(true)
+                      }}
+                      disabled={useLocalTrendagentFeed}
+                    >
+                      {useLocalTrendagentFeed ? 'Используется для импорта' : 'Использовать для импорта'}
                     </Button>
                     <Button
                       size="sm"
@@ -2107,19 +2136,24 @@ export default function AdminImportPage() {
                     </div>
                   </div>
 
+                  <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                    Источник импорта сейчас: <span className="font-semibold">{trendagentImportSourceLabel}</span>.
+                    {useLocalTrendagentFeed && !hasInstalledLocalFeed ? ' Локальная копия не найдена, переключитесь на URL-источник.' : ''}
+                  </div>
+
                   <div className="flex flex-wrap justify-end gap-2">
                     <Button
                       variant="secondary"
                       onClick={runTrendagentFullCityImport}
                       disabled={trendagentLoading}
                     >
-                      {trendagentLoading ? 'Импорт…' : 'Импортировать весь город'}
+                      {trendagentLoading ? 'Импорт…' : (useLocalTrendagentFeed ? 'Импортировать весь город (локально)' : 'Импортировать весь город (по URL)')}
                     </Button>
                     <Button
                       onClick={runTrendagentSelectedImport}
                       disabled={trendagentLoading || trendagentSelectedIds.length === 0}
                     >
-                      {trendagentLoading ? 'Импорт…' : `Импортировать выбранные ЖК (${trendagentSelectedIds.length})`}
+                      {trendagentLoading ? 'Импорт…' : `Импортировать выбранные ЖК (${trendagentSelectedIds.length})${useLocalTrendagentFeed ? ' • локально' : ''}`}
                     </Button>
                   </div>
                 </div>

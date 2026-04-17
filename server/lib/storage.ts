@@ -161,6 +161,10 @@ type PersistRequest = {
   persistPublished: boolean
 }
 
+type WithDbOptions = {
+  persist?: boolean
+}
+
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
   if (value === undefined) return undefined
   const normalized = value.trim().toLowerCase()
@@ -219,8 +223,9 @@ function queuePersist(request: PersistRequest): void {
 
   persistPending = {
     request: nextRequest,
-    draft: deepClone(draftDbCache),
-    published: deepClone(publishedDbCache),
+    // Clone only parts that will actually be persisted.
+    draft: nextRequest.persistDraft ? deepClone(draftDbCache) : draftDbCache,
+    published: nextRequest.persistPublished ? deepClone(publishedDbCache) : publishedDbCache,
   }
 
   startPersistWorker()
@@ -452,12 +457,13 @@ export function getPublishStatus(): {
   }
 }
 
-export function withDb<T>(fn: (db: DbShape) => T): T {
+export function withDb<T>(fn: (db: DbShape) => T, options?: WithDbOptions): T {
   assertInitialized()
   if (!draftDbCache) {
     throw new Error('DB_NOT_INITIALIZED')
   }
 
+  const shouldPersist = options?.persist !== false
   const result = fn(draftDbCache)
   draftUpdatedAt = new Date().toISOString()
   const hadPublished = Boolean(publishedDbCache)
@@ -469,7 +475,9 @@ export function withDb<T>(fn: (db: DbShape) => T): T {
     pendingPublishedChanges = true
   }
 
-  queuePersist({ persistDraft: true, persistPublished: !hadPublished })
+  if (shouldPersist) {
+    queuePersist({ persistDraft: true, persistPublished: !hadPublished })
+  }
   return result
 }
 
