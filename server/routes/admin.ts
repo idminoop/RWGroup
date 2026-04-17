@@ -142,6 +142,8 @@ router.post('/collections', (req: Request, res: Response) => {
       description: parsed.data.description,
       cover_image: parsed.data.cover_image,
       priority: parsed.data.priority ?? 0,
+      status: 'visible',
+      mode: 'manual',
       items: [],
       updated_at: new Date().toISOString(),
     })
@@ -1020,8 +1022,8 @@ router.post('/import/trendagent/run-local', async (req: Request, res: Response) 
       status: 'success',
       stats: { inserted: 0, updated: 0, hidden: 0 },
       action: 'import',
-      feed_name: (sourceSnapshot as Record<string, unknown>).name,
-      feed_url: (sourceSnapshot as Record<string, unknown>).url,
+      feed_name: sourceSnapshot.name,
+      feed_url: sourceSnapshot.url,
     })
   })
 

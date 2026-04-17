@@ -80,3 +80,28 @@ export async function apiPut<T>(url: string, body: unknown, headers?: Record<str
   if (!r || r.success !== true) throw new Error('Request failed')
   return (json as ApiSuccess<T>).data
 }
+
+export async function apiDelete<T>(url: string, headers?: Record<string, string>): Promise<T> {
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { accept: 'application/json', ...(headers || {}) },
+  })
+
+  let json: unknown
+  try {
+    json = await res.json()
+  } catch {
+    if (!res.ok) throw new Error(`Request failed: ${res.status} ${res.statusText}`)
+    return undefined as T
+  }
+
+  if (!res.ok) {
+    if (isApiError(json)) throw new Error(json.error)
+    throw new Error(`Request failed: ${res.status} ${res.statusText}`)
+  }
+
+  if (isApiError(json)) throw new Error(json.error)
+  const r = asRecord(json)
+  if (!r || r.success !== true) throw new Error('Invalid API response format')
+  return (json as ApiSuccess<T>).data
+}
