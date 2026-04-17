@@ -15,6 +15,7 @@ import {
   readPublishedDb,
   withDb,
   withDbRead,
+  withDbSelect,
   writePublishedDb,
 } from '../lib/storage.js'
 import { DATA_DIR } from '../lib/paths.js'
@@ -140,6 +141,65 @@ type TrendAgentLocalStatus = {
   message?: string
 }
 
+type TrendAgentRunProgressPhase =
+  | 'queued'
+  | 'loading_feed'
+  | 'building_rows'
+  | 'upserting'
+  | 'publishing'
+  | 'completed'
+  | 'failed'
+
+type TrendAgentRunProgress = {
+  run_id: string
+  source_id: string
+  scope: 'selected' | 'full_city'
+  phase: TrendAgentRunProgressPhase
+  started_at: string
+  updated_at: string
+  selected_blocks?: number
+  total_blocks?: number
+  total_apartments?: number
+  processed_apartments?: number
+  prepared_rows?: number
+  processed_rows?: number
+  stats?: { inserted: number; updated: number; hidden: number }
+  message?: string
+  error?: string
+}
+
+const trendAgentRunProgressMap = new Map<string, TrendAgentRunProgress>()
+const TRENDAGENT_RUN_PROGRESS_TTL_MS = 6 * 60 * 60 * 1000
+
+function setTrendAgentRunProgress(progress: TrendAgentRunProgress): void {
+  trendAgentRunProgressMap.set(progress.run_id, progress)
+}
+
+function patchTrendAgentRunProgress(runId: string, patch: Partial<TrendAgentRunProgress>): void {
+  const current = trendAgentRunProgressMap.get(runId)
+  if (!current) return
+  trendAgentRunProgressMap.set(runId, {
+    ...current,
+    ...patch,
+    updated_at: new Date().toISOString(),
+  })
+}
+
+function finalizeTrendAgentRunProgress(runId: string): void {
+  const current = trendAgentRunProgressMap.get(runId)
+  if (!current) return
+  trendAgentRunProgressMap.set(runId, { ...current, updated_at: new Date().toISOString() })
+  setTimeout(() => {
+    const latest = trendAgentRunProgressMap.get(runId)
+    if (!latest) return
+    const finished = latest.phase === 'completed' || latest.phase === 'failed'
+    const tooOld = Date.now() - Date.parse(latest.updated_at || latest.started_at) > TRENDAGENT_RUN_PROGRESS_TTL_MS
+    if (finished || tooOld) {
+      trendAgentRunProgressMap.delete(runId)
+    }
+  }, TRENDAGENT_RUN_PROGRESS_TTL_MS)
+}
+
 function hasActiveImportLock(lockKey: string): boolean {
   const startedAt = importLocks.get(lockKey)
   if (!startedAt) return false
@@ -261,7 +321,7 @@ async function loadTrendAgentDatasetFromLocalSnapshot(
 }
 
 function listFeedSourcesSnapshot(): FeedSource[] {
-  return withDbRead((db) => [...db.feed_sources])
+  return withDbSelect((db) => [...db.feed_sources])
 }
 
 function normalizeMaybeTrendAgentAboutUrl(value: string | undefined): string | null {
@@ -1189,7 +1249,7 @@ router.put('/leads/:id', requireAdminPermission('leads.write'), (req: Request, r
 })
 
 router.get('/feeds', (req: Request, res: Response) => {
-  const data = withDbRead((db) => db.feed_sources)
+  const data = withDbSelect((db) => db.feed_sources)
   res.json({ success: true, data })
 })
 
@@ -1277,7 +1337,7 @@ router.delete('/landing-feature-presets/:key', requireAdminPermission('landing_p
 })
 
 router.get('/feeds/diagnostics', (req: Request, res: Response) => {
-  const data = withDbRead((db) => {
+  const data = withDbSelect((db) => {
     const activeSourceIds = new Set(db.feed_sources.map((feed) => feed.id))
     const lastRunBySource: Record<string, any> = {}
     for (const r of db.import_runs) {
@@ -2300,8 +2360,21 @@ router.delete('/catalog/reset', requireAdminPermission('catalog.write'), (req: R
 })
 
 router.get('/import/runs', (req: Request, res: Response) => {
-  const data = withDbRead((db) => [...db.import_runs].sort((a, b) => (b.started_at || '').localeCompare(a.started_at || '')))
+  const data = withDbSelect((db) => [...db.import_runs].sort((a, b) => (b.started_at || '').localeCompare(a.started_at || '')))
   res.json({ success: true, data })
+})
+
+router.get('/import/trendagent/run-progress', requireAdminAnyPermission('import.read', 'import.write'), (req: Request, res: Response) => {
+  const schema = z.object({
+    run_id: z.string().min(1),
+  })
+  const parsed = schema.safeParse(req.query)
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'run_id is required' })
+    return
+  }
+  const progress = trendAgentRunProgressMap.get(parsed.data.run_id) || null
+  res.json({ success: true, data: progress })
 })
 
 router.post('/import/run', requireAdminPermission('import.write'), upload.single('file'), async (req: Request, res: Response) => {
@@ -2967,11 +3040,26 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
     feed_url: sourceSnapshot.url,
     action: 'import',
   }
+  const runScope: 'selected' | 'full_city' = parsed.data.full_city === true ? 'full_city' : 'selected'
+  setTrendAgentRunProgress({
+    run_id: run.id,
+    source_id: effectiveSourceId,
+    scope: runScope,
+    phase: 'queued',
+    started_at: run.started_at,
+    updated_at: run.started_at,
+    selected_blocks: runScope === 'selected' ? (parsed.data.block_ids || []).length : undefined,
+    message: 'Импорт поставлен в очередь',
+  })
 
   const executeTrendAgentImport = async (): Promise<string> => {
     let errorLog = ''
     try {
       importLocks.set(lockKey, Date.now())
+      patchTrendAgentRunProgress(run.id, {
+        phase: 'loading_feed',
+        message: 'Загрузка данных фида',
+      })
       const dataset = useLocal
         ? await loadTrendAgentDatasetFromLocalSnapshot(
             effectiveSourceId,
@@ -2984,6 +3072,10 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
             'full',
           )
       importLocks.set(lockKey, Date.now())
+      patchTrendAgentRunProgress(run.id, {
+        total_apartments: dataset.apartments.length,
+        total_blocks: dataset.blocks.length,
+      })
 
       let selectedBlockIds: Set<string>
       if (parsed.data.full_city === true) {
@@ -3002,12 +3094,33 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         }
       }
 
-      const rows = buildTrendAgentImportRows(dataset, selectedBlockIds)
+      patchTrendAgentRunProgress(run.id, {
+        phase: 'building_rows',
+        selected_blocks: selectedBlockIds.size,
+        processed_apartments: 0,
+        message: 'Подготовка строк для импорта',
+      })
+
+      const rows = await buildTrendAgentImportRows(dataset, selectedBlockIds, async (processed, total) => {
+        importLocks.set(lockKey, Date.now())
+        patchTrendAgentRunProgress(run.id, {
+          phase: 'building_rows',
+          processed_apartments: processed,
+          total_apartments: total,
+          message: `Подготовлено квартир: ${processed.toLocaleString('ru-RU')} из ${total.toLocaleString('ru-RU')}`,
+        })
+      })
       if (rows.length === 0) {
         throw new Error('No apartments found for selected complexes')
       }
       assertFeedRowLimit(rows.length, parsed.data.full_city === true)
       importLocks.set(lockKey, Date.now())
+      patchTrendAgentRunProgress(run.id, {
+        phase: 'upserting',
+        prepared_rows: rows.length,
+        processed_rows: 0,
+        message: `Сохранение ${rows.length.toLocaleString('ru-RU')} строк в базу`,
+      })
 
       const restoreArchived = parsed.data.restore_archived !== false
       const skipMissingLifecycle = parsed.data.full_city !== true
@@ -3028,6 +3141,12 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         })
         return { ...propertyStats, targetComplexId: complexStats.targetComplexId }
       })
+      patchTrendAgentRunProgress(run.id, {
+        phase: 'upserting',
+        processed_rows: rows.length,
+        stats: { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden },
+        message: `Сохранено: +${stats.inserted.toLocaleString('ru-RU')} / обновлено ${stats.updated.toLocaleString('ru-RU')} / скрыто ${stats.hidden.toLocaleString('ru-RU')}`,
+      })
 
       run.stats = { inserted: stats.inserted, updated: stats.updated, hidden: stats.hidden }
       const targetComplexId = (stats as { targetComplexId?: string }).targetComplexId
@@ -3047,6 +3166,11 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
     } catch (error) {
       run.status = 'failed'
       errorLog = error instanceof Error ? error.message : 'Unknown error'
+      patchTrendAgentRunProgress(run.id, {
+        phase: 'failed',
+        error: errorLog,
+        message: 'Импорт завершился с ошибкой',
+      })
     } finally {
       importLocks.delete(lockKey)
       withDb((db) => {
@@ -3069,6 +3193,10 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
 
       if (shouldAutoPublish && run.status !== 'failed') {
         try {
+          patchTrendAgentRunProgress(run.id, {
+            phase: 'publishing',
+            message: 'Публикация изменений',
+          })
           publishDraft()
         } catch (publishError) {
           run.status = 'failed'
@@ -3081,10 +3209,24 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
               storedRun.error_log = errorLog
             }
           })
+          patchTrendAgentRunProgress(run.id, {
+            phase: 'failed',
+            error: errorLog,
+            message: 'Ошибка при публикации изменений',
+          })
         }
       }
 
       await flushStorage()
+      if (run.status !== 'failed') {
+        patchTrendAgentRunProgress(run.id, {
+          phase: 'completed',
+          stats: { ...run.stats },
+          processed_rows: run.stats.inserted + run.stats.updated,
+          message: 'Импорт завершён',
+        })
+      }
+      finalizeTrendAgentRunProgress(run.id)
     }
     return errorLog
   }
@@ -4033,7 +4175,15 @@ function buildTrendAgentComplexImportRows(dataset: TrendAgentDataset, selectedBl
   return rows
 }
 
-function buildTrendAgentImportRows(dataset: TrendAgentDataset, selectedBlockIds: Set<string>): Record<string, unknown>[] {
+function waitForNextTick(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve))
+}
+
+async function buildTrendAgentImportRows(
+  dataset: TrendAgentDataset,
+  selectedBlockIds: Set<string>,
+  onProgress?: (processedApartments: number, totalApartments: number) => void | Promise<void>,
+): Promise<Record<string, unknown>[]> {
   const roomNameByCode = new Map<string, string>()
   for (const room of dataset.rooms) {
     const name = stringValue(room.name)
@@ -4136,7 +4286,14 @@ function buildTrendAgentImportRows(dataset: TrendAgentDataset, selectedBlockIds:
   }
 
   const rows: Record<string, unknown>[] = []
+  const totalApartments = dataset.apartments.length
+  let processedApartments = 0
   for (const apt of dataset.apartments) {
+    processedApartments += 1
+    if (onProgress && (processedApartments % 1000 === 0 || processedApartments === totalApartments)) {
+      await onProgress(processedApartments, totalApartments)
+      await waitForNextTick()
+    }
     const blockId = stringValue(apt.block_id)
     if (!blockId || !selectedBlockIds.has(blockId)) continue
     const block = blockById.get(blockId)
@@ -4216,6 +4373,7 @@ function buildTrendAgentImportRows(dataset: TrendAgentDataset, selectedBlockIds:
       deal_type: 'sale',
       category: 'newbuild',
     })
+
   }
   return rows
 }

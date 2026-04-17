@@ -146,6 +146,7 @@ let draftDbCache: DbShape | null = null
 let publishedDbCache: DbShape | null = null
 let draftUpdatedAt: string | undefined
 let publishedAt: string | undefined
+let pendingPublishedChanges = false
 
 let persistQueue: Promise<void> = Promise.resolve()
 let persistPending: {
@@ -316,6 +317,18 @@ export async function initializeStorage(): Promise<void> {
     }
   }
 
+  if (draftDbCache && publishedDbCache) {
+    try {
+      pendingPublishedChanges =
+        JSON.stringify(toPublishSnapshot(draftDbCache))
+        !== JSON.stringify(toPublishSnapshot(publishedDbCache))
+    } catch {
+      pendingPublishedChanges = true
+    }
+  } else {
+    pendingPublishedChanges = false
+  }
+
   initialized = true
 }
 
@@ -331,6 +344,7 @@ export async function closeStorage(): Promise<void> {
   }
   repository = null
   activeStorageDriver = 'unknown'
+  pendingPublishedChanges = false
   initialized = false
 }
 
@@ -374,6 +388,9 @@ export function writeDb(db: DbShape): void {
   setDraft(db)
   if (!publishedDbCache) {
     setPublished(toPublishSnapshot(db))
+    pendingPublishedChanges = false
+  } else {
+    pendingPublishedChanges = true
   }
   queuePersist({ persistDraft: true, persistPublished: !hadPublished })
 }
@@ -385,6 +402,7 @@ export function ensurePublishedDb(): void {
     throw new Error('DB_NOT_INITIALIZED')
   }
   setPublished(toPublishSnapshot(draftDbCache))
+  pendingPublishedChanges = false
   queuePersist({ persistDraft: false, persistPublished: true })
 }
 
@@ -403,6 +421,7 @@ export function writePublishedDb(db: DbShape): void {
   if (!draftDbCache) {
     setDraft(db)
   }
+  pendingPublishedChanges = false
   queuePersist({ persistDraft: !hadDraft, persistPublished: true })
 }
 
@@ -412,16 +431,13 @@ export function publishDraft(): { published_at?: string } {
     throw new Error('DB_NOT_INITIALIZED')
   }
   setPublished(toPublishSnapshot(draftDbCache))
+  pendingPublishedChanges = false
   queuePersist({ persistDraft: false, persistPublished: true })
   return { published_at: publishedAt }
 }
 
 export function hasPendingPublishedChanges(): boolean {
-  if (!draftDbCache) return false
-  const draft = toPublishSnapshot(draftDbCache)
-  const published = publishedDbCache ? toPublishSnapshot(publishedDbCache) : null
-  if (!published) return true
-  return JSON.stringify(draft) !== JSON.stringify(published)
+  return pendingPublishedChanges
 }
 
 export function getPublishStatus(): {
@@ -448,6 +464,9 @@ export function withDb<T>(fn: (db: DbShape) => T): T {
 
   if (!publishedDbCache) {
     setPublished(toPublishSnapshot(draftDbCache))
+    pendingPublishedChanges = false
+  } else {
+    pendingPublishedChanges = true
   }
 
   queuePersist({ persistDraft: true, persistPublished: !hadPublished })
@@ -460,6 +479,15 @@ export function withDbRead<T>(fn: (db: DbShape) => T): T {
     throw new Error('DB_NOT_INITIALIZED')
   }
   return fn(deepClone(draftDbCache))
+}
+
+// Selective read: clones only the selected subset, not the entire draft DB.
+export function withDbSelect<T>(selector: (db: DbShape) => T): T {
+  assertInitialized()
+  if (!draftDbCache) {
+    throw new Error('DB_NOT_INITIALIZED')
+  }
+  return deepClone(selector(draftDbCache))
 }
 
 export function withPublishedDb<T>(fn: (db: DbShape) => T): T {
