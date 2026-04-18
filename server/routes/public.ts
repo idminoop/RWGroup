@@ -568,6 +568,14 @@ router.get('/catalog', (req: Request, res: Response) => {
   const limitNum = Math.max(toNumber(limit) || 12, 1)
 
   const data = withPublishedDb((db) => {
+    const activeNewbuildComplexKeys = new Set<string>()
+    for (const property of db.properties) {
+      if (property.status !== 'active') continue
+      if (property.category !== 'newbuild') continue
+      if (property.complex_id) activeNewbuildComplexKeys.add(`id:${property.complex_id}`)
+      if (property.complex_external_id) activeNewbuildComplexKeys.add(`ext:${property.complex_external_id}`)
+    }
+
     const targetComplex = complexId ? db.complexes.find((c) => c.id === complexId) : null
     const targetComplexExternalId = targetComplex?.external_id
     const filtered = db.properties
@@ -592,6 +600,7 @@ router.get('/catalog', (req: Request, res: Response) => {
       tab === 'newbuild'
         ? db.complexes
             .filter((c) => c.status === 'active')
+            .filter((c) => activeNewbuildComplexKeys.has(`id:${c.id}`) || activeNewbuildComplexKeys.has(`ext:${c.external_id}`))
             .filter((c) => (complexId ? c.id === complexId : true))
             .filter((c) => (districtLc ? c.district.toLowerCase() === districtLc : true))
             .filter((c) => (metroLc ? c.metro.some((m) => m.toLowerCase() === metroLc) : true))
