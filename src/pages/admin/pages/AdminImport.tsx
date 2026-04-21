@@ -634,6 +634,7 @@ export default function AdminImportPage() {
   const trendagentRunPollIdRef = useRef<string | null>(null)
   const localFeedStatusPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const localFeedPreferenceTouchedRef = useRef(false)
+  const localFeedSourceRef = useRef<string | null>(null)
 
   // Edit Preview State
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -1269,9 +1270,12 @@ export default function AdminImportPage() {
   }
 
   useEffect(() => {
+    const nextSourceId = activeImportSource?.id || null
+    const sourceChanged = localFeedSourceRef.current !== nextSourceId
+    localFeedSourceRef.current = nextSourceId
+
     localFeedPreferenceTouchedRef.current = false
     stopLocalFeedStatusPolling()
-    setLocalFeedStatus(null)
     setLocalFeedStatusError(null)
     setLocalFeedViewerData(null)
     setLocalFeedViewerError(null)
@@ -1279,11 +1283,14 @@ export default function AdminImportPage() {
     setLocalFeedViewerQuery('')
     setLocalFeedViewerSection('')
     setLocalFeedViewerPage(1)
-    setUseLocalTrendagentFeed(false)
+    if (sourceChanged) {
+      setLocalFeedStatus(null)
+      setUseLocalTrendagentFeed(false)
+    }
     setLocalFeedUrl(activeImportSource?.url || '')
 
-    if (!activeImportSource?.id) return
-    void fetchLocalFeedStatus(activeImportSource.id, true)
+    if (!nextSourceId) return
+    void fetchLocalFeedStatus(nextSourceId, !sourceChanged)
   }, [activeImportSource?.id, activeImportSource?.url, fetchLocalFeedStatus, stopLocalFeedStatusPolling])
 
   const loadTrendagentComplexes = async (forceRefresh = false, pageOverride?: number, queryOverride?: string) => {
@@ -2113,6 +2120,9 @@ export default function AdminImportPage() {
                   ) : null}
                   {localFeedStatus.error ? (
                     <div className="mt-2 text-rose-600">{localFeedStatus.error}</div>
+                  ) : null}
+                  {localFeedStatus.message ? (
+                    <div className="mt-1 text-slate-500">{localFeedStatus.message}</div>
                   ) : null}
                 </div>
               ) : null}
