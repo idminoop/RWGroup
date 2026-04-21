@@ -328,6 +328,22 @@ async function resolveTrendAgentLocalSnapshotOwnerId(sourceId: string): Promise<
 
   await ensureTrendAgentLocalDir()
   const fileNames = await fs.promises.readdir(TRENDAGENT_LOCAL_DIR).catch(() => [] as string[])
+
+  // Prefer snapshot files: they are the source of truth even if status file is missing.
+  for (const fileName of fileNames) {
+    if (!fileName.endsWith('.snapshot.json')) continue
+    const snapshotPath = path.join(TRENDAGENT_LOCAL_DIR, fileName)
+    const snapshot = await readJsonIfExists<TrendAgentLocalSnapshot>(snapshotPath)
+    if (!snapshot) continue
+    const candidateOwnerId = stringValue(snapshot.source_id)
+      || fileName.replace(/\.snapshot\.json$/i, '')
+    if (!candidateOwnerId || candidateOwnerId === sourceId) continue
+    const normalizedCandidateAbout = normalizeMaybeTrendAgentAboutUrl(snapshot.about_url || snapshot.source_url)
+    if (!normalizedCandidateAbout || normalizedCandidateAbout !== normalizedSourceAbout) continue
+    return candidateOwnerId
+  }
+
+  // Backward compatibility: fallback to status files for legacy installs.
   for (const fileName of fileNames) {
     if (!fileName.endsWith('.status.json')) continue
     const statusPath = path.join(TRENDAGENT_LOCAL_DIR, fileName)
@@ -1212,8 +1228,14 @@ router.get('/publish/status', (req: Request, res: Response) => {
 })
 
 router.post('/publish/apply', async (req: Request, res: Response) => {
-  publishDraft()
-  await flushStorage()
+  try {
+    publishDraft()
+    await flushStorage()
+  } catch (error) {
+    const details = error instanceof Error ? error.message : 'Unknown storage error'
+    res.status(500).json({ success: false, error: 'Не удалось сохранить опубликованное состояние', details })
+    return
+  }
   addAuditLog(req.admin!.id, req.admin!.login, 'publish', 'settings', undefined, 'РџСЂРёРјРµРЅРµРЅС‹ РёР·РјРµРЅРµРЅРёСЏ РЅР° СЃР°Р№С‚')
   const status = getPublishStatus()
   res.json({ success: true, data: status })
@@ -2727,7 +2749,20 @@ router.post('/import/run', requireAdminPermission('import.write'), upload.single
       }
     }
 
-    await flushStorage()
+    try {
+      await flushStorage()
+    } catch (persistError) {
+      run.status = 'failed'
+      const message = persistError instanceof Error ? persistError.message : 'Unknown storage error'
+      errorLog = errorLog ? `${errorLog}\nPersist failed: ${message}` : `Persist failed: ${message}`
+      withDb((db) => {
+        const storedRun = db.import_runs.find((item) => item.id === run.id)
+        if (storedRun) {
+          storedRun.status = 'failed'
+          storedRun.error_log = errorLog
+        }
+      }, { persist: false })
+    }
   }
   if (run.status === 'failed') {
     res.status(500).json({ success: false, error: 'Import failed', details: errorLog })
@@ -3556,7 +3591,18 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         }
       }
 
-      await flushStorage()
+      try {
+        await flushStorage()
+      } catch (persistError) {
+        run.status = 'failed'
+        const message = persistError instanceof Error ? persistError.message : 'Unknown storage error'
+        errorLog = errorLog ? `${errorLog}\nPersist failed: ${message}` : `Persist failed: ${message}`
+        patchTrendAgentRunProgress(run.id, {
+          phase: 'failed',
+          error: errorLog,
+          message: 'Ошибка сохранения состояния в хранилище',
+        })
+      }
       if (run.status !== 'failed' && !stoppedByUser) {
         patchTrendAgentRunProgress(run.id, {
           phase: 'completed',

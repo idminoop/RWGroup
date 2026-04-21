@@ -155,6 +155,9 @@ let persistPending: {
   published: DbShape
 } | null = null
 let persistWorkerRunning = false
+let lastPersistError: string | null = null
+let lastPersistErrorAt: string | undefined
+let lastPersistSuccessAt: string | undefined
 
 type PersistRequest = {
   persistDraft: boolean
@@ -194,8 +197,13 @@ function startPersistWorker(): void {
         const meta = await repository.saveState(task.draft, task.published, task.request)
         if (meta.draftUpdatedAt) draftUpdatedAt = meta.draftUpdatedAt
         if (meta.publishedAt) publishedAt = meta.publishedAt
+        lastPersistError = null
+        lastPersistErrorAt = undefined
+        lastPersistSuccessAt = new Date().toISOString()
       } catch (error) {
         console.error('[storage] Persist error:', error)
+        lastPersistError = error instanceof Error ? error.message : String(error)
+        lastPersistErrorAt = new Date().toISOString()
       }
     }
   })().finally(() => {
@@ -254,6 +262,9 @@ export async function initializeStorage(): Promise<void> {
   publishedDbCache = loaded.published
   draftUpdatedAt = loaded.draftUpdatedAt
   publishedAt = loaded.publishedAt
+  lastPersistError = null
+  lastPersistErrorAt = undefined
+  lastPersistSuccessAt = undefined
 
   console.log(
     `[storage] Loaded state from ${repo.driver}: draft.import_runs=${draftDbCache?.import_runs?.length || 0}, published.import_runs=${publishedDbCache?.import_runs?.length || 0}`,
@@ -339,6 +350,10 @@ export async function initializeStorage(): Promise<void> {
 
 export async function flushStorage(): Promise<void> {
   await persistQueue
+  if (lastPersistError) {
+    const suffix = lastPersistErrorAt ? ` at ${lastPersistErrorAt}` : ''
+    throw new Error(`Storage persist failed${suffix}: ${lastPersistError}`)
+  }
 }
 
 export async function closeStorage(): Promise<void> {
@@ -449,11 +464,23 @@ export function getPublishStatus(): {
   has_pending_changes: boolean
   draft_updated_at?: string
   published_at?: string
+  storage: {
+    driver: StorageDriver | 'unknown'
+    last_persist_error: string | null
+    last_persist_error_at?: string
+    last_persist_success_at?: string
+  }
 } {
   return {
     has_pending_changes: hasPendingPublishedChanges(),
     draft_updated_at: draftUpdatedAt,
     published_at: publishedAt,
+    storage: {
+      driver: activeStorageDriver,
+      last_persist_error: lastPersistError,
+      last_persist_error_at: lastPersistErrorAt,
+      last_persist_success_at: lastPersistSuccessAt,
+    },
   }
 }
 

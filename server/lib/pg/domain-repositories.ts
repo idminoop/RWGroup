@@ -64,6 +64,19 @@ function toStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string')
 }
 
+function buildRowPlaceholders(
+  offset: number,
+  valuesCount: number,
+  casts: Record<number, string> = {},
+): string {
+  const parts: string[] = []
+  for (let i = 1; i <= valuesCount; i += 1) {
+    const cast = casts[i] ? `::${casts[i]}` : ''
+    parts.push(`$${offset + i}${cast}`)
+  }
+  return `(${parts.join(',')})`
+}
+
 export class HomeRepository {
   async load(client: PoolClient, scope: Scope): Promise<HomeContent | null> {
     const result = await client.query<{ data: HomeContent }>(
@@ -448,9 +461,7 @@ export class CatalogRepository {
           complex.landing ? JSON.stringify(complex.landing) : null,
           complex.last_seen_at || null, complex.updated_at,
         )
-        rows.push(
-          `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9}::text[],$${o+10},$${o+11},$${o+12}::text[],$${o+13},$${o+14},$${o+15},$${o+16},$${o+17},$${o+18},$${o+19},$${o+20},$${o+21},$${o+22},$${o+23},$${o+24},$${o+25},$${o+26},$${o+27},$${o+28}::jsonb,$${o+29},$${o+30})`
-        )
+        rows.push(buildRowPlaceholders(o, 30, { 9: 'text[]', 12: 'text[]', 28: 'jsonb' }))
       }
       await client.query(
         `INSERT INTO rw_complexes (scope,id,source_id,external_id,slug,title,category,district,metro,price_from,area_from,images,status,developer,class,finish_type,handover_date,description,address,mortgage_available,installment_available,subsidy_available,military_mortgage_available,queue_min,building_type,geo_lat,geo_lon,landing,last_seen_at,updated_at) VALUES ${rows.join(',')}`,
@@ -478,9 +489,7 @@ export class CatalogRepository {
           property.military_mortgage_available ?? null, property.building_queue ?? null, property.building_type || null,
           property.last_seen_at || null, property.updated_at,
         )
-        rows.push(
-          `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9},$${o+10},$${o+11},$${o+12},$${o+13},$${o+14},$${o+15},$${o+16},$${o+17},$${o+18},$${o+19},$${o+20}::text[],$${o+21}::text[],$${o+22},$${o+23},$${o+24},$${o+25},$${o+26},$${o+27},$${o+28},$${o+29},$${o+30},$${o+31},$${o+32},$${o+33},$${o+34},$${o+35},$${o+36},$${o+37},$${o+38},$${o+39})`
-        )
+        rows.push(buildRowPlaceholders(o, 39, { 20: 'text[]', 21: 'text[]' }))
       }
       await client.query(
         `INSERT INTO rw_properties (scope,id,source_id,external_id,slug,lot_number,complex_id,complex_external_id,deal_type,category,title,bedrooms,price,price_period,old_price,area_total,area_living,area_kitchen,district,metro,images,status,floor,floors_total,renovation,is_euroflat,building_section,building_state,ready_quarter,built_year,description,mortgage_available,installment_available,subsidy_available,military_mortgage_available,building_queue,building_type,last_seen_at,updated_at) VALUES ${rows.join(',')}`,
@@ -502,7 +511,7 @@ export class CatalogRepository {
           collection.auto_rules ? JSON.stringify(collection.auto_rules) : null,
           collection.updated_at,
         )
-        rows.push(`($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9},$${o+10}::jsonb,$${o+11}::jsonb,$${o+12})`)
+        rows.push(buildRowPlaceholders(o, 12, { 10: 'jsonb', 11: 'jsonb' }))
       }
       await client.query(
         `INSERT INTO rw_collections (scope,id,slug,title,description,cover_image,priority,status,mode,items,auto_rules,updated_at) VALUES ${rows.join(',')}`,
