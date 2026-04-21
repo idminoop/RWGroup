@@ -302,9 +302,12 @@ export default function AdminComplexSettingsPage() {
 
   const activePlanImages = useMemo(() => {
     if (!activePlan) return []
-    if (Array.isArray(activePlan.preview_images) && activePlan.preview_images.length) return activePlan.preview_images
-    if (activePlan.preview_image) return [activePlan.preview_image]
-    return []
+    const raw = Array.isArray(activePlan.preview_images) && activePlan.preview_images.length
+      ? activePlan.preview_images
+      : activePlan.preview_image
+        ? [activePlan.preview_image]
+        : []
+    return dedupeUrls(raw).filter((url) => isLayoutImage(url))
   }, [activePlan])
   const accordionConfig = useMemo<ComplexLandingAccordion>(() => {
     const normalized = createLandingAccordion(draftLanding?.accordion)

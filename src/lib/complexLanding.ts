@@ -169,9 +169,7 @@ function collectPlanPreviewImages(images?: string[]): string[] {
   if (!Array.isArray(images) || !images.length) return []
   const normalized = uniq(images.map((url) => String(url || '').trim()).filter(Boolean))
   const matched = normalized.filter((url) => isLayoutImage(url))
-  if (matched.length > 0) return matched.slice(0, 12)
-  // Fallback: if explicit plan markers are absent in URLs, still show available images for selected format.
-  return normalized.slice(0, 12)
+  return matched.slice(0, 12)
 }
 
 function normalizeNearbyCollectionKey(value?: string): string {
@@ -317,6 +315,16 @@ export function createLandingFeature(partial?: Partial<ComplexLandingFeature>): 
 }
 
 export function createLandingPlanItem(partial?: Partial<ComplexLandingPlanItem>): ComplexLandingPlanItem {
+  const preview_images = safeArray<string>(partial?.preview_images)
+    .map((item) => sanitizeImageUrl(item))
+    .filter((item): item is string => Boolean(item))
+    .filter((item) => isLikelyPlanImage(item))
+
+  const rawPreviewImage = sanitizeImageUrl(partial?.preview_image) || undefined
+  const preview_image = (rawPreviewImage && isLikelyPlanImage(rawPreviewImage))
+    ? rawPreviewImage
+    : (preview_images[0] || undefined)
+
   return {
     id: partial?.id || makeId('plan'),
     name: toText(partial?.name) || 'Планировка',
@@ -325,8 +333,8 @@ export function createLandingPlanItem(partial?: Partial<ComplexLandingPlanItem>)
     variants: typeof partial?.variants === 'number' ? partial.variants : 0,
     bedrooms: typeof partial?.bedrooms === 'number' ? partial.bedrooms : undefined,
     note: toText(partial?.note) || undefined,
-    preview_image: sanitizeImageUrl(partial?.preview_image) || undefined,
-    preview_images: safeArray<string>(partial?.preview_images).map((item) => sanitizeImageUrl(item)).filter(Boolean),
+    preview_image,
+    preview_images,
   }
 }
 

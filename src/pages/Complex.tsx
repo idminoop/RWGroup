@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/Badge'
 import ImageGallery from '@/components/ui/ImageGallery'
 import { apiGet } from '@/lib/api'
 import { formatPriceRub } from '@/lib/format'
-import { getPresentableImages, selectCoverImage } from '@/lib/images'
+import { getPresentableImages, isLayoutImage, selectCoverImage } from '@/lib/images'
 import { normalizeLandingConfig } from '@/lib/complexLanding'
 import JsonLd from '@/components/seo/JsonLd'
 import { setPageMeta } from '@/lib/meta'
@@ -282,9 +282,12 @@ export default function ComplexPage() {
   const activePlan = planItems.find((item) => item.id === activePlanId) || planItems[0]
   const activePlanImages = useMemo(() => {
     if (!activePlan) return []
-    if (Array.isArray(activePlan.preview_images) && activePlan.preview_images.length) return activePlan.preview_images
-    if (activePlan.preview_image) return [activePlan.preview_image]
-    return []
+    const raw = Array.isArray(activePlan.preview_images) && activePlan.preview_images.length
+      ? activePlan.preview_images
+      : activePlan.preview_image
+        ? [activePlan.preview_image]
+        : []
+    return dedupeImageUrls(raw).filter((url) => isLayoutImage(url))
   }, [activePlan])
   const tickerCycleItems = useMemo(() => {
     const source = landing?.feature_ticker || []
