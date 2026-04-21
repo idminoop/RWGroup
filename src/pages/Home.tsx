@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, LayoutGrid, Users, Award, ShieldCheck, Lock, MapPin, Star, ExternalLink } from 'lucide-react'
 import SiteLayout from '@/components/layout/SiteLayout'
@@ -21,19 +21,19 @@ type HomeApi = {
 
 const CATALOG_CATEGORIES = [
   {
-    title: 'РќРѕРІРѕСЃС‚СЂРѕР№РєРё',
+    title: 'Новостройки',
     tab: 'newbuild',
     image:
       'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=modern%20skyscraper%20architecture%20abstract%2C%20glass%20facade%2C%20dark%20mood&image_size=square',
   },
   {
-    title: 'Р’С‚РѕСЂРёС‡РЅР°СЏ',
+    title: 'Вторичная',
     tab: 'secondary',
     image:
       'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=luxury%20classic%20apartment%20interior%2C%20dark%20mood%2C%20elegant&image_size=square',
   },
   {
-    title: 'РђСЂРµРЅРґР°',
+    title: 'Аренда',
     tab: 'rent',
     image:
       'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cozy%20modern%20living%20room%20evening%2C%20warm%20light%2C%20dark%20mood&image_size=square',
@@ -41,13 +41,13 @@ const CATALOG_CATEGORIES = [
 ]
 
 const TEAM_QUOTES = [
-  'РњС‹ РѕС‚РІРµС‡Р°РµРј Р·Р° СЂРµР·СѓР»СЊС‚Р°С‚ Р»РёС‡РЅРѕ вЂ” РѕС‚ РїРµСЂРІРѕР№ РІСЃС‚СЂРµС‡Рё РґРѕ РєР»СЋС‡РµР№.',
-  'РЎРґРµР»РєР° РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РїСЂРѕР·СЂР°С‡РЅРѕР№, СЃРїРѕРєРѕР№РЅРѕР№ Рё РІС‹РіРѕРґРЅРѕР№ РґР»СЏ РєР»РёРµРЅС‚Р°.',
+  'Мы отвечаем за результат лично — от первой встречи до ключей.',
+  'Сделка должна быть прозрачной, спокойной и выгодной для клиента.',
 ]
 
 const FALLBACK_TEAM = [
-  { name: 'РђРЅР°СЃС‚Р°СЃРёСЏ РЁСѓР»РµРїРѕРІР°', role: 'РџР°СЂС‚РЅС‘СЂ, Р¶РёР»Р°СЏ РЅРµРґРІРёР¶РёРјРѕСЃС‚СЊ', photo_url: '' },
-  { name: 'РђР»РµРєСЃР°РЅРґСЂ РЁСѓР»РµРїРѕРІ', role: 'РџР°СЂС‚РЅС‘СЂ, РёРЅРІРµСЃС‚РёС†РёРё Рё Р°СЂРµРЅРґР°', photo_url: '' },
+  { name: 'Анастасия Шулепова', role: 'Партнёр, жилая недвижимость', photo_url: '' },
+  { name: 'Александр Шулепов', role: 'Партнёр, инвестиции и аренда', photo_url: '' },
 ]
 
 export default function Home() {
@@ -74,11 +74,11 @@ export default function Home() {
     telephone: '+7 (495) 410-15-68',
     address: {
       '@type': 'PostalAddress',
-      streetAddress: 'РљСѓС‚СѓР·РѕРІСЃРєРёР№ РїСЂ-С‚ 36 Рђ',
-      addressLocality: 'РњРѕСЃРєРІР°',
+      streetAddress: 'Кутузовский пр-т 36 А',
+      addressLocality: 'Москва',
       addressCountry: 'RU',
     },
-    description: 'Р­РєСЃРїРµСЂС‚С‹ РїРѕ РЅРµРґРІРёР¶РёРјРѕСЃС‚Рё. РќРѕРІРѕСЃС‚СЂРѕР№РєРё, РІС‚РѕСЂРёС‡РЅРѕРµ Р¶РёР»СЊС‘, Р°СЂРµРЅРґР°. РџРѕРґР±РѕСЂ, СЃРѕРїСЂРѕРІРѕР¶РґРµРЅРёРµ СЃРґРµР»РєРё, СЋСЂРёРґРёС‡РµСЃРєР°СЏ РїСЂРѕРІРµСЂРєР°.',
+    description: 'Эксперты по недвижимости. Новостройки, вторичное жильё, аренда. Подбор, сопровождение сделки, юридическая проверка.',
     sameAs: [],
   }
 
@@ -102,18 +102,18 @@ export default function Home() {
               size="h1"
               className="text-left text-[clamp(2.7rem,7.8vw,7.4rem)] font-bold leading-[0.9] tracking-[-0.02em] text-white"
             >
-              <span className="block">Р­РєСЃРїРµСЂС‚С‹ РїРѕ</span>
-              <span className="block text-slate-300">РЅРµРґРІРёР¶РёРјРѕСЃС‚Рё</span>
+              <span className="block">Эксперты по</span>
+              <span className="block text-slate-300">недвижимости</span>
             </Heading>
 
             <Text className="mt-4 max-w-lg text-base text-gray-400 sm:mt-6 sm:text-lg">
-              Р’Р°С€Р° Р±РµР·РѕРїР°СЃРЅР°СЏ СЃРґРµР»РєР° вЂ” РЅР°С€Р° СЂРµРїСѓС‚Р°С†РёСЏ
+              Ваша безопасная сделка — наша репутация
             </Text>
 
             <div className="mt-4 flex">
               <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 backdrop-blur sm:px-4 sm:text-sm">
                 <span className="h-2 w-2 rounded-full bg-accent" />
-                13 Р»РµС‚ РЅР° СЂС‹РЅРєРµ РЅРµРґРІРёР¶РёРјРѕСЃС‚Рё
+                13 лет на рынке недвижимости
               </div>
             </div>
 
@@ -126,7 +126,7 @@ export default function Home() {
                   openLeadModal('consultation', { page: 'home', block: 'hero' })
                 }}
               >
-                РџРѕР»СѓС‡РёС‚СЊ РєРѕРЅСЃСѓР»СЊС‚Р°С†РёСЋ
+                Получить консультацию
               </Button>
               <Button
                 variant="outline"
@@ -136,7 +136,7 @@ export default function Home() {
                   navigate('/catalog')
                 }}
               >
-                РЎРјРѕС‚СЂРµС‚СЊ РѕР±СЉРµРєС‚С‹
+                Смотреть объекты
               </Button>
             </div>
           </div>
@@ -164,16 +164,16 @@ export default function Home() {
                     {item.title}
                   </Heading>
                   <div className="mt-2 flex items-center gap-2 text-sm font-medium text-white/0 transition-all duration-300 group-hover:text-white group-hover:translate-x-2">
-                    РџРµСЂРµР№С‚Рё РІ РєР°С‚Р°Р»РѕРі <ArrowRight className="h-4 w-4" />
+                    Перейти в каталог <ArrowRight className="h-4 w-4" />
                   </div>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* РљСѓРїРёС‚СЊ / РџСЂРѕРґР°С‚СЊ / РЎРґР°С‚СЊ CTA */}
+          {/* Купить / Продать / Сдать CTA */}
           <div className="mt-6 grid gap-6 md:grid-cols-3">
-            {/* РљСѓРїРёС‚СЊ РЅРµРґРІРёР¶РёРјРѕСЃС‚СЊ */}
+            {/* Купить недвижимость */}
             <div
               onClick={() => {
                 trackEvent('click_buy_sell', { page: 'home', block: 'buy_cta', tab: 'buy' })
@@ -183,20 +183,20 @@ export default function Home() {
             >
               <div className="flex flex-1 flex-col justify-center p-5 sm:p-6 lg:p-10">
                 <Heading size="h3" className="font-serif text-2xl font-normal leading-tight text-white lg:text-3xl">
-                  РљСѓРїРёС‚СЊ<br />РЅРµРґРІРёР¶РёРјРѕСЃС‚СЊ
+                  Купить<br />недвижимость
                 </Heading>
               </div>
               <div className="relative hidden w-1/2 overflow-hidden sm:block">
                 <img
                   src="/images/cta-buy.svg"
-                  alt="РљСѓРїРёС‚СЊ РЅРµРґРІРёР¶РёРјРѕСЃС‚СЊ"
+                  alt="Купить недвижимость"
                   className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-background/55" />
               </div>
             </div>
 
-            {/* РџСЂРѕРґР°С‚СЊ РЅРµРґРІРёР¶РёРјРѕСЃС‚СЊ */}
+            {/* Продать недвижимость */}
             <div
               onClick={() => {
                 trackEvent('click_buy_sell', { page: 'home', block: 'sell_cta', tab: 'sell' })
@@ -206,20 +206,20 @@ export default function Home() {
             >
               <div className="flex flex-1 flex-col justify-center p-5 sm:p-6 lg:p-10">
                 <Heading size="h3" className="font-serif text-2xl font-normal leading-tight text-white lg:text-3xl">
-                  РџСЂРѕРґР°С‚СЊ<br />РЅРµРґРІРёР¶РёРјРѕСЃС‚СЊ
+                  Продать<br />недвижимость
                 </Heading>
               </div>
               <div className="relative hidden w-1/2 overflow-hidden sm:block">
                 <img
                   src="/images/cta-sell.svg"
-                  alt="РџСЂРѕРґР°С‚СЊ РЅРµРґРІРёР¶РёРјРѕСЃС‚СЊ"
+                  alt="Продать недвижимость"
                   className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-background/55" />
               </div>
             </div>
 
-            {/* РЎРґР°С‚СЊ РЅРµРґРІРёР¶РёРјРѕСЃС‚СЊ */}
+            {/* Сдать недвижимость */}
             <div
               onClick={() => {
                 trackEvent('click_buy_sell', { page: 'home', block: 'rent_cta', tab: 'sell' })
@@ -229,13 +229,13 @@ export default function Home() {
             >
               <div className="flex flex-1 flex-col justify-center p-5 sm:p-6 lg:p-10">
                 <Heading size="h3" className="font-serif text-2xl font-normal leading-tight text-white lg:text-3xl">
-                  РЎРґР°С‚СЊ<br />РЅРµРґРІРёР¶РёРјРѕСЃС‚СЊ
+                  Сдать<br />недвижимость
                 </Heading>
               </div>
               <div className="relative hidden w-1/2 overflow-hidden sm:block">
                 <img
                   src="/images/cta-rent.svg"
-                  alt="РЎРґР°С‚СЊ РЅРµРґРІРёР¶РёРјРѕСЃС‚СЊ"
+                  alt="Сдать недвижимость"
                   className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-background/55" />
@@ -250,11 +250,11 @@ export default function Home() {
         <div className="mx-auto max-w-7xl px-4">
           <div className="mb-12 flex items-end justify-between">
             <div>
-              <Heading size="h2" className="text-white">Р›СѓС‡С€РёРµ РїСЂРµРґР»РѕР¶РµРЅРёСЏ</Heading>
-              <Text className="mt-2 text-gray-400">РђРєС‚СѓР°Р»СЊРЅС‹Рµ Р»РѕС‚С‹ Рё РїСЂРѕРµРєС‚С‹ СЌС‚РѕР№ РЅРµРґРµР»Рё</Text>
+              <Heading size="h2" className="text-white">Лучшие предложения</Heading>
+              <Text className="mt-2 text-gray-400">Актуальные лоты и проекты этой недели</Text>
             </div>
             <Link to="/catalog" className="hidden items-center gap-2 text-sm font-medium hover:text-accent md:flex">
-              РЎРјРѕС‚СЂРµС‚СЊ РІСЃРµ <ArrowRight className="h-4 w-4" />
+              Смотреть все <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
 
@@ -275,28 +275,28 @@ export default function Home() {
 
           <div className="mt-12 flex justify-center md:hidden">
             <Link to="/catalog" className="flex items-center gap-2 text-sm font-medium text-white">
-               РЎРјРѕС‚СЂРµС‚СЊ РІСЃРµ <ArrowRight className="h-4 w-4" />
+               Смотреть все <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         </div>
       </section>
 
-      {/* 5. РџРѕС‡РµРјСѓ РІС‹Р±РёСЂР°СЋС‚ РЅР°СЃ */}
+      {/* 5. Почему выбирают нас */}
       <section className="relative overflow-hidden bg-[#0F1D28] py-16 text-white md:py-24">
         <div className="pointer-events-none absolute left-[-140px] top-24 h-80 w-80 rounded-full bg-[#1B3143]/35" />
         <div className="pointer-events-none absolute right-[-120px] bottom-10 h-72 w-72 rounded-full bg-[#22394C]/30" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
-          <Heading size="h2" className="text-white">РџРѕС‡РµРјСѓ РІС‹Р±РёСЂР°СЋС‚ РЅР°СЃ</Heading>
-          <Text className="mt-2 mb-12 text-slate-300">РњС‹ РґРµР»Р°РµРј РІСЃС‘, С‡С‚РѕР±С‹ РєР°Р¶РґР°СЏ СЃРґРµР»РєР° РїСЂРѕС€Р»Р° Р±РµР·СѓРїСЂРµС‡РЅРѕ</Text>
+          <Heading size="h2" className="text-white">Почему выбирают нас</Heading>
+          <Text className="mt-2 mb-12 text-slate-300">Мы делаем всё, чтобы каждая сделка прошла безупречно</Text>
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {[
-              { icon: LayoutGrid, title: 'РЁРёСЂРѕРєРёР№ РІС‹Р±РѕСЂ', desc: 'Р”РѕСЃС‚СѓРї Рє РѕР±СЉРµРєС‚Р°Рј РѕС‚ Р·Р°СЃС‚СЂРѕР№С‰РёРєРѕРІ Рё РЅР° РІС‚РѕСЂРёС‡РЅРѕРј СЂС‹РЅРєРµ. РќРѕРІРѕСЃС‚СЂРѕР№РєРё, РІС‚РѕСЂРёС‡РєР°, Р°СЂРµРЅРґР° вЂ” РІСЃС‘ РІ РѕРґРЅРѕРј РјРµСЃС‚Рµ.' },
-              { icon: Users, title: 'РРЅРґРёРІРёРґСѓР°Р»СЊРЅС‹Р№ РїРѕРґС…РѕРґ', desc: 'РџРѕРґР±РёСЂР°РµРј РЅРµРґРІРёР¶РёРјРѕСЃС‚СЊ СЃ СѓС‡С‘С‚РѕРј РІР°С€РёС… С†РµР»РµР№, Р±СЋРґР¶РµС‚Р° Рё РїСЂРµРґРїРѕС‡С‚РµРЅРёР№. РљР°Р¶РґС‹Р№ РєР»РёРµРЅС‚ вЂ” СѓРЅРёРєР°Р»РµРЅ.' },
-              { icon: Award, title: 'РџСЂРѕС„РµСЃСЃРёРѕРЅР°Р»РёР·Рј', desc: 'Р­РєСЃРїРµСЂС‚РёР·Р° СЂС‹РЅРєР°, С‚РѕС‡РЅР°СЏ РѕС†РµРЅРєР° Рё РіСЂР°РјРѕС‚РЅС‹Рµ РїРµСЂРµРіРѕРІРѕСЂС‹. Р Р°Р±РѕС‚Р°РµРј РЅР° СЂРµР·СѓР»СЊС‚Р°С‚.' },
-              { icon: ShieldCheck, title: 'Р®СЂРёРґРёС‡РµСЃРєР°СЏ С‡РёСЃС‚РѕС‚Р°', desc: 'РџСЂРѕРІРµСЂСЏРµРј РєР°Р¶РґС‹Р№ РѕР±СЉРµРєС‚: РґРѕРєСѓРјРµРЅС‚С‹, РѕР±СЂРµРјРµРЅРµРЅРёСЏ, РёСЃС‚РѕСЂРёСЏ. Р’С‹ РїРѕР»СѓС‡Р°РµС‚Рµ С‚РѕР»СЊРєРѕ РїСЂРѕРІРµСЂРµРЅРЅС‹Рµ РІР°СЂРёР°РЅС‚С‹.' },
-              { icon: Lock, title: 'Р‘РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ СЃРґРµР»РєРё', desc: 'РЎРѕРїСЂРѕРІРѕР¶РґР°РµРј РЅР° РєР°Р¶РґРѕРј СЌС‚Р°РїРµ вЂ” РѕС‚ Р·Р°РґР°С‚РєР° РґРѕ СЂРµРіРёСЃС‚СЂР°С†РёРё РїСЂР°РІР° СЃРѕР±СЃС‚РІРµРЅРЅРѕСЃС‚Рё.' },
-              { icon: MapPin, title: 'РЈРґРѕР±РЅС‹Р№ РѕС„РёСЃ РІ С†РµРЅС‚СЂРµ РњРѕСЃРєРІС‹', desc: 'Р’СЃС‚СЂРµС‡Р°РµРјСЃСЏ РІ РєРѕРјС„РѕСЂС‚РЅРѕР№ РѕР±СЃС‚Р°РЅРѕРІРєРµ РґР»СЏ РѕР±СЃСѓР¶РґРµРЅРёСЏ РґРµС‚Р°Р»РµР№ Рё РїРѕРґРїРёСЃР°РЅРёСЏ РґРѕРєСѓРјРµРЅС‚РѕРІ.' },
+              { icon: LayoutGrid, title: 'Широкий выбор', desc: 'Доступ к объектам от застройщиков и на вторичном рынке. Новостройки, вторичка, аренда — всё в одном месте.' },
+              { icon: Users, title: 'Индивидуальный подход', desc: 'Подбираем недвижимость с учётом ваших целей, бюджета и предпочтений. Каждый клиент — уникален.' },
+              { icon: Award, title: 'Профессионализм', desc: 'Экспертиза рынка, точная оценка и грамотные переговоры. Работаем на результат.' },
+              { icon: ShieldCheck, title: 'Юридическая чистота', desc: 'Проверяем каждый объект: документы, обременения, история. Вы получаете только проверенные варианты.' },
+              { icon: Lock, title: 'Безопасность сделки', desc: 'Сопровождаем на каждом этапе — от задатка до регистрации права собственности.' },
+              { icon: MapPin, title: 'Удобный офис в центре Москвы', desc: 'Встречаемся в комфортной обстановке для обсуждения деталей и подписания документов.' },
             ].map((item) => (
               <div key={item.title} className="group rounded-xl border border-white/10 bg-white/[0.04] p-8 shadow-sm transition-colors hover:border-[#C2A87A]/45">
                 <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-lg bg-white/10 text-[#D8C4A3]">
@@ -310,19 +310,19 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 6. РЎС‚РѕРёРјРѕСЃС‚СЊ СѓСЃР»СѓРі */}
+      {/* 6. Стоимость услуг */}
       <section className="relative overflow-hidden bg-[#F3EEE4] py-16 text-background md:py-24">
         <div className="pointer-events-none absolute right-[-140px] top-12 h-80 w-80 rounded-full bg-[#E7DCC8]/22" />
         <div className="pointer-events-none absolute left-[-120px] bottom-12 h-72 w-72 rounded-full bg-[#D6E0EC]/18" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
-          <Heading size="h2" className="text-center">РЎС‚РѕРёРјРѕСЃС‚СЊ СѓСЃР»СѓРі</Heading>
+          <Heading size="h2" className="text-center">Стоимость услуг</Heading>
 
-          {/* Р“Р»Р°РІРЅС‹Р№ Р°РєС†РµРЅС‚ вЂ” Р±РµСЃРїР»Р°С‚РЅРѕ */}
+          {/* Главный акцент — бесплатно */}
           <div className="mx-auto mt-10 max-w-2xl rounded-2xl border-2 border-[#C2A87A]/40 bg-[#C2A87A]/10 p-8 text-center shadow-sm">
-            <Text size="sm" className="uppercase tracking-widest text-accent">РќРѕРІРѕСЃС‚СЂРѕР№РєРё</Text>
-            <div className="mt-3 text-4xl font-bold tracking-tight sm:text-5xl md:text-7xl">Р‘РµСЃРїР»Р°С‚РЅРѕ</div>
+            <Text size="sm" className="uppercase tracking-widest text-accent">Новостройки</Text>
+            <div className="mt-3 text-4xl font-bold tracking-tight sm:text-5xl md:text-7xl">Бесплатно</div>
             <Text size="lg" className="mt-3 text-gray-600">
-              РџРѕРґР±РѕСЂ РЅРѕРІРѕСЃС‚СЂРѕР№РєРё РѕС‚ Р·Р°СЃС‚СЂРѕР№С‰РёРєР° вЂ” Р±РµР· РєРѕРјРёСЃСЃРёРё РґР»СЏ РїРѕРєСѓРїР°С‚РµР»СЏ
+              Подбор новостройки от застройщика — без комиссии для покупателя
             </Text>
             <Button
               variant="dark"
@@ -332,17 +332,17 @@ export default function Home() {
                 openLeadModal('consultation', { page: 'home', block: 'pricing_free' })
               }}
             >
-              РџРѕР»СѓС‡РёС‚СЊ РїРѕРґР±РѕСЂРєСѓ
+              Получить подборку
             </Button>
           </div>
 
-          {/* РћСЃС‚Р°Р»СЊРЅС‹Рµ СѓСЃР»СѓРіРё */}
+          {/* Остальные услуги */}
           <div className="mx-auto mt-10 grid max-w-4xl gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { label: 'РџРѕРґР±РѕСЂ РІС‚РѕСЂРёС‡РєРё', value: 'РѕС‚ 2,5%', sub: 'РѕС‚ СЃС‚РѕРёРјРѕСЃС‚Рё' },
-              { label: 'РџСЂРѕРґР°Р¶Р°', value: 'РѕС‚ 3%', sub: 'РѕС‚ СЃС‚РѕРёРјРѕСЃС‚Рё' },
-              { label: 'РђСЂРµРЅРґР°', value: 'РѕС‚ 50%', sub: 'РјРµСЃСЏС‡РЅРѕР№ СЃС‚Р°РІРєРё' },
-              { label: 'Р®СЂ. СЃРѕРїСЂРѕРІРѕР¶РґРµРЅРёРµ', value: 'РѕС‚ 100 000 в‚Ѕ' },
+              { label: 'Подбор вторички', value: 'от 2,5%', sub: 'от стоимости' },
+              { label: 'Продажа', value: 'от 3%', sub: 'от стоимости' },
+              { label: 'Аренда', value: 'от 50%', sub: 'месячной ставки' },
+              { label: 'Юр. сопровождение', value: 'от 100 000 ₽' },
             ].map((s) => (
               <div key={s.label} className="rounded-xl border border-[#D8CAB2]/60 bg-[#FFFDF8] p-5 shadow-sm text-center">
                 <Text size="sm" className="text-slate-500">{s.label}</Text>
@@ -354,7 +354,7 @@ export default function Home() {
 
           <div className="mt-8 text-center">
             <Text className="text-slate-500">
-              РўРѕС‡РЅР°СЏ СЃС‚РѕРёРјРѕСЃС‚СЊ С„РѕСЂРјРёСЂСѓРµС‚СЃСЏ РёРЅРґРёРІРёРґСѓР°Р»СЊРЅРѕ Рё Р·Р°РІРёСЃРёС‚ РѕС‚ С‚РёРїР° СЃРґРµР»РєРё Рё РѕР±СЉС‘РјР° СЂР°Р±РѕС‚.
+              Точная стоимость формируется индивидуально и зависит от типа сделки и объёма работ.
             </Text>
             <Button
               variant="dark"
@@ -364,7 +364,7 @@ export default function Home() {
                 openLeadModal('consultation', { page: 'home', block: 'pricing' })
               }}
             >
-              РЈР·РЅР°С‚СЊ С‚РѕС‡РЅСѓСЋ СЃС‚РѕРёРјРѕСЃС‚СЊ
+              Узнать точную стоимость
             </Button>
           </div>
         </div>
@@ -387,18 +387,18 @@ export default function Home() {
 
         <div className="relative z-10 mx-auto max-w-5xl px-4">
           <div className="rounded-3xl border border-white/30 bg-[#0E1D2B]/72 p-6 text-center shadow-[0_26px_80px_rgba(0,0,0,0.5)] backdrop-blur-md sm:p-8 md:p-16">
-            <Heading size="h6" className="mb-6 text-sm font-bold uppercase tracking-[0.2em] !text-[#E1C9A0]">РњРёСЃСЃРёСЏ</Heading>
+            <Heading size="h6" className="mb-6 text-sm font-bold uppercase tracking-[0.2em] !text-[#E1C9A0]">Миссия</Heading>
             
             <Text className="mx-auto max-w-4xl text-lg font-normal leading-[1.25] !text-white [text-shadow:0_2px_16px_rgba(0,0,0,0.6)] sm:text-xl md:text-3xl lg:text-4xl">
-              В«РњС‹ РЅРµ РїСЂРѕСЃС‚Рѕ РїСЂРѕРґР°РµРј РєРІР°РґСЂР°С‚РЅС‹Рµ РјРµС‚СЂС‹. РњС‹ РїРѕРјРѕРіР°РµРј Р»СЋРґСЏРј РЅР°Р№С‚Рё РґРѕРј, РіРґРµ РѕРЅРё Р±СѓРґСѓС‚ СЃС‡Р°СЃС‚Р»РёРІС‹, Рё СЃРѕР·РґР°РµРј Р±РµР·РѕРїР°СЃРЅРѕРµ РїСЂРѕСЃС‚СЂР°РЅСЃС‚РІРѕ РґР»СЏ РїСЂРёРЅСЏС‚РёСЏ РІР°Р¶РЅС‹С… СЂРµС€РµРЅРёР№В»
+              «Мы не просто продаем квадратные метры. Мы помогаем людям найти дом, где они будут счастливы, и создаем безопасное пространство для принятия важных решений»
             </Text>
             
             <div className="mt-10 flex justify-center gap-4">
                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#B79867] text-white font-medium text-sm shadow-sm">
-                  РЎРђ
+                  СА
                </div>
                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#223447] text-white font-medium text-sm shadow-sm">
-                  РќРђ
+                  НА
                </div>
             </div>
           </div>
@@ -411,9 +411,9 @@ export default function Home() {
         <div className="pointer-events-none absolute right-[-120px] bottom-10 h-72 w-72 rounded-full bg-[#E4D7C3]/12" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
           <div className="mb-12">
-            <Heading size="h2">РљРѕРјР°РЅРґР°</Heading>
+            <Heading size="h2">Команда</Heading>
             <Text className="mt-3 max-w-2xl text-sm text-slate-600">
-              Р”РІР° СЌРєСЃРїРµСЂС‚Р°, РєРѕС‚РѕСЂС‹Рµ РІРµРґСѓС‚ СЃРґРµР»РєРё Р»РёС‡РЅРѕ Рё РЅРµСЃСѓС‚ РѕС‚РІРµС‚СЃС‚РІРµРЅРЅРѕСЃС‚СЊ Р·Р° РєР°Р¶РґС‹Р№ СЌС‚Р°Рї.
+              Два эксперта, которые ведут сделки лично и несут ответственность за каждый этап.
             </Text>
           </div>
 
@@ -448,56 +448,56 @@ export default function Home() {
           </div>
         </div>
       </section>
-      {/* 9. РћС‚Р·С‹РІС‹ */}
+      {/* 9. Отзывы */}
       <section className="relative overflow-hidden bg-[#0B1821] py-16 md:py-24">
         <div className="pointer-events-none absolute right-[-140px] top-16 h-80 w-80 rounded-full bg-[#1D3446]/28" />
         <div className="pointer-events-none absolute left-[-120px] bottom-14 h-72 w-72 rounded-full bg-[#243C52]/18" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
-          <Heading size="h2" className="text-white">РћС‚Р·С‹РІС‹ РєР»РёРµРЅС‚РѕРІ</Heading>
-          <Text className="mt-2 mb-12 text-gray-400">Р РµР°Р»СЊРЅС‹Рµ РёСЃС‚РѕСЂРёРё Р»СЋРґРµР№, РєРѕС‚РѕСЂС‹Рј РјС‹ РїРѕРјРѕРіР»Рё</Text>
+          <Heading size="h2" className="text-white">Отзывы клиентов</Heading>
+          <Text className="mt-2 mb-12 text-gray-400">Реальные истории людей, которым мы помогли</Text>
 
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {[
               {
-                name: 'РњР°СЂРёСЏ РРІР°РЅРѕРІР°',
-                text: 'РћР±СЂР°С‚РёР»РёСЃСЊ Р·Р° РїРѕРјРѕС‰СЊСЋ РІ РїРѕРєСѓРїРєРµ РєРІР°СЂС‚РёСЂС‹ РІ РЅРѕРІРѕСЃС‚СЂРѕР№РєРµ. РџРѕРґРѕР±СЂР°Р»Рё РёРґРµР°Р»СЊРЅС‹Р№ РІР°СЂРёР°РЅС‚ Р·Р° РЅРµРґРµР»СЋ. РЎРґРµР»РєР° РїСЂРѕС€Р»Р° РіР»Р°РґРєРѕ, РІСЃС‘ СЋСЂРёРґРёС‡РµСЃРєРё С‡РёСЃС‚Рѕ.',
+                name: 'Мария Иванова',
+                text: 'Обратились за помощью в покупке квартиры в новостройке. Подобрали идеальный вариант за неделю. Сделка прошла гладко, всё юридически чисто.',
                 rating: 5,
-                source: 'РЇРЅРґРµРєСЃ РљР°СЂС‚С‹',
+                source: 'Яндекс Карты',
                 sourceUrl: '#',
               },
               {
-                name: 'РђР»РµРєСЃРµР№ РџРµС‚СЂРѕРІ',
-                text: 'РџСЂРѕРґР°Р»Рё РєРІР°СЂС‚РёСЂСѓ РїРѕ РјР°РєСЃРёРјР°Р»СЊРЅРѕР№ С†РµРЅРµ. Р РёСЌР»С‚РѕСЂ РІС‘Р» РїРµСЂРµРіРѕРІРѕСЂС‹ РїСЂРѕС„РµСЃСЃРёРѕРЅР°Р»СЊРЅРѕ, РїРѕРєСѓРїР°С‚РµР»СЊ РЅР°Р№РґРµРЅ Р·Р° 3 РЅРµРґРµР»Рё. Р РµРєРѕРјРµРЅРґСѓСЋ!',
+                name: 'Алексей Петров',
+                text: 'Продали квартиру по максимальной цене. Риэлтор вёл переговоры профессионально, покупатель найден за 3 недели. Рекомендую!',
                 rating: 5,
                 source: 'Google',
                 sourceUrl: '#',
               },
               {
-                name: 'Р•РєР°С‚РµСЂРёРЅР° РЎРјРёСЂРЅРѕРІР°',
-                text: 'РЎРЅРёРјР°Р»Рё РєРІР°СЂС‚РёСЂСѓ С‡РµСЂРµР· Р°РіРµРЅС‚СЃС‚РІРѕ. Р’СЃС‘ С‡РµСЃС‚РЅРѕ, Р±РµР· СЃРєСЂС‹С‚С‹С… РєРѕРјРёСЃСЃРёР№. РџРѕРјРѕРіР»Рё СЃ РґРѕРіРѕРІРѕСЂРѕРј Рё РїСЂРѕРІРµСЂРёР»Рё СЃРѕР±СЃС‚РІРµРЅРЅРёРєР°. РЎРїР°СЃРёР±Рѕ!',
+                name: 'Екатерина Смирнова',
+                text: 'Снимали квартиру через агентство. Всё честно, без скрытых комиссий. Помогли с договором и проверили собственника. Спасибо!',
                 rating: 5,
-                source: 'Р¦РРђРќ',
+                source: 'ЦИАН',
                 sourceUrl: '#',
               },
               {
-                name: 'Р”РјРёС‚СЂРёР№ РљРѕР·Р»РѕРІ',
-                text: 'РРЅРІРµСЃС‚РёСЂРѕРІР°Р» РІ РЅРѕРІРѕСЃС‚СЂРѕР№РєСѓ РїРѕ СЂРµРєРѕРјРµРЅРґР°С†РёРё Р°РіРµРЅС‚СЃС‚РІР°. РћР±СЉРµРєС‚ СѓР¶Рµ РІС‹СЂРѕСЃ РІ С†РµРЅРµ РЅР° 15%. Р“СЂР°РјРѕС‚РЅР°СЏ Р°РЅР°Р»РёС‚РёРєР° Рё РїРѕРґРґРµСЂР¶РєР° РЅР° РІСЃРµС… СЌС‚Р°РїР°С….',
+                name: 'Дмитрий Козлов',
+                text: 'Инвестировал в новостройку по рекомендации агентства. Объект уже вырос в цене на 15%. Грамотная аналитика и поддержка на всех этапах.',
                 rating: 5,
-                source: 'РЇРЅРґРµРєСЃ РљР°СЂС‚С‹',
+                source: 'Яндекс Карты',
                 sourceUrl: '#',
               },
               {
-                name: 'РћР»СЊРіР° РќРѕРІРёРєРѕРІР°',
-                text: 'Р”РѕР»РіРѕ РЅРµ РјРѕРіР»Рё РїСЂРѕРґР°С‚СЊ Р·Р°РіРѕСЂРѕРґРЅС‹Р№ РґРѕРј. RWGroup РѕС†РµРЅРёР»Рё, СЃРґРµР»Р°Р»Рё РєР°С‡РµСЃС‚РІРµРЅРЅС‹Рµ С„РѕС‚Рѕ Рё РЅР°С€Р»Рё РїРѕРєСѓРїР°С‚РµР»СЏ Р·Р° РјРµСЃСЏС†. РћС‡РµРЅСЊ РґРѕРІРѕР»СЊРЅС‹!',
+                name: 'Ольга Новикова',
+                text: 'Долго не могли продать загородный дом. RWGroup оценили, сделали качественные фото и нашли покупателя за месяц. Очень довольны!',
                 rating: 5,
                 source: 'Google',
                 sourceUrl: '#',
               },
               {
-                name: 'РЎРµСЂРіРµР№ Р’РѕР»РєРѕРІ',
-                text: 'РЎРѕРїСЂРѕРІРѕР¶РґРµРЅРёРµ СЃРґРµР»РєРё Р±С‹Р»Рѕ РЅР° РІС‹СЃС€РµРј СѓСЂРѕРІРЅРµ. Р®СЂРёСЃС‚ РїСЂРѕРІРµСЂРёР» РІСЃРµ РґРѕРєСѓРјРµРЅС‚С‹, РѕР±СЉСЏСЃРЅРёР» РєР°Р¶РґС‹Р№ РїСѓРЅРєС‚. Р§СѓРІСЃС‚РІРѕРІР°Р»Рё СЃРµР±СЏ РІ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё.',
+                name: 'Сергей Волков',
+                text: 'Сопровождение сделки было на высшем уровне. Юрист проверил все документы, объяснил каждый пункт. Чувствовали себя в безопасности.',
                 rating: 5,
-                source: 'РЇРЅРґРµРєСЃ РљР°СЂС‚С‹',
+                source: 'Яндекс Карты',
                 sourceUrl: '#',
               },
             ].map((review) => (
@@ -528,25 +528,25 @@ export default function Home() {
           </div>
         </div>
       </section>
-      {/* 10. РЎС‚Р°С‚СЊ РїР°СЂС‚РЅС‘СЂРѕРј */}
+      {/* 10. Стать партнёром */}
       <section className="relative overflow-hidden bg-[#0F1D28] py-16 text-white md:py-24">
         <div className="pointer-events-none absolute right-[-140px] top-12 h-72 w-72 rounded-full bg-[#1B3143]/30" />
         <div className="pointer-events-none absolute left-[-120px] bottom-12 h-72 w-72 rounded-full bg-[#22394C]/25" />
         <div className="relative z-10 mx-auto max-w-7xl px-4">
           <div className="grid items-center gap-12 lg:grid-cols-2">
             <div>
-              <Heading size="h2" className="text-white">РЎС‚Р°С‚СЊ РїР°СЂС‚РЅС‘СЂРѕРј</Heading>
+              <Heading size="h2" className="text-white">Стать партнёром</Heading>
               <Text size="lg" className="mt-4 max-w-lg text-slate-300">
-                РњС‹ РѕС‚РєСЂС‹С‚С‹ Рє СЃРѕС‚СЂСѓРґРЅРёС‡РµСЃС‚РІСѓ СЃ Р·Р°СЃС‚СЂРѕР№С‰РёРєР°РјРё, Р°РіРµРЅС‚СЃС‚РІР°РјРё Рё С‡Р°СЃС‚РЅС‹РјРё СЂРёСЌР»С‚РѕСЂР°РјРё. Р’РјРµСЃС‚Рµ РјС‹ СЃРјРѕР¶РµРј РїСЂРµРґР»РѕР¶РёС‚СЊ РєР»РёРµРЅС‚Р°Рј Р»СѓС‡С€РёР№ СЃРµСЂРІРёСЃ.
+                Мы открыты к сотрудничеству с застройщиками, агентствами и частными риэлторами. Вместе мы сможем предложить клиентам лучший сервис.
               </Text>
               <div className="mt-8 space-y-4">
                 {[
-                  'РЎРѕРІРјРµСЃС‚РЅС‹Рµ СЃРґРµР»РєРё Рё СЂРµРєРѕРјРµРЅРґР°С†РёРё',
-                  'Р”РѕСЃС‚СѓРї Рє Р·Р°РєСЂС‹С‚РѕР№ Р±Р°Р·Рµ РѕР±СЉРµРєС‚РѕРІ',
-                  'РџСЂРѕР·СЂР°С‡РЅС‹Рµ СѓСЃР»РѕРІРёСЏ Рё Р±С‹СЃС‚СЂС‹Рµ РІС‹РїР»Р°С‚С‹',
+                  'Совместные сделки и рекомендации',
+                  'Доступ к закрытой базе объектов',
+                  'Прозрачные условия и быстрые выплаты',
                 ].map((item) => (
                   <div key={item} className="flex items-center gap-3">
-                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#C2A87A] text-[#0F1D28] text-xs">вњ“</div>
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#C2A87A] text-[#0F1D28] text-xs">✓</div>
                     <Text className="text-slate-200">{item}</Text>
                   </div>
                 ))}
@@ -554,7 +554,7 @@ export default function Home() {
             </div>
 
             <div className="rounded-2xl border border-white/15 bg-white/[0.06] p-8 shadow-sm">
-              <Heading size="h4" className="mb-6 text-white">РћСЃС‚Р°РІСЊС‚Рµ Р·Р°СЏРІРєСѓ</Heading>
+              <Heading size="h4" className="mb-6 text-white">Оставьте заявку</Heading>
               <div className="space-y-4">
                 <Button
                   variant="default"
@@ -564,10 +564,10 @@ export default function Home() {
                     openLeadModal('partner', { page: 'home', block: 'partner' })
                   }}
                 >
-                  РЎС‚Р°С‚СЊ РїР°СЂС‚РЅС‘СЂРѕРј
+                  Стать партнёром
                 </Button>
                 <Text size="sm" className="text-center text-slate-400">
-                  РњС‹ СЃРІСЏР¶РµРјСЃСЏ СЃ РІР°РјРё РІ С‚РµС‡РµРЅРёРµ СЂР°Р±РѕС‡РµРіРѕ РґРЅСЏ
+                  Мы свяжемся с вами в течение рабочего дня
                 </Text>
               </div>
             </div>
@@ -590,7 +590,7 @@ function CollectionCard({ item }: { item: Collection }) {
           <img src={item.cover_image} alt={item.title} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
         ) : null}
         <div className="absolute top-4 left-4 bg-white/90 px-3 py-1 text-xs font-bold uppercase tracking-wider text-black">
-          РџРѕРґР±РѕСЂРєР°
+          Подборка
         </div>
       </div>
       <div className="mt-4">
