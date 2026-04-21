@@ -11,6 +11,7 @@ type ComplexCoverSource = {
 
 const BLOCKED_IMAGE_HOSTS = new Set(['images.unsplash.com'])
 const LAYOUT_IMAGE_RX = /(^|[\/_.-])(plan|plans|planirovka|layout|preset|floorplan|floor-plan|room-plan|flat-plan|unit-plan)([\/_.-]|$)/i
+const FACADE_IMAGE_RX = /(^|[\/_.-])(renderer|render|progress|building|facade|exterior|house|photo|gallery|hero)([\/_.-]|$)/i
 
 function normalizeImageUrl(url: string | undefined): string {
   const value = typeof url === 'string' ? url.trim() : ''
@@ -49,6 +50,31 @@ export function isLayoutImage(url: string): boolean {
     if (LAYOUT_IMAGE_RX.test(decodedPath)) return true
     const query = decodeURIComponent(parsed.search).toLowerCase()
     if (LAYOUT_IMAGE_RX.test(query)) return true
+  } catch {
+    // ignore parse/decode errors and fall back to simple checks above
+  }
+
+  return false
+}
+
+export function isFacadeImage(url: string): boolean {
+  const source = (url || '').trim()
+  if (!source) return false
+  const lower = source.toLowerCase()
+  if (
+    lower.includes('/renderer/')
+    || lower.includes('/progress/')
+    || lower.includes('/building/')
+    || lower.includes('/building_image/')
+  ) return true
+  if (FACADE_IMAGE_RX.test(lower)) return true
+
+  try {
+    const parsed = new URL(source)
+    const decodedPath = decodeURIComponent(parsed.pathname).toLowerCase()
+    if (FACADE_IMAGE_RX.test(decodedPath)) return true
+    const query = decodeURIComponent(parsed.search).toLowerCase()
+    if (FACADE_IMAGE_RX.test(query)) return true
   } catch {
     // ignore parse/decode errors and fall back to simple checks above
   }

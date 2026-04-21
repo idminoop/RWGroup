@@ -4260,6 +4260,19 @@ function collectTrendAgentImageUrls(value: unknown, baseUrl: string, out: Set<st
   if (normalized) out.add(normalized)
 }
 
+function markTrendAgentPlanImage(url: string): string {
+  const source = url.trim()
+  if (!source) return source
+  if (source.includes('#rw-plan')) return source
+  try {
+    const parsed = new URL(source)
+    parsed.hash = 'rw-plan'
+    return parsed.toString()
+  } catch {
+    return `${source}#rw-plan`
+  }
+}
+
 function normalizeTrendAgentAboutUrl(sourceUrl: string): string {
   const parsed = new URL(sourceUrl)
   const pathname = parsed.pathname || '/'
@@ -4944,15 +4957,12 @@ async function buildTrendAgentImportRows(
     const aptSubwayNames = collectSubwayNames(apt.block_subway_name)
     const subwayNames = aptSubwayNames.length > 0 ? aptSubwayNames : collectSubwayNames(block?.subway)
     const hasMortgagePrograms = hasNonEmptyValue(building?.mortgages ?? apt.building_mortgage ?? apt.mortgage)
-    const imagesSet = new Set<string>()
-    collectTrendAgentImageUrls(apt.plan, dataset.sourceUrl, imagesSet)
-    collectTrendAgentImageUrls(apt.block_renderer, dataset.sourceUrl, imagesSet)
+    const planImagesSet = new Set<string>()
+    collectTrendAgentImageUrls(apt.plan, dataset.sourceUrl, planImagesSet)
     if (block) {
-      collectTrendAgentImageUrls(block.renderer, dataset.sourceUrl, imagesSet)
-      collectTrendAgentImageUrls(block.plan, dataset.sourceUrl, imagesSet)
-      collectTrendAgentImageUrls(block.progress, dataset.sourceUrl, imagesSet)
+      collectTrendAgentImageUrls(block.plan, dataset.sourceUrl, planImagesSet)
     }
-    const images = [...imagesSet]
+    const images = [...planImagesSet].map(markTrendAgentPlanImage)
 
     const areaTotal = numberValue(apt.area_total) ?? numberValue(apt.area)
     rows.push({

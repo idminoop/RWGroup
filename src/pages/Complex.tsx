@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/Badge'
 import ImageGallery from '@/components/ui/ImageGallery'
 import { apiGet } from '@/lib/api'
 import { formatPriceRub } from '@/lib/format'
-import { getPresentableImages, isLayoutImage, selectCoverImage } from '@/lib/images'
+import { getPresentableImages, selectCoverImage } from '@/lib/images'
 import { normalizeLandingConfig } from '@/lib/complexLanding'
 import JsonLd from '@/components/seo/JsonLd'
 import { setPageMeta } from '@/lib/meta'
@@ -287,7 +287,7 @@ export default function ComplexPage() {
       : activePlan.preview_image
         ? [activePlan.preview_image]
         : []
-    return dedupeImageUrls(raw).filter((url) => isLayoutImage(url))
+    return dedupeImageUrls(raw)
   }, [activePlan])
   const tickerCycleItems = useMemo(() => {
     const source = landing?.feature_ticker || []

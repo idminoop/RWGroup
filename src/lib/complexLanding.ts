@@ -14,7 +14,7 @@ import type {
   ComplexNearbyPlace,
   Property,
 } from '../../shared/types'
-import { isLayoutImage } from './images'
+import { isFacadeImage, isLayoutImage } from './images'
 
 const DEFAULT_ACCENT = '#C2A87A'
 const DEFAULT_SURFACE = '#071520'
@@ -169,7 +169,9 @@ function collectPlanPreviewImages(images?: string[]): string[] {
   if (!Array.isArray(images) || !images.length) return []
   const normalized = uniq(images.map((url) => String(url || '').trim()).filter(Boolean))
   const matched = normalized.filter((url) => isLayoutImage(url))
-  return matched.slice(0, 12)
+  if (matched.length > 0) return matched.slice(0, 12)
+  const nonFacade = normalized.filter((url) => !isFacadeImage(url))
+  return nonFacade.slice(0, 12)
 }
 
 function normalizeNearbyCollectionKey(value?: string): string {
@@ -315,14 +317,23 @@ export function createLandingFeature(partial?: Partial<ComplexLandingFeature>): 
 }
 
 export function createLandingPlanItem(partial?: Partial<ComplexLandingPlanItem>): ComplexLandingPlanItem {
-  const preview_images = safeArray<string>(partial?.preview_images)
+  const normalizedPreviewImages = safeArray<string>(partial?.preview_images)
     .map((item) => sanitizeImageUrl(item))
     .filter((item): item is string => Boolean(item))
-    .filter((item) => isLikelyPlanImage(item))
+  const layoutPreviewImages = normalizedPreviewImages.filter((item) => isLikelyPlanImage(item))
+  const preview_images = (layoutPreviewImages.length > 0
+    ? layoutPreviewImages
+    : normalizedPreviewImages.filter((item) => !isFacadeImage(item)))
 
   const rawPreviewImage = sanitizeImageUrl(partial?.preview_image) || undefined
-  const preview_image = (rawPreviewImage && isLikelyPlanImage(rawPreviewImage))
-    ? rawPreviewImage
+  const preview_image = rawPreviewImage
+    ? (
+      isLikelyPlanImage(rawPreviewImage)
+        ? rawPreviewImage
+        : layoutPreviewImages.length === 0 && !isFacadeImage(rawPreviewImage)
+          ? rawPreviewImage
+          : (preview_images[0] || undefined)
+    )
     : (preview_images[0] || undefined)
 
   return {

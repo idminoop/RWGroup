@@ -307,7 +307,7 @@ export default function AdminComplexSettingsPage() {
       : activePlan.preview_image
         ? [activePlan.preview_image]
         : []
-    return dedupeUrls(raw).filter((url) => isLayoutImage(url))
+    return dedupeUrls(raw)
   }, [activePlan])
   const accordionConfig = useMemo<ComplexLandingAccordion>(() => {
     const normalized = createLandingAccordion(draftLanding?.accordion)
