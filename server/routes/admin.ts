@@ -366,6 +366,63 @@ async function readResolvedTrendAgentLocalStatus(
   return { owner_source_id: ownerSourceId, status }
 }
 
+type TrendAgentResolvedLocalState = {
+  owner_source_id: string
+  status: TrendAgentLocalStatus | null
+  snapshot: TrendAgentLocalSnapshot | null
+}
+
+async function getTrendAgentResolvedLocalState(sourceId: string): Promise<TrendAgentResolvedLocalState> {
+  const resolvedStatus = await readResolvedTrendAgentLocalStatus(sourceId)
+  const resolvedSnapshot = await readResolvedTrendAgentLocalSnapshot(sourceId)
+  const ownerSourceId = resolvedSnapshot?.owner_source_id || resolvedStatus?.owner_source_id || sourceId
+  let status = resolvedStatus?.status || await readTrendAgentLocalStatus(sourceId)
+  const snapshot = resolvedSnapshot?.snapshot || null
+
+  if (status?.state === 'running' && !hasActiveLocalInstallLock(`local-install:${ownerSourceId}`)) {
+    status = {
+      ...status,
+      state: 'failed',
+      finished_at: new Date().toISOString(),
+      error: status.error || 'Установка была прервана (сервер перезапущен или процесс завершён).',
+      message: 'Требуется запустить установку повторно.',
+    }
+    await writeTrendAgentLocalStatus(ownerSourceId, status)
+  }
+
+  return {
+    owner_source_id: ownerSourceId,
+    status: status || null,
+    snapshot,
+  }
+}
+
+async function hasTrendAgentResolvedLocalSnapshot(sourceId: string): Promise<boolean> {
+  const resolved = await readResolvedTrendAgentLocalSnapshot(sourceId)
+  return Boolean(resolved?.snapshot)
+}
+
+function purgeTrendAgentLocalDatasetCache(ownerSourceId: string, sourceId: string): void {
+  for (const key of [...trendAgentDatasetCache.keys()]) {
+    if (key.startsWith(`local:${ownerSourceId}:`) || key.startsWith(`local:${sourceId}:`)) {
+      trendAgentDatasetCache.delete(key)
+    }
+  }
+}
+
+async function deleteTrendAgentLocalArtifacts(sourceId: string): Promise<{ source_id: string; owner_source_id: string }> {
+  const ownerSourceId = (await resolveTrendAgentLocalSnapshotOwnerId(sourceId)) || sourceId
+  await ensureTrendAgentLocalDir()
+  await fs.promises.unlink(getTrendAgentLocalSnapshotPath(ownerSourceId)).catch(() => {})
+  await fs.promises.unlink(getTrendAgentLocalStatusPath(ownerSourceId)).catch(() => {})
+  if (ownerSourceId !== sourceId) {
+    await fs.promises.unlink(getTrendAgentLocalSnapshotPath(sourceId)).catch(() => {})
+    await fs.promises.unlink(getTrendAgentLocalStatusPath(sourceId)).catch(() => {})
+  }
+  purgeTrendAgentLocalDatasetCache(ownerSourceId, sourceId)
+  return { source_id: sourceId, owner_source_id: ownerSourceId }
+}
+
 function getSnapshotDataRows(snapshot: TrendAgentLocalSnapshot, section: string): Record<string, unknown>[] {
   return ensureObjectArray(snapshot.data[section])
 }
@@ -2783,22 +2840,10 @@ router.get('/import/trendagent/local/status', requireAdminAnyPermission('import.
   }
 
   const sourceId = parsed.data.source_id
-  const resolvedStatus = await readResolvedTrendAgentLocalStatus(sourceId)
-  const resolvedSnapshot = await readResolvedTrendAgentLocalSnapshot(sourceId)
-  const ownerSourceId = resolvedSnapshot?.owner_source_id || resolvedStatus?.owner_source_id || sourceId
-
-  let status = resolvedStatus?.status || await readTrendAgentLocalStatus(sourceId)
-  if (status?.state === 'running' && !hasActiveLocalInstallLock(`local-install:${ownerSourceId}`)) {
-    status = {
-      ...status,
-      state: 'failed',
-      finished_at: new Date().toISOString(),
-      error: status.error || 'Установка была прервана (сервер перезапущен или процесс завершён).',
-      message: 'Требуется запустить установку повторно.',
-    }
-    await writeTrendAgentLocalStatus(ownerSourceId, status)
-  }
-  const snapshot = resolvedSnapshot?.snapshot
+  const resolved = await getTrendAgentResolvedLocalState(sourceId)
+  const ownerSourceId = resolved.owner_source_id
+  const status = resolved.status
+  const snapshot = resolved.snapshot
 
   if (!status && !snapshot) {
     res.json({ success: true, data: { state: 'idle', source_id: sourceId, installed: null } })
@@ -2848,23 +2893,9 @@ router.get('/import/trendagent/local-feed', requireAdminPermission('import.write
     return
   }
 
-  const resolvedStatus = await readResolvedTrendAgentLocalStatus(source.id)
-  const resolvedSnapshot = await readResolvedTrendAgentLocalSnapshot(source.id)
-  const ownerSourceId = resolvedSnapshot?.owner_source_id || resolvedStatus?.owner_source_id || source.id
-
-  let status = resolvedStatus?.status || await readTrendAgentLocalStatus(source.id)
-  if (status?.state === 'running' && !hasActiveLocalInstallLock(`local-install:${ownerSourceId}`)) {
-    status = {
-      ...status,
-      state: 'failed',
-      finished_at: new Date().toISOString(),
-      error: status.error || 'Установка была прервана.',
-      message: 'Требуется запустить установку повторно.',
-    }
-    await writeTrendAgentLocalStatus(ownerSourceId, status)
-  }
-
-  const snapshot = resolvedSnapshot?.snapshot
+  const resolved = await getTrendAgentResolvedLocalState(source.id)
+  const status = resolved.status
+  const snapshot = resolved.snapshot
   if (!status && !snapshot) {
     res.json({ success: true, data: null })
     return
@@ -2933,19 +2964,8 @@ router.delete('/import/trendagent/local', requireAdminPermission('import.write')
   }
 
   try {
-    await ensureTrendAgentLocalDir()
-    await fs.promises.unlink(getTrendAgentLocalSnapshotPath(ownerSourceId)).catch(() => {})
-    await fs.promises.unlink(getTrendAgentLocalStatusPath(ownerSourceId)).catch(() => {})
-    if (ownerSourceId !== sourceId) {
-      await fs.promises.unlink(getTrendAgentLocalSnapshotPath(sourceId)).catch(() => {})
-      await fs.promises.unlink(getTrendAgentLocalStatusPath(sourceId)).catch(() => {})
-    }
-    for (const key of [...trendAgentDatasetCache.keys()]) {
-      if (key.startsWith(`local:${ownerSourceId}:`) || key.startsWith(`local:${sourceId}:`)) {
-        trendAgentDatasetCache.delete(key)
-      }
-    }
-    res.json({ success: true, data: { source_id: sourceId, owner_source_id: ownerSourceId, deleted: true } })
+    const deleted = await deleteTrendAgentLocalArtifacts(sourceId)
+    res.json({ success: true, data: { ...deleted, deleted: true } })
   } catch (error) {
     const details = error instanceof Error ? error.message : 'Delete failed'
     res.status(500).json({ success: false, error: 'Не удалось удалить локальную копию', details })
@@ -2983,18 +3003,7 @@ router.delete('/import/trendagent/local-feed', requireAdminPermission('import.wr
   }
 
   try {
-    await ensureTrendAgentLocalDir()
-    await fs.promises.unlink(getTrendAgentLocalSnapshotPath(ownerSourceId)).catch(() => {})
-    await fs.promises.unlink(getTrendAgentLocalStatusPath(ownerSourceId)).catch(() => {})
-    if (ownerSourceId !== source.id) {
-      await fs.promises.unlink(getTrendAgentLocalSnapshotPath(source.id)).catch(() => {})
-      await fs.promises.unlink(getTrendAgentLocalStatusPath(source.id)).catch(() => {})
-    }
-    for (const key of [...trendAgentDatasetCache.keys()]) {
-      if (key.startsWith(`local:${ownerSourceId}:`) || key.startsWith(`local:${source.id}:`)) {
-        trendAgentDatasetCache.delete(key)
-      }
-    }
+    await deleteTrendAgentLocalArtifacts(source.id)
     res.json({ success: true })
   } catch (error) {
     const details = error instanceof Error ? error.message : 'Delete failed'
@@ -3096,18 +3105,19 @@ router.post('/import/trendagent/complexes', requireAdminPermission('import.write
     return
   }
 
-  const source = resolveTrendAgentSource(parsed.data.source_id, parsed.data.use_local === true)
+  const preferLocal = parsed.data.use_local === true
+  const source = resolveTrendAgentSource(parsed.data.source_id, preferLocal)
   if (!source) {
     res.status(404).json({ success: false, error: 'Source not found' })
     return
   }
-  if (!source.url && parsed.data.use_local !== true) {
+  if (!source.url && !preferLocal) {
     res.status(400).json({ success: false, error: 'Source URL is required for TrendAgent selection' })
     return
   }
 
   try {
-    const dataset = parsed.data.use_local === true
+    const dataset = preferLocal
       ? await loadTrendAgentDatasetFromLocalSnapshot(source.id, 'list', parsed.data.force_refresh === true)
       : await loadTrendAgentDataset(source.url, parsed.data.force_refresh === true, 'list')
     const allItems = buildTrendAgentComplexOptions(dataset)
@@ -3137,7 +3147,7 @@ router.post('/import/trendagent/complexes', requireAdminPermission('import.write
         limit,
         total_pages: totalPages,
         items,
-        use_local: parsed.data.use_local === true,
+        use_local: preferLocal,
       },
     })
   } catch (error) {
@@ -3572,7 +3582,8 @@ async function handleTrendAgentRunRequest(req: Request, res: Response, forceUseL
         run_id: run.id,
         source_id: run.source_id,
         entity: run.entity,
-        message: `Импорт ${scopeLabel} запущен в фоне. Следите за статусом в журнале импортов.`,
+        use_local: useLocal,
+        message: `Импорт ${scopeLabel} запущен в фоне${useLocal ? ' (используется автономная локальная копия)' : ''}. Следите за статусом в журнале импортов.`,
       },
     })
     return
@@ -4401,11 +4412,12 @@ function buildTrendAgentComplexImportRows(dataset: TrendAgentDataset, selectedBl
     else buildingsByBlockId.set(blockId, [row])
   }
 
-  const apartmentStatsByBlockId = new Map<string, { minPrice?: number; minArea?: number }>()
+  const apartmentStatsByBlockId = new Map<string, { count: number; minPrice?: number; minArea?: number }>()
   for (const apartment of dataset.apartments) {
     const blockId = stringValue(apartment.block_id)
     if (!blockId || !selectedBlockIds.has(blockId)) continue
-    const bucket = apartmentStatsByBlockId.get(blockId) || {}
+    const bucket = apartmentStatsByBlockId.get(blockId) || { count: 0 }
+    bucket.count += 1
     const price = numberValue(apartment.price)
     if (typeof price === 'number' && price > 0 && (typeof bucket.minPrice !== 'number' || price < bucket.minPrice)) {
       bucket.minPrice = price
@@ -4504,6 +4516,7 @@ function buildTrendAgentComplexImportRows(dataset: TrendAgentDataset, selectedBl
     collectTrendAgentImageUrls(block.progress, dataset.sourceUrl, imagesSet)
     const images = [...imagesSet]
     const apartmentStats = apartmentStatsByBlockId.get(blockId)
+    if (!apartmentStats || apartmentStats.count <= 0) continue
 
     rows.push({
       ...block,

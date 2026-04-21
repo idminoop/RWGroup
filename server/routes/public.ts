@@ -573,15 +573,30 @@ router.get('/catalog', (req: Request, res: Response) => {
       if (property.status !== 'active') continue
       if (property.category !== 'newbuild') continue
       if (property.complex_id) activeNewbuildComplexKeys.add(`id:${property.complex_id}`)
-      if (property.complex_external_id) activeNewbuildComplexKeys.add(`ext:${property.complex_external_id}`)
+      if (property.complex_external_id) {
+        activeNewbuildComplexKeys.add(`ext:${property.source_id}:${property.complex_external_id}`)
+      }
     }
 
     const targetComplex = complexId ? db.complexes.find((c) => c.id === complexId) : null
     const targetComplexExternalId = targetComplex?.external_id
+    const targetComplexSourceId = targetComplex?.source_id
     const filtered = db.properties
       .filter((p) => p.status === 'active')
       .filter((p) => p.category === cat)
-      .filter((p) => (complexId ? (p.complex_id === complexId || (targetComplexExternalId ? p.complex_external_id === targetComplexExternalId : false)) : true))
+      .filter((p) => (
+        complexId
+          ? (
+              p.complex_id === complexId
+              || (
+                Boolean(targetComplexExternalId)
+                && Boolean(targetComplexSourceId)
+                && p.source_id === targetComplexSourceId
+                && p.complex_external_id === targetComplexExternalId
+              )
+            )
+          : true
+      ))
       .filter((p) => (typeof bed === 'number' ? p.bedrooms === bed : true))
       .filter((p) => (typeof min === 'number' ? p.price >= min : true))
       .filter((p) => (typeof max === 'number' ? p.price <= max : true))
@@ -600,7 +615,10 @@ router.get('/catalog', (req: Request, res: Response) => {
       tab === 'newbuild'
         ? db.complexes
             .filter((c) => c.status === 'active')
-            .filter((c) => activeNewbuildComplexKeys.has(`id:${c.id}`) || activeNewbuildComplexKeys.has(`ext:${c.external_id}`))
+            .filter((c) =>
+              activeNewbuildComplexKeys.has(`id:${c.id}`)
+              || activeNewbuildComplexKeys.has(`ext:${c.source_id}:${c.external_id}`)
+            )
             .filter((c) => (complexId ? c.id === complexId : true))
             .filter((c) => (districtLc ? c.district.toLowerCase() === districtLc : true))
             .filter((c) => (metroLc ? c.metro.some((m) => m.toLowerCase() === metroLc) : true))
@@ -611,7 +629,10 @@ router.get('/catalog', (req: Request, res: Response) => {
               }
               const linked = db.properties.filter((p) =>
                 p.status === 'active'
-                && (p.complex_id === complex.id || p.complex_external_id === complex.external_id)
+                && (
+                  p.complex_id === complex.id
+                  || (p.source_id === complex.source_id && p.complex_external_id === complex.external_id)
+                )
               )
               if (linked.length === 0) return complex
               const minPrice = linked.reduce<number | undefined>((min, p) => {
@@ -665,7 +686,11 @@ router.get('/complex/:idOrSlug', (req: Request, res: Response) => {
     if (!complex) return null
     const properties = db.properties
       .filter((p) => p.status === 'active')
-      .filter((p) => (p.complex_id ? p.complex_id === complex.id : p.complex_external_id === complex.external_id))
+      .filter((p) =>
+        p.complex_id
+          ? p.complex_id === complex.id
+          : (p.source_id === complex.source_id && p.complex_external_id === complex.external_id)
+      )
       .sort((a, b) => a.price - b.price)
     return { complex, properties }
   })
