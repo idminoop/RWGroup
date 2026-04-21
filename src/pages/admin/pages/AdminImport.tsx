@@ -619,6 +619,7 @@ export default function AdminImportPage() {
   const [useLocalTrendagentFeed, setUseLocalTrendagentFeed] = useState(false)
   const [localFeedStatus, setLocalFeedStatus] = useState<LocalFeedStatus | null>(null)
   const [localFeedStatusError, setLocalFeedStatusError] = useState<string | null>(null)
+  const [localFeedStatusLoading, setLocalFeedStatusLoading] = useState(false)
   const [localFeedInstalling, setLocalFeedInstalling] = useState(false)
   const [localFeedViewerOpen, setLocalFeedViewerOpen] = useState(false)
   const [localFeedViewerLoading, setLocalFeedViewerLoading] = useState(false)
@@ -1105,6 +1106,7 @@ export default function AdminImportPage() {
 
   const fetchLocalFeedStatus = useCallback(async (sourceId: string, silent = false) => {
     if (!sourceId) return
+    if (!silent) setLocalFeedStatusLoading(true)
     try {
       const params = new URLSearchParams({ source_id: sourceId })
       const res = await fetch(`/api/admin/import/trendagent/local/status?${params.toString()}`, {
@@ -1146,6 +1148,8 @@ export default function AdminImportPage() {
       setLocalFeedStatusError(message)
       if (!silent) setLocalFeedStatus(null)
       stopLocalFeedStatusPolling()
+    } finally {
+      if (!silent) setLocalFeedStatusLoading(false)
     }
   }, [token, stopLocalFeedStatusPolling])
 
@@ -2022,6 +2026,11 @@ export default function AdminImportPage() {
               <div className="text-xs text-indigo-700">
                 Вставьте ссылку на <span className="font-mono">about.json</span>. Установка запускается сразу после вставки ссылки.
               </div>
+              {localFeedStatusLoading ? (
+                <div className="rounded border border-indigo-200 bg-white px-3 py-2 text-xs text-slate-600">
+                  Проверяем состояние локальной копии…
+                </div>
+              ) : null}
               <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                 <div className="rounded border border-indigo-200 bg-white px-2 py-1.5 text-[11px] text-slate-700">
                   <div className="font-semibold text-indigo-900">Шаг 1</div>
@@ -2178,6 +2187,11 @@ export default function AdminImportPage() {
               ) : null}
               {trendagentInfo ? (
                 <div className="text-xs text-emerald-700">{trendagentInfo}</div>
+              ) : null}
+              {trendagentLoading ? (
+                <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  Загружаем список ЖК и состояние источника…
+                </div>
               ) : null}
               {fullCityImportStartedAt && (
                 <FullCityImportProgress

@@ -9,6 +9,7 @@ import {
 } from '../middleware/adminAuth.js'
 import {
   flushStorage,
+  getStorageDriver,
   getPublishStatus,
   publishDraft,
   readDb,
@@ -66,6 +67,7 @@ import type { AdminRole, AdminUser, Category, Complex, DbShape, FeedSource, Land
 import { XMLParser } from 'fast-xml-parser'
 import { parse as parseCsv } from 'csv-parse/sync'
 import * as XLSX from 'xlsx'
+import { Pool, type PoolClient } from 'pg'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
@@ -113,6 +115,8 @@ type TrendAgentDatasetMode = 'full' | 'list' | 'complex'
 const trendAgentDatasetCache = new Map<string, { loadedAt: number; dataset: TrendAgentDataset }>()
 const trendAgentLocalInstallLocks = new Map<string, number>()
 const TRENDAGENT_LOCAL_DIR = path.join(DATA_DIR, 'trendagent_local')
+const TRENDAGENT_LOCAL_STORE_TABLE = 'rw_trendagent_local_store'
+let trendAgentLocalPgPool: Pool | null = null
 
 type TrendAgentLocalSnapshot = {
   version: 1
@@ -267,6 +271,37 @@ function hasActiveLocalInstallLock(lockKey: string): boolean {
   return true
 }
 
+function canUseTrendAgentLocalPostgresStore(): boolean {
+  const hasDbUrl = Boolean(process.env.DATABASE_URL && process.env.DATABASE_URL.trim())
+  return getStorageDriver() === 'postgres' && hasDbUrl
+}
+
+function getTrendAgentLocalPostgresPool(): Pool | null {
+  if (!canUseTrendAgentLocalPostgresStore()) return null
+  if (trendAgentLocalPgPool) return trendAgentLocalPgPool
+  trendAgentLocalPgPool = new Pool({ connectionString: process.env.DATABASE_URL })
+  trendAgentLocalPgPool.on('error', (error) => {
+    console.error('[trendagent-local] postgres pool error:', error)
+  })
+  return trendAgentLocalPgPool
+}
+
+async function withTrendAgentLocalStoreClient<T>(
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T | null> {
+  const pool = getTrendAgentLocalPostgresPool()
+  if (!pool) return null
+  const client = await pool.connect()
+  try {
+    return await fn(client)
+  } catch (error) {
+    console.error('[trendagent-local] postgres store error:', error)
+    return null
+  } finally {
+    client.release()
+  }
+}
+
 function getLocalSourceKey(sourceId: string): string {
   return sourceId.replace(/[^a-zA-Z0-9_.-]/g, '_')
 }
@@ -306,16 +341,111 @@ async function readJsonIfExists<T>(filePath: string): Promise<T | null> {
   }
 }
 
+async function writeTrendAgentLocalSnapshot(sourceId: string, snapshot: TrendAgentLocalSnapshot): Promise<void> {
+  const stored = await withTrendAgentLocalStoreClient(async (client) => {
+    await client.query(
+      `INSERT INTO ${TRENDAGENT_LOCAL_STORE_TABLE}
+       (source_id, source_name, source_url, about_url, installed_at, snapshot_json, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW())
+       ON CONFLICT (source_id)
+       DO UPDATE SET
+         source_name = EXCLUDED.source_name,
+         source_url = EXCLUDED.source_url,
+         about_url = EXCLUDED.about_url,
+         installed_at = EXCLUDED.installed_at,
+         snapshot_json = EXCLUDED.snapshot_json,
+         updated_at = NOW()`,
+      [
+        sourceId,
+        snapshot.source_name || null,
+        snapshot.source_url || null,
+        snapshot.about_url,
+        snapshot.installed_at,
+        JSON.stringify(snapshot),
+      ],
+    )
+  })
+
+  if (stored === null) {
+    // Fallback for non-postgres mode or temporary DB issues.
+    await writeJsonAtomic(getTrendAgentLocalSnapshotPath(sourceId), snapshot)
+    return
+  }
+
+  // Keep file fallback for backward compatibility and emergency restore.
+  await writeJsonAtomic(getTrendAgentLocalSnapshotPath(sourceId), snapshot)
+}
+
 async function writeTrendAgentLocalStatus(sourceId: string, status: TrendAgentLocalStatus): Promise<void> {
+  const stored = await withTrendAgentLocalStoreClient(async (client) => {
+    await client.query(
+      `INSERT INTO ${TRENDAGENT_LOCAL_STORE_TABLE}
+       (source_id, source_name, source_url, about_url, status_json, updated_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
+       ON CONFLICT (source_id)
+       DO UPDATE SET
+         source_name = COALESCE(EXCLUDED.source_name, ${TRENDAGENT_LOCAL_STORE_TABLE}.source_name),
+         source_url = COALESCE(EXCLUDED.source_url, ${TRENDAGENT_LOCAL_STORE_TABLE}.source_url),
+         about_url = COALESCE(EXCLUDED.about_url, ${TRENDAGENT_LOCAL_STORE_TABLE}.about_url),
+         status_json = EXCLUDED.status_json,
+         updated_at = NOW()`,
+      [
+        sourceId,
+        status.source_name || null,
+        status.source_url || null,
+        status.about_url || null,
+        JSON.stringify(status),
+      ],
+    )
+  })
+
+  if (stored === null) {
+    await writeJsonAtomic(getTrendAgentLocalStatusPath(sourceId), status)
+    return
+  }
+
+  // Keep file fallback for backward compatibility and emergency restore.
   await writeJsonAtomic(getTrendAgentLocalStatusPath(sourceId), status)
 }
 
 async function readTrendAgentLocalStatus(sourceId: string): Promise<TrendAgentLocalStatus | null> {
-  return readJsonIfExists<TrendAgentLocalStatus>(getTrendAgentLocalStatusPath(sourceId))
+  const fromDb = await withTrendAgentLocalStoreClient(async (client) => {
+    const result = await client.query<{ status_json: TrendAgentLocalStatus | null }>(
+      `SELECT status_json
+       FROM ${TRENDAGENT_LOCAL_STORE_TABLE}
+       WHERE source_id = $1`,
+      [sourceId],
+    )
+    const row = result.rows[0]
+    return row?.status_json || null
+  })
+  if (fromDb) return fromDb
+  const fromFile = await readJsonIfExists<TrendAgentLocalStatus>(getTrendAgentLocalStatusPath(sourceId))
+  if (fromFile && canUseTrendAgentLocalPostgresStore()) {
+    // One-time self-heal: backfill PostgreSQL from file snapshot/status when available.
+    await writeTrendAgentLocalStatus(sourceId, fromFile)
+  }
+  return fromFile
 }
 
 async function readTrendAgentLocalSnapshot(sourceId: string): Promise<TrendAgentLocalSnapshot | null> {
-  return readJsonIfExists<TrendAgentLocalSnapshot>(getTrendAgentLocalSnapshotPath(sourceId))
+  const fromDb = await withTrendAgentLocalStoreClient(async (client) => {
+    const result = await client.query<{ snapshot_json: TrendAgentLocalSnapshot | null }>(
+      `SELECT snapshot_json
+       FROM ${TRENDAGENT_LOCAL_STORE_TABLE}
+       WHERE source_id = $1`,
+      [sourceId],
+    )
+    const row = result.rows[0]
+    return row?.snapshot_json || null
+  })
+  if (fromDb) return fromDb
+  const fromFile = await readJsonIfExists<TrendAgentLocalSnapshot>(getTrendAgentLocalSnapshotPath(sourceId))
+  if (fromFile && canUseTrendAgentLocalPostgresStore()) {
+    // One-time self-heal: backfill PostgreSQL from file snapshot/status when available.
+    await writeTrendAgentLocalSnapshot(sourceId, fromFile)
+  }
+  return fromFile
 }
 
 async function resolveTrendAgentLocalSnapshotOwnerId(sourceId: string): Promise<string | null> {
@@ -325,6 +455,23 @@ async function resolveTrendAgentLocalSnapshotOwnerId(sourceId: string): Promise<
   const source = resolveTrendAgentSource(sourceId, true)
   const normalizedSourceAbout = normalizeMaybeTrendAgentAboutUrl(source?.url)
   if (!normalizedSourceAbout) return null
+
+  const postgresOwnerId = await withTrendAgentLocalStoreClient(async (client) => {
+    const result = await client.query<{ source_id: string }>(
+      `SELECT source_id
+       FROM ${TRENDAGENT_LOCAL_STORE_TABLE}
+       WHERE source_id <> $1
+         AND snapshot_json IS NOT NULL
+         AND (about_url = $2 OR source_url = $2)
+       ORDER BY installed_at DESC NULLS LAST, updated_at DESC
+       LIMIT 1`,
+      [sourceId, normalizedSourceAbout],
+    )
+    return result.rows[0]?.source_id || null
+  })
+  if (postgresOwnerId) {
+    return postgresOwnerId
+  }
 
   await ensureTrendAgentLocalDir()
   const fileNames = await fs.promises.readdir(TRENDAGENT_LOCAL_DIR).catch(() => [] as string[])
@@ -428,6 +575,13 @@ function purgeTrendAgentLocalDatasetCache(ownerSourceId: string, sourceId: strin
 
 async function deleteTrendAgentLocalArtifacts(sourceId: string): Promise<{ source_id: string; owner_source_id: string }> {
   const ownerSourceId = (await resolveTrendAgentLocalSnapshotOwnerId(sourceId)) || sourceId
+  await withTrendAgentLocalStoreClient(async (client) => {
+    if (ownerSourceId === sourceId) {
+      await client.query(`DELETE FROM ${TRENDAGENT_LOCAL_STORE_TABLE} WHERE source_id = $1`, [sourceId])
+      return
+    }
+    await client.query(`DELETE FROM ${TRENDAGENT_LOCAL_STORE_TABLE} WHERE source_id = ANY($1::text[])`, [[sourceId, ownerSourceId]])
+  })
   await ensureTrendAgentLocalDir()
   await fs.promises.unlink(getTrendAgentLocalSnapshotPath(ownerSourceId)).catch(() => {})
   await fs.promises.unlink(getTrendAgentLocalStatusPath(ownerSourceId)).catch(() => {})
@@ -639,7 +793,7 @@ async function queueTrendAgentLocalInstall(source: FeedSource, aboutUrlRaw: stri
         data,
       }
 
-      await writeJsonAtomic(getTrendAgentLocalSnapshotPath(source.id), snapshot)
+      await writeTrendAgentLocalSnapshot(source.id, snapshot)
       await writeTrendAgentLocalStatus(source.id, {
         state: 'success',
         source_id: source.id,
